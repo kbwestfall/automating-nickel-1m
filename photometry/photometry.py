@@ -27,7 +27,7 @@ def main():
         plt.ioff()
         input("Press Enter to exit...")
 
-def photometry(fits_file, est_fwhm, verbose):
+def photometry(fits_file, est_fwhm=10, verbose=False):
 
     hdu = fits.open(fits_file)
     data = hdu[0].data
@@ -104,10 +104,11 @@ def photometry(fits_file, est_fwhm, verbose):
         fit_y -= 1
     fit_shape = (fit_x, fit_y)
 
-    est_fwhm = fit_fwhm(data, fit_shape=fit_shape)
-    # est_fwhm.sort()
-    # est_fwhm = est_fwhm[-1]
-    print(f"Estimated FWHM: {est_fwhm}")
+    if verbose:
+        est_fwhm = fit_fwhm(data, fit_shape=fit_shape)
+        # est_fwhm.sort()
+        # est_fwhm = est_fwhm[-1]
+        print(f"Estimated FWHM: {est_fwhm}")
 
     x = np.arange(data.shape[1])
     y = np.arange(data.shape[0])
@@ -127,7 +128,9 @@ def photometry(fits_file, est_fwhm, verbose):
     FWHM_y = 2 * np.sqrt(2 * np.log(2)) * sigma_y
     average_FWHM = (FWHM_x + FWHM_y) / 2
 
-    print(f"FWHM_x: {FWHM_x}, FWHM_y: {FWHM_y}, Average FWHM: {average_FWHM}")
+    if verbose:
+        print(f"FWHM_x: {FWHM_x}, FWHM_y: {FWHM_y}, Average FWHM: {average_FWHM}")
+
     return average_FWHM
 
 

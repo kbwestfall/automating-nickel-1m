@@ -34,16 +34,16 @@ def simulation(model=Moffat2D(), n_sources=1, shape=(100,100), alpha=3.5, fwhm=6
     hdu = fits.PrimaryHDU(noise_data)
     file_name = str(fwhm)
     file_name = file_name.replace('.', '_')
-    hdu.writeto(f'psf-practice/images/focus_{file_name}.fits', overwrite=True)
+    hdu.writeto(f'images/focus_{file_name}.fits', overwrite=True)
     plt.figure(figsize=(8, 8))
     plt.imshow(noise_data, origin='lower', cmap='viridis')
-    plt.savefig(f'psf-practice/images/focus_{file_name}.png')
+    plt.savefig(f'images/focus_{file_name}.png')
 
 
-for fwhm in [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]:
-    simulation(fwhm=fwhm)
+# for fwhm in [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]:
+#     simulation(fwhm=fwhm)
 
-simulation(fwhm=24)
+# simulation(fwhm=24)
 
 # plt.imshow(noise_data, origin='lower')
 # plt.tight_layout()

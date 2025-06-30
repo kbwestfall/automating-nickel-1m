@@ -1,0 +1,57 @@
+
+
+    get position of telescope
+        poco POCRAA = actual RA
+        poco POCDECA = actual Dec
+    
+    lookup position of focus star 
+
+    set position of telescope to focus star
+
+    read even sequence, make sure telescope ready to take exposure
+        - nickucam EVENT :
+        - EVENT = ControllerReady
+        - EVENT = ExposeSequenceDone
+        - EVENT = EraseBegin
+        - EVENT = ExposureBegin
+        - EVENT = ExposureEnd
+        - EVENT = ReadoutBegin
+        - EVENT = ReadoutEnd
+
+    record directory, file, obsnum, and suffix 
+        - nickucam OBSNUM =  1153
+        - nickucam OUTDIR = /data
+        - nickucam OUTFILE = d
+        - nickucam RECORD_SUFFIX = fits
+        - nickucam RECORD = Yes/No says whether file goes to /data or /scratch
+
+    take exposure of star using previous night's focus or observer's desired focus
+        - nickucam START = start exposure by writing START=start
+        - nickucam REMAINING = remaining exposure time.
+        - measure fwhm (photometry.py)
+
+    increment focus and take another exposure
+        - poco POCSECPA = secondary position actual
+        - poco POCSECPD = secondary position desired
+        - poco POCSECLK = secondary lock status (off/on)
+        - nickucam START = start exposure by writing START=start
+        - nickucam REMAINING = remaining exposure time.
+        - measure fwhm (photometry.py)
+    
+    depending on whether fwhm increased or decreased
+        - increase/decrease focus   
+        - poco POCSECPA = secondary position actual
+        - poco POCSECPD = secondary position desired
+        - poco POCSECLK = secondary lock status (off/on)
+
+    
+    repeat until minimum is found
+        - fit a curve to points
+    (focus.py)
+
+    get optimum focus for night 
+
+    set focus to optimum    
+        - poco POCSECPA = secondary position actual
+        - poco POCSECPD = secondary position desired
+        - poco POCSECLK = secondary lock status (off/on)

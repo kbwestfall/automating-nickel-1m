@@ -1,0 +1,145 @@
+
+# airCube-2B7
+# shakoda - account
+# ssh shakoda@mrclean.ucolick.org
+
+export PYTHONPATH=$PYTHONPATH:/opt/kroot/rel/default/lib/python
+
+# gshow -s nickelpoco -fh keyword1 keyword2 etc...
+    -fh: full help
+# gshow -s nickucam -l -attr
+    -l: long name
+    -attr: attribute
+# gshow -s nickscicam -c -aline !%clk
+    -c: continusous
+    -aline: array line  
+-curses
+
+# modify -s nickelpoco POCSECPD 360
+    - service keyword value 
+
+poco POCRAA = actual RA
+poco POCDECA = actual Dec
+poco POCOHAA = ha actual observed
+
+poco POCSECPA = secondary position actual
+poco POCSECPD = secondary position desired
+poco POCSECLK = secondary lock status (off/on)
+POCSTOP
+            Long name: poco-stop-motion
+            Read/Write: c2 => read=y,notify=y ; broadcast=y ; write=y,notify=y
+            Type: enum
+            Values: 0 allowed 1 disabled
+            Long help:
+            Stop motion. Setting this keyword to any non-zero value will stop any current motion. Setting this keyword
+            to a negative value will turn off motor power. Power can be restored by setting this keyword to 0.
+
+
+
+nickucam BINNING = binning
+nickucam READSPEED = fast/slow
+nickucam PANE = window {start col, start row, number of col, number of row}
+nickucam EXPOSURE = time in seconds (float)
+nickucam EVENT :
+    2025-06-27T04:21:51.5438 telefocus.variables.event.value        EVENT = ControllerReady
+    2025-06-27T04:21:52.0498 telefocus.variables.event.value        EVENT = ExposeSequenceDone
+    2025-06-27T04:21:55.3076 telefocus.variables.event.value        EVENT = EraseBegin
+    2025-06-27T04:22:05.1298 telefocus.variables.event.value        EVENT = ExposureBegin
+    2025-06-27T04:32:05.1458 telefocus.variables.event.value        EVENT = ExposureEnd
+    2025-06-27T04:32:05.1650 telefocus.variables.event.value        EVENT = ReadoutBegin
+    2025-06-27T04:32:26.8606 telefocus.variables.event.value        EVENT = ReadoutEnd
+
+
+nickucam OBSNUM =  1153
+nickucam OUTDIR = /data
+nickucam OUTFILE = d
+nickucam RECORD_SUFFIX = fits
+
+nickucam RECORD = Yes/No says whether file goes to /data or /scratch
+
+    ...output file will be OUTDIR/OUTFILEOBSNUM.RECORD_SUFFIX
+    ...so /data/d1153.fits
+
+nickucam ELAPSED = elapsed exposure time.
+nickucam REMAINING = remaining exposure time.
+
+nickucam START = start exposure by writing START=start
+
+
+
+
+
+
+
+POCDINW      poco dome in way                               c-   enum     0 clear 1 in_way
+
+POCDECA      poco dec actual                                c-   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The Actual Declination of the telescope derived from the most recent encoder values. Includes all corrections 
+    enabled by poco.
+POCDECC      poco dec commanded                             c-   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The last Commanded Position in Declination. The value here indicates where the telescope has been commanded 
+    to go. It includes (or takes into acount) all corrections made by poco.
+POCDECD      poco dec desired                               c2   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The Desired Declination of the telescope. The value here indicates where the user wants the telescope to go 
+    in sky coorinates. It includes (or takes into acount) all corrections enabled by poco.
+POCDECT      poco target dec                                c-   double   degrees   { rad }   {%02d:%02d:%04.1f}
+POCMDECA     poco mechanical declination actual             c-   double   rad   {%.8f}
+POCMDECC     poco mechanical declination commanded          c-   double   rad   {%.8f}
+POCNXDEC     poco next target dec                           c2   double   rad   {%.8f}
+    The Declination of the next target.
+POCODECA     poco dec actual observed                       c-   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The Actual Observed Declination of the telescope.
+POCODECC     poco dec actual observed                       c-   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The Commanded Observed declination of the telescope.
+POCODECD     poco dec desired observed                      c2   double   degrees   { rad }   {%02d:%02d:%04.1f}
+    The Desired Observed Declination of the telescope. This could also be described as the desired apparent 
+    declination.
+
+
+POCGURA      poco guess ra average seconds                  c2   double   sidereal second   {%.8f}
+POCMTRAO     poco moving target increase ra offset          C2   double   rad   {%.8f}
+POCNXRA      poco next target ra                            c2   double   rad   {%.8f}
+    The RA of the next target.
+POCORAA      poco ra actual observed                        c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Actual Observed Right Ascension of the telescope derived from the most recent encoder values.
+POCORAAS     poco ra actual observed sexagesimal            c-   string
+    The actual observed Right Ascension of the telescope in hours, minutes, and seconds.
+POCORAC      poco ra commanded observed                     c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Commanded Observed Right Ascension of the telescope derived from the most recent encoder values.
+POCORAD      poco ra desired observed                       c2   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Desired Mechanical Right Ascension of the telescope. The value here indicates the apparent position
+    where the user wants the telescope to go. It is equivalent to POCHAD - siderial time.
+POCRAA       poco ra actual                                 c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Actual Right Ascension of the telescope derived from the most recent encoder values. Includes all
+    corrections enabled by poco.
+POCRAAS      poco ra actual sexagesimal                     c-   string
+    The actual mean Right Ascension of the telescope in hours, minutes, and seconds.
+POCRAC       poco ra commanded                              c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The last Commanded Position in Right Ascension. The value here indicates where the telescope has been
+    commanded to go. It includes (or takes into acount) all corrections made by poco.
+POCRAD       poco ra actual                                 c2   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Desired Right Ascension of the telescope. This keyword indicates where the user wants the telescope to
+    go in sky coordinates. This keyword has no effect when tracking is off. It includes (or takes into acount)
+    all corrections enabled by poco.
+POCRARC      poco ra relative move plate                    C2   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCRARCT     poco ra total relative move plate              c2   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCRARE      poco ra relative move spherical                C2   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCRARET     poco ra total relative move spherical          c2   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCRAT       poco target ra                                 c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCSTRA      poco ra stored position                        c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+POMCPNRA     poco mectocel actual pre nut ra                c-   double   rad   {%.8f}
+POMCRERA     poco mectocel actual ref ra                    c-   double   rad   {%.8f}
+
+
+POCMHAA      poco ha actual mechanical                      c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCMHAC      poco ha commanded mechanical                   c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+POCOHAA      poco ha actual observed                        c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Actual Observed Hour Angle of the telescope derived from the most recent encoder values.
+POCOHAAS     poco ha actual observed sexagesimal            c-   string
+    The actual observed hour angle of the telescope in hours, minutes, and seconds.
+POCOHAC      poco ha commanded observed                     c-   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Commanded Observed Hour Angle of the telescope derived from the most recent encoder values.
+POCOHAD      poco ha desired observed                       c2   double   hours   { rad }   {%02d:%02d:%05.2f}
+    The Desired Observed Hour Angle of the telescope. The value indicates where the user wants the telescope
+    to go. This value has no effect when tracking is on. It includes (or takes into acount) all correction
+    except aberration, precession, nutation...

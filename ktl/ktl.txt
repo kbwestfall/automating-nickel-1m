@@ -55,3 +55,44 @@
         - poco POCSECPA = secondary position actual
         - poco POCSECPD = secondary position desired
         - poco POCSECLK = secondary lock status (off/on)
+
+
+
+Notes, 10 July 2025
+
+- There are hard limits on the secondary focus value.  These may be
+  different between software and hardware.  The minimum is ~165 and the
+  maximum is ~500.  Focus script should likely work within this range.
+
+- Note that focus doesn't always lock.  Observers work around this by
+  setting a new focus value until the lock engages and then returning to
+  the desired focus.  Script should likely include a timeout for the
+  lock to engage.
+
+- Add alert sounds in the script so that users know something is wrong?
+
+- Before setting the focusing script loose, would prefer:
+    - User should check correct acquision of the focus star
+    - Allow user to chose the star to use for focusing
+    - Allow user to set the window explicitly
+
+- For the automated FWHM measurement:
+    - Build in something that will detect/remove cosmic rays
+    - Detect saturation and either adjust exposure time automatically
+      and/or warn user
+    - Keep track of other failure modes; issue sounds/warnings when they
+      can't be handled but always notify user when the script is trying
+      to be clever
+    - Consider taking multiple exposures at one focus value and
+      reporting the mean/median FWHM, instead of only using one image
+
+- Would likely be worth waiting a short amount of time (~1 sec) between
+  when the ReadoutDone event is signaled and when to start FWHM
+  measurements
+    - Might also check for expected file to have been written to disk
+
+- Keep in mind the course vs. fine grained focus option
+
+- There are also cases when the focus can be so off that you can't
+  actually see stars in the field.  May want a "focus scanning" mode
+  that will help the observer get in the right ballpark.

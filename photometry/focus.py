@@ -10,7 +10,7 @@ class Image:
 
         file_name = str(true_fwhm)
         file_name = file_name.replace('.', '_')
-        self.fwhm = photometry(f'images/focus_{file_name}.fits')
+        # self.fwhm = photometry(f'images/focus_{file_name}.fits')
         
 
 

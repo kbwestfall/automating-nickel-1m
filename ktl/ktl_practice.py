@@ -6,9 +6,14 @@ import time
 from photometry import photometry
 from astropy.io import fits
 
+class Keyword:
+    def __init__(self, record, pane, exposure, speed):
 
-class Event:
-    def __init__(self):
+        self.record = record
+        self.pane = pane
+        self.exposure = exposure
+        self.speed = speed
+        self.start = 'Yes'
 
         self.secpa_key = ktl.cache('nickelpoco', 'POCSECPA')
         self.secpd_key = ktl.cache('nickelpoco', 'POCSECPD')
@@ -24,15 +29,8 @@ class Event:
         self.pane_key = ktl.cache('nickucam', 'PANE')
 
         self.event_key = ktl.cache('nickucam', 'EVENT')
-        self.event_key.callback(self.callback)
-        self.event_key.monitor()
-        self.event_value = self.event_key.read()
-
-    def callback(self, keyword):
-        self.event_value = keyword.read()
-        print(f'update EVENT: {self.event_value}')
-
-    def wait_until(self, keyword, expected_value, timeout=15):
+   
+     def wait_until(self, keyword, expected_value, timeout=15):
         start_time = time.time()
         while time.time() - start_time < timeout:
             if keyword.read() in expected_value:
@@ -40,80 +38,106 @@ class Event:
             time.sleep(1)
         return False
 
+        
+
+class Event:
+    def __init__(self, keyword):
+
+        self.keyword = keyword
+
     ### CHANGE FOCUS ###
     def focus(focus_value):
 
-        print(f'POCSECPD: {self.secpd_key.read()}')
-        print(f'POCSECPA: {self.secpa_key.read()}')
+        print(f'POCSECPD: {keyword.secpd_key.read()}')
+        print(f'POCSECPA: {keyword.secpa_key.read()}')
 
-        if abs(float(self.secpd_key.read()) - focus_value) < .1:
+        if abs(float(keyword.secpd_key.read()) - focus_value) < .1:
             print(f'POCSECPD already set to {focus_value}. No change needed.')
             return
         
         if focus_value < 165 or focus_value > 500:
             raise ValueError(f"Focus value {focus_value} is out of range (165-500).")
 
-        if not self.event_key.waitFor('== ControllerReady', timeout=15):
+        if not keyword.event_key.waitFor('== ControllerReady', timeout=15):
             raise Exception("Controller not ready. Cannot take exposure.")
 
-        print(f'POCSECLK: {self.seclk_key.read()}')
-        self.seclk_key.write('off')
-        print(f'POCSECLK: {self.seclk_key.read()}')
+        print(f'POCSECLK: {keyword.seclk_key.read()}')
+        keyword.seclk_key.write('off')
+        print(f'POCSECLK: {keyword.seclk_key.read()}')
 
-        self.secpd_key.write(focus_value)
-        print(f'POCSECPD: {self.secpd_key.read()}')
-        print(f'POCSECPA: {self.secpa_key.read()}')
+        keyword.secpd_key.write(focus_value)
+        print(f'POCSECPD: {keyword.secpd_key.read()}')
+        print(f'POCSECPA: {keyword.secpa_key.read()}')
 
-        if not self.seclk_key.waitFor('== on', timeout=15):
+        if not keyword.seclk_key.waitFor('== on', timeout=15):
             raise Exception("POCSECLK did not turn on. Focus change failed.")
     ### CHANGE FOCUS ###
 
     ### TAKE EXPOSURE ###
-    def exposure(record, window, exposure, speed, start):
+    def exposure():
 
-        if not self.event_key.waitFor('== ControllerReady', timeout=15):
+        if not keyword.event_key.waitFor('== ControllerReady', timeout=15):
             raise Exception("Controller not ready. Cannot take exposure.")
 
-        self.record_key.write(record)
-        record_value = self.record_key.read()
+        keyword.record_key.write(keyword.record)
+        record_value = keyword.record_key.read()
         print(f'RECORD: {record_value}')
 
-        self.pane_key.write(window)
-        pane_value = self.pane_key.read()
+        keyword.pane_key.write(keyword.pane)
+        pane_value = keyword.pane_key.read()
         print(f'PANE: {pane_value}')
 
-        self.exposure_key.write(exposure)
-        exposure_value = self.exposure_key.read()
+        keyword.exposure_key.write(keyword.exposure)
+        exposure_value = keyword.exposure_key.read()
         print(f'EXPOSURE: {exposure_value}')
 
-        self.speed_key.write(speed)
-        speed_value = self.speed_key.read()
+        keyword.speed_key.write(keyword.speed)
+        speed_value = keyword.speed_key.read()
         print(f'READSPEED: {speed_value}')
 
         # set the start keyword to 'Yes'
-        self.start_key.write(start)
-        start_value = self.start_key.read()
+        keyword.start_key.write(keyword.start)
+        start_value = keyword.start_key.read()
         print(f'START: {start_value}')
 
-        self.event_key.waitFor('== ReadoutBegin', timeout=round(exposure * 1.2))
+        keyword.event_key.waitFor('== ReadoutBegin', timeout=round(self.exposure * 1.2))
 
-        if self.event_key.waitFor('== ReadoutEnd', timeout=30):
+        if keyword.event_key.waitFor('== ReadoutEnd', timeout=30):
             pass
     ### TAKE EXPOSURE ###
 
-    def sequence(focus_value, record, window, exposure_length, speed, start):
+    def sequence(focus_value):
 
-        filepath = f"{self.dir_key.read()}/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
+        filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
         print(f"Exposure being saved at: {filepath}")
 
         self.focus(focus_value)
-        self.exposure(record, window, exposure_length, speed, start)
+        self.exposure()
 
         # hdu = fits.open(filepath)
         # print(hdu.info())
 
         # fwhm = photometry(filepath, verbose=False)
         # print(f" {file_key.read()}{obs_key.read()}.{suffix_key.read()} FWHM: {fwhm} \n")
+
+def pseudo_focus_finder(initial_focus, step_size, keyword):
+    
+    images = {}
+    count = 0
+    focus_value = initial_focus
+    while focus_value < 375:
+        if keyword.record == 'Yes':
+            keyword.dir_key.write("/data")
+            keyword.file_key.write(f"{count}focus_")
+            keyword.obs_key.write(str(focus_value))
+            keyword.suffix_key.write("fits")
+        images[count] = Event(keyword)
+        images[count].sequence(focus_value)
+        focus_value += step_size
+        count += 1
+    return images
+
+
 
 import argparse
 
@@ -125,28 +149,27 @@ def main():
     parser.add_argument('-w', '--window_size', default="0 0 2048 2048", help='Window size for exposure')
     args = parser.parse_args()
 
-    event = Event()
-    print(f'EVENT: {event.event_value}')
+    keyword = Keyword('No', args.window_size, args.exposure_length, 'Fast')
 
-    filepath = f"{event.dir_key.read()}/{event.file_key.read()}{event.obs_key.read()}.{event.suffix_key.read()}"
+    event = Event(keyword)
+    print(f'EVENT: {keyword.event_value}')
 
-    if not event.wait_until(['ControllerReady', 'ExposeSequenceDone'], timeout=15):
+    filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
+
+    if not keyword.wait_until(['ControllerReady', 'ExposeSequenceDone'], timeout=15):
         raise Exception("Controller not ready. Cannot take exposure.")
 
 
-    # print("taking exposure")
-    # event.exposure('No', 0, 'Slow', 1)
-    # print("Exposure taken")
+    print("taking exposure")
+    event.exposure()
+    print("Exposure taken")
 
     # event.focus(365)
 
-    event.sequence(args.focus_value, 'No', args.window_size, args.exposure_length, 'Fast', 'Yes')
+    # event.sequence(args.focus_value)
 
-
-    # focus_value = 350
-    # while focus_value < 375:
-    #     event.sequence(focus_value, 'No', 1, 'Fast', 'Yes')
-    #     focus_value += 5
+    # images = pseudo_focus_finder(float(args.focus_value), 5)
+    # print(f"Images taken: {len(images)}")
 
 
 print("hello world")

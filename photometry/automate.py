@@ -8,17 +8,8 @@ from photometry import photometry
 from focus import Image
 import quadratic
 
-def wait_until(keyword, expected_value, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if keyword.read() == expected_value:
-            return True
-        time.sleep(1)
-    return False
-
 class Exposure:
     def __init__(self):
-        self.event_key = ktl.cache('nickucam', 'EVENT')
         self.secpa_key = ktl.cache('nickelpoco', 'POCSECPA')
         self.secpd_key = ktl.cache('nickelpoco', 'POCSECPD')
         self.seclk_key = ktl.cache('nickelpoco', 'POCSECLK')
@@ -31,10 +22,35 @@ class Exposure:
         self.speed_key = ktl.cache('nickucam', 'READSPEED')
         self.start_key = ktl.cache('nickucam', 'START')
 
+        self.event_key = ktl.cache('nickucam', 'EVENT')
+        self.event_key.callback(self.event_callback)
+        self.event_key.monitor()
+        self.event_value = self.event_key.read()
+    
+    def event_callback(self, keyword):
+        self.event_value = keyword.read()
+        print(f'update EVENT: {self.event_value}')
+
+    def wait_until(self, keyword, expected_value, timeout=15):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if keyword.read() in expected_value:
+                return True
+            time.sleep(1)
+        return False
+
     def change_focus(self, focus_value):
-        # print(f'POCSECPA: {self.secpa_key.read()}')
-        # print(f'POCSECPD: {self.secpd_key.read()}')
-        if not wait_until(self.event_key, 'ControllerReady'):
+        print(f'POCSECPA: {self.secpa_key.read()}')
+        print(f'POCSECPD: {self.secpd_key.read()}')
+        
+        if abs(float(self.secpd_key.read()) - float(focus_value)) < 0.1:
+            print(f"Focus already set to {focus_value}. No change needed.")
+            return
+
+        if focus_value < 165 or focus_value > 500:
+            raise ValueError(f"Focus value {focus_value} is out of bounds (165-500).")
+        
+        if not self.event_key.waitFor('== ControllerReady', timeout=15):
             raise Exception("Controller not ready. Cannot change focus.")
 
         # set POCSECLOK to 'off'
@@ -90,32 +106,6 @@ class Exposure:
         self.fwhm = photometry(filepath, verbose=False)
         print(f" {out_file}{obs_num}.{suffix} FWHM: {self.fwhm} \n")
 
-
-def focus_finder(image1, image2, seen):
-
-    print(f"image1: focus:{image1.focus}, FWHM:{image1.fwhm}")
-    print(f"image2: focus:{image2.focus}, FWHM:{image2.fwhm} \n")
-
-    if image1.fwhm > image2.fwhm:
-        focus3 = image2.focus + (image2.focus - image1.focus)
-        if focus3 in seen:
-            return image2.focus
-        seen.add(focus3)
-        image3 = Exposure()
-        image3.change_focus(focus3)
-        image3.take_exposure()
-        return focus_finder(image2, image3, seen)
-    elif image1.fwhm < image2.fwhm:
-        focus3 = image1.focus - (image2.focus - image1.focus)
-        if focus3 in seen:
-            return image1.focus
-        seen.add(focus3)
-        image3 = Exposure()
-        image3.change_focus(focus3)
-        image3.take_exposure()
-        return focus_finder(image3, image1, seen)
-    else:
-        return image1.focus
 
 def curve_finder(image1, image2, seen, direction=None):
     seen.add(image1)

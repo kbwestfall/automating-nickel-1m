@@ -43,7 +43,7 @@ def simulation(model=Moffat2D(), n_sources=1, shape=(100,100), alpha=3.5, fwhm=6
 # for fwhm in [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]:
 #     simulation(fwhm=fwhm)
 
-# simulation(fwhm=24)
+# simulation(fwhm=6.0)
 
 # plt.imshow(noise_data, origin='lower')
 # plt.tight_layout()

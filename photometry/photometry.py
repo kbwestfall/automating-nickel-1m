@@ -28,9 +28,15 @@ def main():
         input("Press Enter to exit...")
 
 def photometry(fits_file, est_fwhm=10, verbose=False):
+    
+    try: 
+        hdu = fits.open(fits_file)
+        data = hdu[0].data
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File {fits_file} not found.")
+    except Exception as e:
+        raise Exception(f"Error occurred while opening {fits_file}: {e}")
 
-    hdu = fits.open(fits_file)
-    data = hdu[0].data
     if verbose:
         print(hdu.info(), "\n")
 
@@ -42,6 +48,8 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
     sigma_clip = SigmaClip(sigma=3.0, maxiters=10)
     threshold = detect_threshold(data, nsigma=5.0, sigma_clip=sigma_clip)
     segment_img = detect_sources(data, threshold, npixels=10)
+    if segment_img is None:
+        raise ValueError("No sources detected in the image.")
     footprint = circular_footprint(radius=int(est_fwhm))
     mask = segment_img.make_source_mask(footprint=footprint)
     mean, median, std = sigma_clipped_stats(data, sigma=3.0, mask=mask)
@@ -71,6 +79,7 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
     #     # plt.savefig('psf-practice/noise.png')
 
     data = data - median
+    
 
     sources = DAOStarFinder(100, est_fwhm).find_stars(data)
     sources.sort('flux', reverse=True)

@@ -15,6 +15,9 @@ export PYTHONPATH=$PYTHONPATH:/opt/kroot/rel/default/lib/python
     -aline: array line  
 -curses
 
+gshow -s nickucam record exposure elapsed readspeed start obsnum outdir outfile event -s nickelpoco pocsec% pocstop -c -curses -noprefix -kwidth
+
+
 # modify -s nickelpoco POCSECPD 360
     - service keyword value 
 

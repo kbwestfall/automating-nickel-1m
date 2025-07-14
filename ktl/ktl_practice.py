@@ -30,7 +30,7 @@ class Keyword:
 
         self.event_key = ktl.cache('nickucam', 'EVENT')
    
-     def wait_until(self, keyword, expected_value, timeout=15):
+    def wait_until(self, keyword, expected_value, timeout=15):
         start_time = time.time()
         while time.time() - start_time < timeout:
             if keyword.read() in expected_value:
@@ -175,6 +175,6 @@ def main():
 
 
 print("hello world")
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 

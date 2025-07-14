@@ -3,7 +3,7 @@
 import ktl
 import time
 
-from photometry import photometry
+# from photometry import photometry
 from astropy.io import fits
 
 class Keyword:

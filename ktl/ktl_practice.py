@@ -122,7 +122,7 @@ class Event:
 
     def sequence(self, focus_value):
 
-        filepath = f"{self.keyword.dir_key.read()}/{self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()}"
+        filepath = self.keyword.filepath
         print(f"Exposure being saved at: {filepath}")
 
         # if self.keyword.record == 'Yes':
@@ -216,7 +216,7 @@ def main():
     parser.add_argument('-w', '--window_size', default="0 0 2048 2048", help='Window size for exposure')
     args = parser.parse_args()
 
-    keyword = Keyword('No', args.window_size, args.exposure_length, 'Fast')
+    keyword = Keyword('Yes', args.window_size, args.exposure_length, 'Fast')
 
     event = Event(keyword)
     print(f'EVENT: {keyword.event_key.read()}')
@@ -227,9 +227,9 @@ def main():
         raise Exception("Controller not ready. Cannot take exposure.")
 
 
-    print("taking exposure")
-    event.exposure()
-    print("Exposure taken")
+    # print("taking exposure")
+    # event.exposure()
+    # print("Exposure taken")
 
     # event.focus(365)
 

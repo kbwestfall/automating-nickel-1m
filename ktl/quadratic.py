@@ -1,6 +1,5 @@
 import numpy as np
 from photometry import photometry
-from simulation import simulation
 from focus import Image
 
 def fit_quadratic(x_values, y_values):
@@ -43,4 +42,4 @@ def main():
     print(f"Optimal focus: {x_vertex}, FWHM: {y_vertex}")
 
 if __name__ == "__main__":
-    main()
+    main() 

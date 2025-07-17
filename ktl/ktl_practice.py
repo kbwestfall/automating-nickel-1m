@@ -156,8 +156,8 @@ def curve_finder(image1, image2, seen, keyword, direction=None):
         image3 = Event(keyword)
         image3.sequence(focus3)
         return curve_finder(image3, image1, seen, direction)
-    
-def curve_helper(image1, image2, seen, iterations=2, keyword):
+
+def curve_helper(image1, image2, seen, keyword, iterations=2):
     if iterations > 0:
         if image1.fwhm > image2.fwhm:
             focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)

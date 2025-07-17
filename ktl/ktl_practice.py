@@ -134,7 +134,7 @@ class Event:
         # self.fwhm = photometry(filepath, verbose=False)
         # print(f" {self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()} FWHM: {fwhm} \n")
 
-def curve_finder(image1, image2, seen, direction=None, keyword):
+def curve_finder(image1, image2, seen, keyword, direction=None):
     seen.add(image1)
     seen.add(image2)
     
@@ -241,3 +241,6 @@ print("hello world")
 
 # /data/nickel
 # 7:30
+
+secpa_key = ktl.cache('nickelpoco', 'POCSECPA')
+print(f'secpa: {secpa_key.read()}')

@@ -1,6 +1,5 @@
 import numpy as np
 from photometry import photometry
-from focus import Image
 
 def fit_quadratic(x_values, y_values):
     x = np.array(x_values)

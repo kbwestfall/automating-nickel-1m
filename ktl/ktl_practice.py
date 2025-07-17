@@ -3,8 +3,10 @@
 import ktl
 import time
 
-# from photometry import photometry
 from astropy.io import fits
+from photometry import photometry
+import quadratic
+
 
 class Keyword:
     def __init__(self, record, pane, exposure, speed):
@@ -29,7 +31,13 @@ class Keyword:
         self.pane_key = ktl.cache('nickucam', 'PANE')
 
         self.event_key = ktl.cache('nickucam', 'EVENT')
+        self.event_key.callback(self.event_callback)
+        self.event_key.monitor()
    
+    def event_callback(self, keyword):
+        self.event_value = keyword.read()
+        print(f'update EVENT: {self.event_value}')
+
     def wait_until(self, keyword, expected_value, timeout=15):
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -46,7 +54,7 @@ class Event:
         self.keyword = keyword
 
     ### CHANGE FOCUS ###
-    def focus(focus_value):
+    def focus(self, focus_value):
 
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
@@ -74,7 +82,7 @@ class Event:
     ### CHANGE FOCUS ###
 
     ### TAKE EXPOSURE ###
-    def exposure():
+    def exposure(self):
 
         if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
             raise Exception("Controller not ready. Cannot take exposure.")
@@ -105,37 +113,90 @@ class Event:
             pass
     ### TAKE EXPOSURE ###
 
-    def sequence(focus_value):
+    def sequence(self, focus_value):
 
         filepath = f"{self.keyword.dir_key.read()}/{self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()}"
         print(f"Exposure being saved at: {filepath}")
 
+        # if self.keyword.record == 'Yes':
+        #     self.keyword.dir_key.write("/data")
+        #     self.keyword.file_key.write(f"{count}focus_")
+        #     self.keyword.obs_key.write(str(focus_value))
+        #     self.keyword.suffix_key.write("fits")
+
         self.focus(focus_value)
+        self.focus_value = focus_value
         self.exposure()
 
         # hdu = fits.open(filepath)
         # print(hdu.info())
 
-        # fwhm = photometry(filepath, verbose=False)
-        # print(f" {file_key.read()}{obs_key.read()}.{suffix_key.read()} FWHM: {fwhm} \n")
+        # self.fwhm = photometry(filepath, verbose=False)
+        # print(f" {self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()} FWHM: {fwhm} \n")
 
-def pseudo_focus_finder(initial_focus, step_size, keyword):
+def curve_finder(image1, image2, seen, direction=None, keyword):
+    seen.add(image1)
+    seen.add(image2)
     
-    images = []
-    count = 0
-    focus_value = initial_focus
-    while focus_value < 375:
-        if keyword.record == 'Yes':
-            keyword.dir_key.write("/data")
-            keyword.file_key.write(f"{count}focus_")
-            keyword.obs_key.write(str(focus_value))
-            keyword.suffix_key.write("fits")
-        images[count] = Event(keyword)
-        images[count].sequence(focus_value)
-        focus_value += step_size
-        count += 1
-    return images
+    if image1.fwhm > image2.fwhm:
+        if direction is None:
+            direction = 'right'
+        if direction == 'left':
+            return curve_helper(image1, image2, seen)
+        focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
+        image3 = Event(keyword)
+        image3.sequence(focus3)
+        return curve_finder(image2, image3, seen, direction)
+    elif image1.fwhm < image2.fwhm:
+        if direction is None:
+            direction = 'left'
+        if direction == 'right':
+            return curve_helper(image1, image2, seen)
+        focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
+        image3 = Event(keyword)
+        image3.sequence(focus3)
+        return curve_finder(image3, image1, seen, direction)
+    
+def curve_helper(image1, image2, seen, iterations=2, keyword):
+    if iterations > 0:
+        if image1.fwhm > image2.fwhm:
+            focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
+            image3 = Event(keyword)
+            image3.sequence(focus3)
+            seen.add(image3)
+            return curve_helper(image3, image1, seen, iterations-1)
+        elif image1.fwhm < image2.fwhm:
+            focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
+            image3 = Event(keyword)
+            image3.sequence(focus3)
+            seen.add(image3)
+            return curve_helper(image2, image3, seen, iterations-1)
+    else:
+        return seen
 
+def focus_finder(initial_focus, step_size, keyword):
+
+    seen = set()
+    
+    image1 = Event(keyword)
+    image1.sequence(initial_focus)
+
+    image2 = Event(keyword)
+    image2.sequence(initial_focus + step_size)
+
+    curve = curve_finder(image1, image2, seen, keyword)
+    curve = sorted(curve, key=lambda img: img.focus_value)
+    x_values = []
+    y_values = []
+    print("Curve found with the following focus values:")
+    for img in curve:
+        print(f"Focus: {img.focus_value}, FWHM: {img.fwhm}")
+        x_values.append(img.focus_value)
+        y_values.append(img.fwhm)
+
+    a, b, c = quadratic.fit_quadratic(x_values, y_values)
+    x_vertex, y_vertex = quadratic.vertex(a, b, c)
+    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
 
 
 import argparse
@@ -151,11 +212,11 @@ def main():
     keyword = Keyword('No', args.window_size, args.exposure_length, 'Fast')
 
     event = Event(keyword)
-    print(f'EVENT: {keyword.event_value}')
+    print(f'EVENT: {keyword.event_key.read()}')
 
     filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
 
-    if not keyword.wait_until(['ControllerReady', 'ExposeSequenceDone'], timeout=15):
+    if not keyword.wait_until(keyword.event_key, ['ControllerReady', 'ExposeSequenceDone'], timeout=15):
         raise Exception("Controller not ready. Cannot take exposure.")
 
 
@@ -170,11 +231,13 @@ def main():
 
     # event.sequence(args.focus_value)
 
-    # images = pseudo_focus_finder(float(args.focus_value), 5)
-    # print(f"Images taken: {len(images)}")
+    # focus_finder(args.focus_value, 5, keyword)
 
 
 print("hello world")
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
+
+# /data/nickel
+# 7:30

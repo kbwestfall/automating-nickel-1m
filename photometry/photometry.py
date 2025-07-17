@@ -1,5 +1,4 @@
-import numpy as np
-import matplotlib.pyplot as plt
+
 from astropy.io import fits
 from photutils.psf import fit_fwhm
 from photutils.detection import DAOStarFinder
@@ -8,24 +7,10 @@ from astropy.stats import SigmaClip, sigma_clipped_stats
 from photutils.segmentation import detect_threshold, detect_sources
 from photutils.utils import circular_footprint
 
-
+import numpy as np
+import matplotlib.pyplot as plt
 import argparse
 
-def main():
-    parser = argparse.ArgumentParser(description='Photometry of a FITS file.')
-    parser.add_argument('-f', '--file', type=str, help='Path to the FITS file')
-    parser.add_argument('--fwhm', type=float, default=10, help='Estimated FWHW)')
-    parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Enable verbose output')
-    args = parser.parse_args()
-
-    if args.verbose:
-        plt.ion()
-
-    photometry(args.file, args.fwhm, args.verbose)
-
-    if args.verbose:
-        plt.ioff()
-        input("Press Enter to exit...")
 
 def photometry(fits_file, est_fwhm=10, verbose=False):
     
@@ -59,24 +44,6 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
 
     # background = data.copy()
     # background[mask] = median
-
-    # if verbose:
-    #     plt.figure(figsize=(15, 8))
-    #     plt.subplot(1, 3, 1)
-    #     plt.imshow(data, origin='lower', cmap='viridis')
-    #     plt.title('Original Image')
-
-    #     plt.subplot(1, 3, 2)
-    #     plt.imshow(background, origin='lower', cmap='viridis')
-    #     plt.title('Noise Image')
-
-    #     plt.subplot(1, 3, 3)
-    #     plt.imshow(data - median, origin='lower', cmap='viridis')
-    #     plt.title('Removed Noise Image')
-
-    #     plt.tight_layout()
-    #     plt.draw()
-    #     # plt.savefig('psf-practice/noise.png')
 
     data = data - median
     
@@ -113,11 +80,11 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
         fit_y -= 1
     fit_shape = (fit_x, fit_y)
 
-    if verbose:
-        est_fwhm = fit_fwhm(data, fit_shape=fit_shape)
-        # est_fwhm.sort()
-        # est_fwhm = est_fwhm[-1]
-        print(f"Estimated FWHM: {est_fwhm}")
+    
+    est_fwhm = fit_fwhm(data, fit_shape=fit_shape)
+    # est_fwhm.sort()
+    # est_fwhm = est_fwhm[-1]
+    print(f"Estimated FWHM: {est_fwhm}")
 
     x = np.arange(data.shape[1])
     y = np.arange(data.shape[0])
@@ -143,29 +110,10 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
     return average_FWHM
 
 
-# true_fwhm = []
-# obs_fwhm = []
-# ratio_fwhm = []
+import numpy as np
+import matplotlib.pyplot as plt
+import argparse
 
-# for i in range(6, 13, 1):
-#     true = float(i)
-#     true_fwhm.append(true)
-#     file_name = str(float(i))
-#     file_name = file_name.replace('.', '_')
-#     obs = photometry(f'psf-practice/images/focus_{file_name}.fits')
-#     obs_fwhm.append(obs)
-#     ratio_fwhm.append(obs/true)
-
-# plt.figure(figsize=(8, 8))
-# plt.plot(true_fwhm, ratio_fwhm, 'ro', label=f'True FWHM: {true_fwhm}')
-# plt.xlabel('True FWHM')
-# plt.ylabel('Observed FWHM')
-# plt.title('True vs Observed FWHM')
-# plt.savefig(f'psf-practice/images/true_vs_obs.png')
-
-# photometry('psf-practice/images/focus_24.fits')
-
-# photometry('psf-practice/images/n1043.fits')
 
 if __name__ == "__main__":
     main()

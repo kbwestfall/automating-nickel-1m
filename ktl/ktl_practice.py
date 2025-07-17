@@ -234,7 +234,7 @@ def main():
     # focus_finder(args.focus_value, 5, keyword)
 
 
-print("hello world")
+
 # if __name__ == "__main__":
 #     main()
 

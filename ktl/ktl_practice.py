@@ -33,10 +33,17 @@ class Keyword:
         self.event_key = ktl.cache('nickucam', 'EVENT')
         self.event_key.callback(self.event_callback)
         self.event_key.monitor()
+
+        self.obs_key.callback(self.filepath_callback)
+        self.obs_key.monitor()
    
     def event_callback(self, keyword):
         self.event_value = keyword.read()
         print(f'update EVENT: {self.event_value}')
+
+    def filepath_callback(self, keyword):
+        self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
+        print(f'update FILEPATH: {self.filepath}')
 
     def wait_until(self, keyword, expected_value, timeout=15):
         start_time = time.time()
@@ -128,8 +135,8 @@ class Event:
         self.focus_value = focus_value
         self.exposure()
 
-        # hdu = fits.open(filepath)
-        # print(hdu.info())
+        hdu = fits.open(filepath)
+        print(hdu.info())
 
         # self.fwhm = photometry(filepath, verbose=False)
         # print(f" {self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()} FWHM: {fwhm} \n")
@@ -226,8 +233,9 @@ def main():
 
     # event.focus(365)
 
-    # event.sequence(360)
-    # event.sequence(365)
+    event.sequence(360)
+    event.sequence(365)
+    event.sequence(360)
 
     # event.sequence(args.focus_value)
 

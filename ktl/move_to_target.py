@@ -22,8 +22,10 @@ lick_dec = dec_key.read()
 print(f'Lick RA: {lick_ra}')
 print(f'Lick DEC: {lick_dec}')
 
-def find_nearest_focus_star(telescope_ra, telescope_dec, file):
-    telescope_coord = SkyCoord(ra=telescope_ra, dec=telescope_dec, unit=('hourangle', 'deg'))
+telescope_coord = SkyCoord(ra=lick_ra, dec=lick_dec, unit=('hourangle', 'deg'))
+
+def find_nearest_focus_star(telescope, file):
+    
 
     min_separation = float('inf')
     nearest_star = None
@@ -32,50 +34,48 @@ def find_nearest_focus_star(telescope_ra, telescope_dec, file):
 
     focus_coords = SkyCoord(ra=focus_stars[:, 1], dec=focus_stars[:, 2], unit=('hourangle', 'deg'))
 
-    separations = telescope_coord.separation(focus_coords)
+    separations = telescope.separation(focus_coords)
 
     min_index = np.argmin(separations)
     nearest_star = focus_stars[min_index]
 
     return nearest_star[0], nearest_star[1], nearest_star[2]
 
-    # with open(file, 'r') as f:
-    #     for line in f:
-    #         line = line.strip()
-    #         if line and line.startswith('Focusing'):
-    #             parts = line.split()
-    #             star_name = parts[0]
-    #             star_ra = parts[1]
-    #             star_dec = parts[2]
-    #             star_coord = SkyCoord(ra=star_ra, dec=star_dec, unit=('hourangle', 'deg'))
-
-    #             separation = telescope_coord.separation(star_coord).deg
-    #             if separation < min_separation:
-    #                 min_separation = separation
-    #                 nearest_star = {
-    #                     'name': star_name,
-    #                     'ra': star_ra,
-    #                     'dec': star_dec,
-    #                 }
-
-    # return nearest_star['name'], nearest_star['ra'], nearest_star['dec']
-
-
-# Focusing00   00:30:48.780  +28:06:42.42   2000.0   f
-# target_ra = '00:30:48.780'
-# target_dec = '+28:06:42.42'
-
-target_name, target_ra, target_dec = find_nearest_focus_star(lick_ra, lick_dec, 'point_focus.txt')
+target_name, target_ra, target_dec = find_nearest_focus_star(telescope_coord, 'point_focus.txt')
 print(f'Target Name: {target_name}')
 print(f'Target RA: {target_ra}')
 print(f'Target DEC: {target_dec}')
 
 target_coords = SkyCoord(ra=target_ra, dec=target_dec, unit=('hourangle', 'deg'))
+print(f'Target Coordinates: {target_coords}')
+print(f'Target Coordinates (RA, DEC): {target_coords.ra}, {target_coords.dec}')
 
+
+
+lick_ha = lst - telescope.ra
 ha_key = ktl.cache('nickelpoco', 'POCOHAA')
-print(f'Lick HA: {ha_key.read()}')
+print(f'Lick Read HA: {ha_key.read()}')
+print(f'Lick HA: {lick_ha.to_string(unit=u.hourangle, sep=":")}')
 
 ha = lst - target_coords.ra
 print(f'Target HA: {ha.to_string(unit=u.hourangle, sep=":")}')
+
+
+
+track_key = ktl.cache('nickelpoco', 'POCTRCK')
+ra_desired = ktl.cache('nickelpoco', 'POCRAD')
+dec_desired = ktl.cache('nickelpoco', 'POCDECD')
+target_key = ktl.cache('nickelpoco', 'POCOT')
+
+if track_key.read() == 'off':
+    raise Exception("Tracking is not enabled. Please enable tracking before moving to target.")
+
+if target_key.read() != '0':
+    print("Telescope not ready to move to target. Waiting for ready (POCOT to be 0)")
+if not target_key.waitFor('== 0', timeout=30):
+    raise Exception("Telescope is not ready to move to target. Please wait until the telescope is ready.")
+
+ra_desired.write(target_coords.ra.to('hourangle').value)
+dec_desired.write(target_coords.dec.to('deg').value)
 
 

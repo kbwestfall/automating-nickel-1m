@@ -30,12 +30,14 @@ class Keyword:
         self.start_key = ktl.cache('nickucam', 'START')
         self.pane_key = ktl.cache('nickucam', 'PANE')
 
+        self.stop_key = ktl.cache('nickelpoco', 'POCSTOP')
+
         self.event_key = ktl.cache('nickucam', 'EVENT')
         self.event_key.callback(self.event_callback)
-        # self.event_key.monitor()
-
-        self.event_key.callback(self.filepath_callback)
         self.event_key.monitor()
+
+        self.start_key.callback(self.filepath_callback)
+        self.start_key.monitor()
 
     def event_callback(self, keyword):
         self.event_value = keyword.read()
@@ -141,6 +143,7 @@ class Event:
         # self.fwhm = photometry(filepath, verbose=False)
         # print(f" {self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()} FWHM: {fwhm} \n")
 
+
 def curve_finder(image1, image2, seen, keyword, direction=None):
     seen.add(image1)
     seen.add(image2)
@@ -226,6 +229,12 @@ def main():
     if not keyword.wait_until(keyword.event_key, ['ControllerReady', 'ExposeSequenceDone'], timeout=15):
         raise Exception("Controller not ready. Cannot take exposure.")
 
+    #check if pocstop is enabled
+    if keyword.stop_key.read() != 'enabled':
+        print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
+    if not keyword.stop_key.waitFor('== 0', timeout=30):
+        raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
+
 
     # print("taking exposure")
     # event.exposure()
@@ -250,3 +259,5 @@ if __name__ == "__main__":
 # /data/nickel
 # 7:30
 
+
+# find good keyword to monitor for filename callback

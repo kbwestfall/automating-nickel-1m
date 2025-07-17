@@ -235,12 +235,10 @@ def main():
 
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 
 
 # /data/nickel
 # 7:30
 
-secpa_key = ktl.cache('nickelpoco', 'POCSECPA')
-print(f'secpa: {secpa_key.read()}')

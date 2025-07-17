@@ -32,11 +32,11 @@ class Keyword:
 
         self.event_key = ktl.cache('nickucam', 'EVENT')
         self.event_key.callback(self.event_callback)
+        # self.event_key.monitor()
+
+        self.event_key.callback(self.filepath_callback)
         self.event_key.monitor()
 
-        self.obs_key.callback(self.filepath_callback)
-        self.obs_key.monitor()
-   
     def event_callback(self, keyword):
         self.event_value = keyword.read()
         print(f'update EVENT: {self.event_value}')
@@ -122,9 +122,6 @@ class Event:
 
     def sequence(self, focus_value):
 
-        filepath = self.keyword.filepath
-        print(f"Exposure being saved at: {filepath}")
-
         # if self.keyword.record == 'Yes':
         #     self.keyword.dir_key.write("/data")
         #     self.keyword.file_key.write(f"{count}focus_")
@@ -134,6 +131,9 @@ class Event:
         self.focus(focus_value)
         self.focus_value = focus_value
         self.exposure()
+
+        filepath = self.keyword.filepath
+        print(f"Exposure being saved at: {filepath}")
 
         hdu = fits.open(filepath)
         print(hdu.info())

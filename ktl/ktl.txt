@@ -96,3 +96,38 @@ Notes, 10 July 2025
 - There are also cases when the focus can be so off that you can't
   actually see stars in the field.  May want a "focus scanning" mode
   that will help the observer get in the right ballpark.
+
+
+  Notes 7/17/25, first on sky test
+
+update EVENT: ControllerReady
+EVENT: ControllerReady
+update FILEPATH: /data/nickel/d1010.fits
+update EVENT: ControllerReady
+update EVENT: ControllerReady
+POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion
+POCSECPD: 360.00000000
+POCSECPA: 360.05975370
+POCSECPD already set to 360. No change needed.
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1010.fits
+update FILEPATH: /data/nickel/d1010.fits
+update FILEPATH: /data/nickel/d1010.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+Exposure being saved at: /data/nickel/d1010.fits
+update EVENT: ControllerReady
+Filename: /data/nickel/d1010.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+WARNING: The fit may not have converged. Please check your results. [photutils.centroids.gaussian]
+Estimated FWHM: [32.39409464]
+ d1011.fits FWHM: 19.012307459806934

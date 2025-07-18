@@ -140,8 +140,8 @@ class Event:
         hdu = fits.open(filepath)
         print(hdu.info())
 
-        # self.fwhm = photometry(filepath, verbose=False)
-        # print(f" {self.keyword.file_key.read()}{self.keyword.obs_key.read()}.{self.keyword.suffix_key.read()} FWHM: {fwhm} \n")
+        self.fwhm = photometry(filepath, verbose=True)
+        print(f" {filepath} FWHM: {self.fwhm} \n")
 
 
 def curve_finder(image1, image2, seen, keyword, direction=None):
@@ -261,3 +261,5 @@ if __name__ == "__main__":
 
 
 # find good keyword to monitor for filename callback
+
+# work on visual interface aspect; show focus star with centroid and pane, focus curve

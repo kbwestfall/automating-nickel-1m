@@ -61,11 +61,17 @@ ha = lst - target_coords.ra
 print(f'Target HA: {ha.to_string(unit=u.hourangle, sep=":")}')
 
 
-
+stop_key = ktl.cache('nickelpoco', 'POCSTOP')
+target_key = ktl.cache('nickelpoco', 'POCOT')
 track_key = ktl.cache('nickelpoco', 'POCTRCK')
 ra_desired = ktl.cache('nickelpoco', 'POCRAD')
 dec_desired = ktl.cache('nickelpoco', 'POCDECD')
-target_key = ktl.cache('nickelpoco', 'POCOT')
+
+
+if stop_key.read() != 'enabled':
+    print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
+if not stop_key.waitFor('== 0', timeout=30):
+    raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
 
 if track_key.read() == 'off':
     raise Exception("Tracking is not enabled. Please enable tracking before moving to target.")

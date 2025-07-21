@@ -75,9 +75,11 @@ if not stop_key.waitFor('== 0', timeout=30):
 
 if track_key.read() == 'off':
     raise Exception("Tracking is not enabled. Please enable tracking before moving to target.")
+    # 0->off, 1->on
 
 if target_key.read() != '0':
     print("Telescope not ready to move to target. Waiting for ready (POCOT to be 0)")
+    # 1->have not reached target, 0-> on target and stable, -1-> failed to reach target within time limit and not on target.
 if not target_key.waitFor('== 0', timeout=30):
     raise Exception("Telescope is not ready to move to target. Please wait until the telescope is ready.")
 

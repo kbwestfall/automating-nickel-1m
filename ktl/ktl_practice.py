@@ -220,6 +220,7 @@ def main():
     args = parser.parse_args()
 
     keyword = Keyword('Yes', args.window_size, args.exposure_length, 'Fast')
+    # Record: 0 No 1 Yes, Pane: start_col start_row num_col num_row, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
 
     event = Event(keyword)
     print(f'EVENT: {keyword.event_key.read()}')
@@ -243,8 +244,8 @@ def main():
     # event.focus(365)
 
     event.sequence(360)
-    event.sequence(365)
-    event.sequence(360)
+    # event.sequence(365)
+    # event.sequence(360)
 
     # event.sequence(args.focus_value)
 
@@ -252,12 +253,12 @@ def main():
 
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 
 # /data/nickel
-# 7:30
+# 8:30
 
 
 # find good keyword to monitor for filename callback

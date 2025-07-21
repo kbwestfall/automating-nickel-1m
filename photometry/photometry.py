@@ -70,7 +70,7 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
         plt.imshow(data, origin='lower', cmap='grey')
         plt.plot(xcent, ycent, 'r+', markersize=10)
         plt.annotate('Centroid', (xcent, ycent), xytext=(5, 5), textcoords='offset points', color='white')
-        plt.draw()  
+        plt.show()
         # plt.savefig('psf-practice/cutout.png')
 
 

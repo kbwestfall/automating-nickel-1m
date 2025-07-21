@@ -14,7 +14,7 @@ def gamma_to_fwhm(gamma, alpha):
 def fwhm_to_gamma(fwhm, alpha):
     return (fwhm / 2) * (1 / ((2 ** (1 / alpha) - 1) ** 0.5))
 
-def simulation(model=Moffat2D(), n_sources=1, shape=(100,100), alpha=3.5, fwhm=6.0):
+def simulation(filepath, model=Moffat2D(), n_sources=1, shape=(100,100), alpha=3.5, fwhm=6.0):
     gamma = fwhm_to_gamma(fwhm, alpha)
     param_ranges = {'amplitude': [100, 500],
                     'x_0': [50, 50],
@@ -34,10 +34,10 @@ def simulation(model=Moffat2D(), n_sources=1, shape=(100,100), alpha=3.5, fwhm=6
     hdu = fits.PrimaryHDU(noise_data)
     file_name = str(fwhm)
     file_name = file_name.replace('.', '_')
-    hdu.writeto(f'images/focus_{file_name}.fits', overwrite=True)
+    hdu.writeto(f'{filepath}.fits', overwrite=True)
     plt.figure(figsize=(8, 8))
     plt.imshow(noise_data, origin='lower', cmap='viridis')
-    plt.savefig(f'images/focus_{file_name}.png')
+    plt.savefig(f'{filepath}.png')
 
 
 # for fwhm in [6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]:

@@ -13,6 +13,8 @@ import argparse
 
 
 def photometry(fits_file, est_fwhm=10, verbose=False):
+    if verbose:
+        plt.ion()
     
     try: 
         hdu = fits.open(fits_file)
@@ -107,6 +109,10 @@ def photometry(fits_file, est_fwhm=10, verbose=False):
     if verbose:
         print(f"FWHM_x: {FWHM_x}, FWHM_y: {FWHM_y}, Average FWHM: {average_FWHM}")
 
+    if verbose:
+        plt.ioff()
+        input("Press Enter to exit...")
+
     return average_FWHM
 
 
@@ -115,5 +121,5 @@ import matplotlib.pyplot as plt
 import argparse
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

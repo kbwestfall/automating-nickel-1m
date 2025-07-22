@@ -1,0 +1,459 @@
+update EVENT: ControllerReady
+EVENT: ControllerReady
+update FILEPATH: /data/nickel/d1043.fits
+update EVENT: ControllerReady
+update EVENT: ControllerReady
+POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion
+POCSECPD: 350.00000000
+POCSECPA: 350.29512497
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 335.00000000
+POCSECPA: 350.29512497
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1043.fits
+update FILEPATH: /data/nickel/d1043.fits
+update FILEPATH: /data/nickel/d1043.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+Exposure being saved at: /data/nickel/d1043.fits
+update EVENT: ControllerReady
+Filename: /data/nickel/d1043.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1043.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1097.2890201151622, Median: 1087.0, Std: 31.270343415257148
+ id     xcentroid         ycentroid         sharpness          roundness1        roundness2     npix  peak   flux          mag             daofind_mag
+--- ----------------- ----------------- ------------------ ----------------- ------------------ ---- ----- ------- ------------------- -------------------
+  5 538.7604918591176 509.8755756884863 0.8147348553765525 0.405323830780074 -0.844457256864282  169 881.0 56860.0 -11.887017138386058 -2.8891246752250908
+
+Estimated FWHM: [26.87814514]
+FWHM_x: 19.20977968692997, FWHM_y: 16.222255727200984, Average FWHM: 17.716017707065475
+ /data/nickel/d1043.fits FWHM: 17.716017707065475
+
+POCSECPD: 335.00000000
+POCSECPA: 335.25468192
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 340.00000000
+POCSECPA: 335.25468192
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1044.fits
+update FILEPATH: /data/nickel/d1044.fits
+update FILEPATH: /data/nickel/d1044.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1044.fits
+Filename: /data/nickel/d1044.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1044.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1096.5749720964332, Median: 1086.0, Std: 31.27149263770024
+ id    xcentroid         ycentroid         sharpness           roundness1          roundness2     npix  peak   flux          mag             daofind_mag
+--- ---------------- ----------------- ------------------ ------------------- ------------------- ---- ----- ------- ------------------- -------------------
+  4 538.631750239116 502.0487521909386 0.4162009642062251 0.09161415110264327 -0.2908529173527579  169 708.0 65533.0 -12.041150124362467 -2.9350585061278696
+
+Estimated FWHM: [26.45040417]
+FWHM_x: 17.83610461505246, FWHM_y: 16.915677763370255, Average FWHM: 17.37589118921136
+ /data/nickel/d1044.fits FWHM: 17.37589118921136
+
+POCSECPD: 340.00000000
+POCSECPA: 340.21715368
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 345.00000000
+POCSECPA: 340.21715368
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1045.fits
+update FILEPATH: /data/nickel/d1045.fits
+update FILEPATH: /data/nickel/d1045.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1045.fits
+Filename: /data/nickel/d1045.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1045.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1097.2209091647394, Median: 1087.0, Std: 31.280356427139917
+WARNING: NoDetectionsWarning: Sources were found, but none pass the sharpness, roundness, or peakmax criteria [photutils.detection.daofinder]
+Traceback (most recent call last):
+  File "/home/shakoda/automating-nickel-1m/ktl/ktl_practice.py", line 258, in <module>
+    main()
+  File "/home/shakoda/automating-nickel-1m/ktl/ktl_practice.py", line 248, in main
+    event.sequence(focus)
+  File "/home/shakoda/automating-nickel-1m/ktl/ktl_practice.py", line 143, in sequence
+    self.fwhm = photometry(filepath, verbose=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/shakoda/automating-nickel-1m/ktl/photometry.py", line 52, in photometry
+    sources.sort('flux', reverse=True)
+    ^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'sort'
+
+
+
+update EVENT: ControllerReady
+EVENT: ControllerReady
+update FILEPATH: /data/nickel/d1046.fits
+update EVENT: ControllerReady
+update EVENT: ControllerReady
+POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion
+POCSECPD: 345.00000000
+POCSECPA: 344.74969030
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 350.00000000
+POCSECPA: 344.74969030
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1046.fits
+update FILEPATH: /data/nickel/d1046.fits
+update FILEPATH: /data/nickel/d1046.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1046.fits
+Filename: /data/nickel/d1046.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1046.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1095.7589114862592, Median: 1085.0, Std: 31.325484003127553
+ id     xcentroid         ycentroid         sharpness           roundness1          roundness2     npix  peak    flux          mag            daofind_mag
+--- ----------------- ----------------- ------------------ ------------------- ------------------- ---- ------ -------- ------------------ ------------------
+  1 543.1866295698886 495.6252651562644 0.8573913959680793 -0.6821473696661605 -0.7112791150738684  169 3968.0 179330.0 -13.13413237120891 -4.627396134417391
+
+Estimated FWHM: [10.66958027]
+FWHM_x: 11.115476908186347, FWHM_y: 13.506133039832303, Average FWHM: 12.310804974009326
+ /data/nickel/d1046.fits FWHM: 12.310804974009326
+
+POCSECPD: 350.00000000
+POCSECPA: 349.74859725
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 355.00000000
+POCSECPA: 349.74859725
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1047.fits
+update FILEPATH: /data/nickel/d1047.fits
+update FILEPATH: /data/nickel/d1047.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+Exposure being saved at: /data/nickel/d1047.fits
+update EVENT: ControllerReady
+Filename: /data/nickel/d1047.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1047.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1098.419633079486, Median: 1108.0, Std: 22.352669480023845
+ id     xcentroid         ycentroid          sharpness           roundness1          roundness2     npix  peak    flux           mag             daofind_mag
+--- ----------------- ------------------ ------------------ ------------------- ------------------- ---- ------ -------- ------------------- -------------------
+  3 545.4287208703219 492.70747820139974 0.8923003032309541 0.05656169326104831 0.31128842378699295  169 7096.0 226204.0 -13.386250700883053 -5.3376418627851745
+
+Estimated FWHM: [5.87081468]
+FWHM_x: 8.129379416457468, FWHM_y: 10.741983520675745, Average FWHM: 9.435681468566607
+ /data/nickel/d1047.fits FWHM: 9.435681468566607
+
+POCSECPD: 355.00000000
+POCSECPA: 355.08999490
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 360.00000000
+POCSECPA: 355.08999490
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1048.fits
+update FILEPATH: /data/nickel/d1048.fits
+update FILEPATH: /data/nickel/d1048.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+Exposure being saved at: /data/nickel/d1048.fits
+update EVENT: ControllerReady
+Filename: /data/nickel/d1048.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1048.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1098.5287341664541, Median: 1088.0, Std: 31.356016466718575
+ id    xcentroid         ycentroid         sharpness           roundness1           roundness2     npix   peak    flux           mag            daofind_mag
+--- ---------------- ----------------- ------------------ -------------------- ------------------- ---- ------- -------- ------------------- ------------------
+  4 541.853747630846 491.6313736178803 0.8875302774338916 0.010219379036897564 0.07200716131644216  169 11248.0 279263.0 -13.615033497860818 -5.902814974126493
+
+Estimated FWHM: [4.55756279]
+FWHM_x: 7.959932539926707, FWHM_y: 8.750216628724765, Average FWHM: 8.355074584325736
+ /data/nickel/d1048.fits FWHM: 8.355074584325736
+
+POCSECPD: 360.00000000
+POCSECPA: 359.71726299
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 365.00000000
+POCSECPA: 359.71726299
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1049.fits
+update FILEPATH: /data/nickel/d1049.fits
+update FILEPATH: /data/nickel/d1049.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1049.fits
+Filename: /data/nickel/d1049.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1049.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1100.43577232788, Median: 1089.0, Std: 31.25147069693752
+ id     xcentroid         ycentroid         sharpness           roundness1           roundness2      npix  peak    flux           mag            daofind_mag
+--- ----------------- ----------------- ------------------ -------------------- -------------------- ---- ------ -------- ------------------- ------------------
+  1 544.0542915990117 491.8661250109013 0.5152530608196618 -0.17416747755057638 -0.29177135325275394  169 6136.0 278061.0 -13.610350200742392 -5.608360721943871
+
+Estimated FWHM: [6.46553081]
+FWHM_x: 9.14132167023952, FWHM_y: 8.338356272037743, Average FWHM: 8.739838971138632
+ /data/nickel/d1049.fits FWHM: 8.739838971138632
+
+POCSECPD: 365.00000000
+POCSECPA: 365.08780879
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 370.00000000
+POCSECPA: 365.08780879
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1050.fits
+update FILEPATH: /data/nickel/d1050.fits
+update FILEPATH: /data/nickel/d1050.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1050.fits
+Filename: /data/nickel/d1050.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1050.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1102.5888925713746, Median: 1092.0, Std: 31.138265248137944
+ id     xcentroid         ycentroid          sharpness           roundness1           roundness2     npix  peak    flux           mag            daofind_mag
+--- ----------------- ------------------ ------------------ -------------------- ------------------- ---- ------ -------- ------------------- ------------------
+  1 543.7700767418219 492.33916150547077 0.6351330436543009 -0.11575447272222432 -0.7912936557766751  169 1963.0 147620.0 -12.922863002477996 -3.852262462015739
+
+Estimated FWHM: [11.89509874]
+FWHM_x: 12.054425180420825, FWHM_y: 10.242524234857243, Average FWHM: 11.148474707639034
+ /data/nickel/d1050.fits FWHM: 11.148474707639034
+
+POCSECPD: 370.00000000
+POCSECPA: 370.05756759
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 375.00000000
+POCSECPA: 370.05756759
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1051.fits
+update FILEPATH: /data/nickel/d1051.fits
+update FILEPATH: /data/nickel/d1051.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1051.fits
+Filename: /data/nickel/d1051.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1051.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1105.0971638868648, Median: 1094.0, Std: 31.025140695402584
+ id    xcentroid         ycentroid          sharpness           roundness1          roundness2     npix peak  flux         mag            daofind_mag
+--- ---------------- ----------------- ------------------- ------------------- ------------------- ---- ---- ------ ----------------- -------------------
+  1 356.931819562635 467.0433443752736 0.39574671542082385 0.01732296758375651 -0.1875465626883989  169 43.0 2356.0 -8.43043821528766 -0.4980340713674742
+
+Estimated FWHM: [66.77428821]
+FWHM_x: 20.1008688165428, FWHM_y: 19.166645813222313, Average FWHM: 19.63375731488256
+ /data/nickel/d1051.fits FWHM: 19.63375731488256
+
+POCSECPD: 375.00000000
+POCSECPA: 374.75770604
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 380.00000000
+POCSECPA: 374.75770604
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1052.fits
+update FILEPATH: /data/nickel/d1052.fits
+update FILEPATH: /data/nickel/d1052.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+update EVENT: ControllerReady
+Exposure being saved at: /data/nickel/d1052.fits
+Filename: /data/nickel/d1052.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1052.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=0, value=65535
+Mean: 1102.6925965566684, Median: 1092.0, Std: 30.802538529330754
+ id     xcentroid         ycentroid         sharpness          roundness1         roundness2     npix  peak   flux          mag             daofind_mag
+--- ----------------- ----------------- ------------------ ------------------ ------------------ ---- ----- ------- ------------------- -------------------
+  1 534.9913749100184 495.2474315772351 0.6532854266520364 0.9117762715086264 0.8372075550180531  169 895.0 57801.0 -11.904838380252233 -3.1085829436203483
+
+Estimated FWHM: [31.28330579]
+FWHM_x: 12.831151710591936, FWHM_y: 17.62237489518363, Average FWHM: 15.226763302887782
+ /data/nickel/d1052.fits FWHM: 15.226763302887782
+
+POCSECPD: 380.00000000
+POCSECPA: 380.18654813
+POCSECLK: on
+POCSECLK: off
+POCSECPD: 385.00000000
+POCSECPA: 380.18654813
+RECORD: Yes
+PANE: 0 0 2048 2048
+EXPOSURE: 1.00
+READSPEED: Fast
+START: true
+update FILEPATH: /data/nickel/d1053.fits
+update FILEPATH: /data/nickel/d1053.fits
+update FILEPATH: /data/nickel/d1053.fits
+update EVENT: EraseBegin
+update EVENT: ExposureBegin
+update EVENT: ExposureEnd
+update EVENT: ReadoutBegin
+update EVENT: ReadoutEnd
+Exposure being saved at: /data/nickel/d1053.fits
+update EVENT: ControllerReady
+Filename: /data/nickel/d1053.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   int16 (rescales to uint16)
+None
+Filename: /data/nickel/d1053.fits
+No.    Name      Ver    Type      Cards   Dimensions   Format
+  0  PRIMARY       1 PrimaryHDU     157   (1056, 1024)   uint16
+None
+
+Brightest pixel at position: x=256, y=2, value=65535
+Mean: 1102.7737000601123, Median: 1092.0, Std: 30.567625828130996
+ id     xcentroid         ycentroid          sharpness           roundness1          roundness2     npix  peak   flux          mag            daofind_mag
+--- ----------------- ------------------ ------------------ ------------------- ------------------- ---- ----- ------- ------------------- ------------------
+  3 554.7239376354142 501.81615965516863 0.4772375463425238 -0.5396794843219038 -0.3755329466990777  169 754.0 49417.0 -11.734690941951243 -3.236464304860744
+
+Estimated FWHM: [23.93430615]
+FWHM_x: 17.405085398156128, FWHM_y: 16.274145469111122, Average FWHM: 16.839615433633625
+ /data/nickel/d1053.fits FWHM: 16.839615433633625

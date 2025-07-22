@@ -52,7 +52,7 @@ print(f'Target Coordinates (RA, DEC): {target_coords.ra}, {target_coords.dec}')
 
 
 
-lick_ha = lst - telescope.ra
+lick_ha = lst - telescope_coord.ra
 ha_key = ktl.cache('nickelpoco', 'POCOHAA')
 print(f'Lick Read HA: {ha_key.read()}')
 print(f'Lick HA: {lick_ha.to_string(unit=u.hourangle, sep=":")}')
@@ -68,8 +68,8 @@ ra_desired = ktl.cache('nickelpoco', 'POCRAD')
 dec_desired = ktl.cache('nickelpoco', 'POCDECD')
 
 
-if stop_key.read() != 'enabled':
-    print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
+if stop_key.read() != 'allowed':
+    print("POCSTOP is 'disabled'. Waiting for 'allowed' to allow motion")
 if not stop_key.waitFor('== 0', timeout=30):
     raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
 
@@ -85,5 +85,13 @@ if not target_key.waitFor('== 0', timeout=30):
 
 ra_desired.write(target_coords.ra.to('hourangle').value)
 dec_desired.write(target_coords.dec.to('deg').value)
+
+# add while pocot (while telescope is not on target) keep program running
+# POCOBJNA = Pointing16
+
+# 24, 25 catepillars
+
+
+#pocstop saying 'disabled' when it should be 'enabled'
 
 

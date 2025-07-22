@@ -86,7 +86,7 @@ class Event:
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
 
-        if not self.keyword.seclk_key.waitFor('== on', timeout=15):
+        if not self.keyword.seclk_key.waitFor('== on', timeout=30):
             raise Exception("POCSECLK did not turn on. Focus change failed.")
     ### CHANGE FOCUS ###
 
@@ -152,20 +152,20 @@ def curve_finder(image1, image2, seen, keyword, direction=None):
         if direction is None:
             direction = 'right'
         if direction == 'left':
-            return curve_helper(image1, image2, seen)
+            return curve_helper(image1, image2, seen, keyword)
         focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
         image3.sequence(focus3)
-        return curve_finder(image2, image3, seen, direction)
+        return curve_finder(image2, image3, seen, keyword, direction)
     elif image1.fwhm < image2.fwhm:
         if direction is None:
             direction = 'left'
         if direction == 'right':
-            return curve_helper(image1, image2, seen)
+            return curve_helper(image1, image2, seen, keyword)
         focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
         image3.sequence(focus3)
-        return curve_finder(image3, image1, seen, direction)
+        return curve_finder(image3, image1, seen, keyword, direction)
 
 def curve_helper(image1, image2, seen, keyword, iterations=2):
     if iterations > 0:
@@ -174,13 +174,13 @@ def curve_helper(image1, image2, seen, keyword, iterations=2):
             image3 = Event(keyword)
             image3.sequence(focus3)
             seen.add(image3)
-            return curve_helper(image3, image1, seen, iterations-1)
+            return curve_helper(image3, image1, seen, keyword, iterations-1)
         elif image1.fwhm < image2.fwhm:
             focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
             image3 = Event(keyword)
             image3.sequence(focus3)
             seen.add(image3)
-            return curve_helper(image2, image3, seen, iterations-1)
+            return curve_helper(image2, image3, seen, keyword, iterations-1)
     else:
         return seen
 
@@ -214,8 +214,8 @@ import argparse
 def main():
 
     parser = argparse.ArgumentParser(description="Automate the focus finding process.")
-    parser.add_argument('-f', '--focus_value', default=360, help='Focus value')
-    parser.add_argument('-e', '--exposure_length', default=1, help='Exposure length in seconds')
+    parser.add_argument('-f', '--focus_value', default=360, type=float, help='Focus value')
+    parser.add_argument('-e', '--exposure_length', default=1, type=float, help='Exposure length in seconds')
     parser.add_argument('-w', '--window_size', default="0 0 2048 2048", help='Window size for exposure')
     args = parser.parse_args()
 
@@ -243,18 +243,20 @@ def main():
 
     # event.focus(365)
 
-    event.sequence(360)
-    # event.sequence(365)
-    # event.sequence(360)
-
     # event.sequence(args.focus_value)
+
+    focus = 355
+    while focus < 377:
+        event.sequence(focus)
+        focus += 2
 
     # focus_finder(args.focus_value, 5, keyword)
 
 
 
-# if __name__ == "__main__":
-#     main()
+
+if __name__ == "__main__":
+    main()
 
 
 # /data/nickel

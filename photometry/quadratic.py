@@ -1,7 +1,6 @@
 import numpy as np
-from photometry import photometry
-from simulation import simulation
-from focus import Image
+# from simulation import simulation
+# from focus import Image
 
 def fit_quadratic(x_values, y_values):
     x = np.array(x_values)
@@ -29,18 +28,18 @@ def vertex(a, b, c):
 # x_vertex, y_vertex = vertex(a, b, c)
 # print(f"Vertex: ({x_vertex}, {y_vertex})")
 
-def main():
-    focus_values = np.arange(335, 390, 5)
-    fwhm_values = []
+# def main():
+#     focus_values = np.arange(335, 390, 5)
+#     fwhm_values = []
 
-    for focus in focus_values:
-        image = Image(focus)
-        fwhm_values.append(image.fwhm)
+#     for focus in focus_values:
+#         image = Image(focus)
+#         fwhm_values.append(image.fwhm)
 
-    a, b, c = fit_quadratic(focus_values, fwhm_values)
-    x_vertex, y_vertex = vertex(a, b, c)
+#     a, b, c = fit_quadratic(focus_values, fwhm_values)
+#     x_vertex, y_vertex = vertex(a, b, c)
 
-    print(f"Optimal focus: {x_vertex}, FWHM: {y_vertex}")
+#     print(f"Optimal focus: {x_vertex}, FWHM: {y_vertex}")
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

@@ -1,0 +1,136 @@
+
+ - What keyword sets "Offset from Target"
+ - When acquiring optimal focus star, make sure to set "Object Name"
+
+ - FWHM measurements below are from the moment analysis
+
+Exp#    Focus   FWHM
+
+1022    Catapillar sequence
+1024    Catapillar sequence : recorded
+
+Test exposures
+
+1026    365
+1027    360
+1028    370
+    - Error: exposure time was being read as a string
+
+Short sequence near the best exposure
+1029    370     10.91
+1030    365
+1031    360
+1032    355     10.19
+
+Finely stepped sequence
+1033    368      9.4
+1034    366      9.9
+1035    364      8.1
+1036    362      7.6
+1037    360      8.8
+1038    358     17.4
+1039    356      9.2
+1040    354     10.3
+1041    352     11.3
+1042    350     12.9
+
+Coarse sequence
+1043    335
+1044    340
+1045    345
+    - Error: Could not find a source; restarting
+1046    350
+1047    355
+1048    360
+1049    365
+1050    370
+1051    375     
+1052    380
+1053    385
+
+Starting an optimization sequence; exposure changed to 1s
+1054    370
+1055    375
+1056    365
+    - Error: bug in typing of the keyword
+
+Attempt 2:
+1057    370
+1058    375
+1059    365
+1060    360
+1061    355
+1062    350
+1063    345
+    - Decided optimal focus was at 360.7
+
+Change to V band
+1064    345     Test exposure
+1065    360     Test exposure
+
+Coarse sequence
+1066    335
+1067    340
+1068    345
+1069    350
+1070    355
+1071    360
+1072    365
+1073    370
+1074    375     
+1075    380
+1076    385
+
+Finely stepped sequence
+1077    355     12.0
+1078    357
+1079    359     10.1
+1080    361      8.4
+1081    363      8.5
+1082    365      8.7
+1083    367
+1084    369
+1085    371
+1086    373
+
+Use optimized script
+1087    370
+1088    375
+1089    365
+1090    360
+1091    355
+1092    350
+    - Decided optimal focus was at 365.2
+
+Move to PG1657; many stars in field of similar brightness; 30s exposures
+
+Coarse sequence
+1098    335
+1099    340
+1100    345
+1101    350
+1102    355
+1103    360
+1104    365
+1105    370
+1106    375     
+1107    380
+1108    385
+
+Finely stepped sequence
+1109    355
+1110    357
+1111    359
+1112    361
+1113    363
+1114    365
+1115    367
+1116    369
+1117    371
+1118    373
+1119    375
+
+
+
+
+

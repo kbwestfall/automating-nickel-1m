@@ -4,15 +4,14 @@ import ktl
 import time
 
 from astropy.io import fits
-from photometry import photometry
+from photometry import photometry, Grid
 import quadratic
 
 
 class Keyword:
-    def __init__(self, record, pane, exposure, speed):
+    def __init__(self, record, exposure, speed):
 
         self.record = record
-        self.pane = pane
         self.exposure = exposure
         self.speed = speed
         self.start = 'Yes'
@@ -28,7 +27,6 @@ class Keyword:
         self.exposure_key = ktl.cache('nickucam', 'EXPOSURE')
         self.speed_key = ktl.cache('nickucam', 'READSPEED')
         self.start_key = ktl.cache('nickucam', 'START')
-        self.pane_key = ktl.cache('nickucam', 'PANE')
 
         self.stop_key = ktl.cache('nickelpoco', 'POCSTOP')
 
@@ -100,10 +98,6 @@ class Event:
         record_value = self.keyword.record_key.read()
         print(f'RECORD: {record_value}')
 
-        self.keyword.pane_key.write(self.keyword.pane)
-        pane_value = self.keyword.pane_key.read()
-        print(f'PANE: {pane_value}')
-
         self.keyword.exposure_key.write(self.keyword.exposure)
         exposure_value = self.keyword.exposure_key.read()
         print(f'EXPOSURE: {exposure_value}')
@@ -122,7 +116,7 @@ class Event:
             pass
     ### TAKE EXPOSURE ###
 
-    def sequence(self, focus_value):
+    def sequence(self, focus_value, grid):
 
         # if self.keyword.record == 'Yes':
         #     self.keyword.dir_key.write("/data")
@@ -137,14 +131,16 @@ class Event:
         filepath = self.keyword.filepath
         print(f"Exposure being saved at: {filepath}")
 
+        obs_num = self.keyword.obs_key.read()
+
         hdu = fits.open(filepath)
         print(hdu.info())
 
-        self.fwhm = photometry(filepath, verbose=True)
+        self.fwhm = photometry(filepath, obs_num, focus_value, grid, verbose=True)
         print(f" {filepath} FWHM: {self.fwhm} \n")
 
 
-def curve_finder(image1, image2, seen, keyword, direction=None):
+def curve_finder(image1, image2, seen, keyword, grid, direction=None):
     seen.add(image1)
     seen.add(image2)
     
@@ -152,50 +148,61 @@ def curve_finder(image1, image2, seen, keyword, direction=None):
         if direction is None:
             direction = 'right'
         if direction == 'left':
-            return curve_helper(image1, image2, seen, keyword)
+            return curve_helper(image1, image2, seen, keyword, grid)
         focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
-        image3.sequence(focus3)
-        return curve_finder(image2, image3, seen, keyword, direction)
+        image3.sequence(focus3, grid)
+        grid.index += 1
+        return curve_finder(image2, image3, seen, keyword, grid, direction)
     elif image1.fwhm < image2.fwhm:
         if direction is None:
             direction = 'left'
         if direction == 'right':
-            return curve_helper(image1, image2, seen, keyword)
+            return curve_helper(image1, image2, seen, keyword, grid)
         focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
-        image3.sequence(focus3)
-        return curve_finder(image3, image1, seen, keyword, direction)
+        image3.sequence(focus3, grid)
+        grid.index += 1
+        return curve_finder(image3, image1, seen, keyword, grid, direction)
 
-def curve_helper(image1, image2, seen, keyword, iterations=2):
+def curve_helper(image1, image2, seen, keyword, grid, iterations=2):
     if iterations > 0:
         if image1.fwhm > image2.fwhm:
             focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
             image3 = Event(keyword)
-            image3.sequence(focus3)
+            image3.sequence(focus3, grid)
+            grid.index += 1
             seen.add(image3)
-            return curve_helper(image3, image1, seen, keyword, iterations-1)
+            return curve_helper(image3, image1, seen, keyword, grid, iterations-1)
         elif image1.fwhm < image2.fwhm:
             focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
             image3 = Event(keyword)
-            image3.sequence(focus3)
+            image3.sequence(focus3, grid)
+            grid.index += 1
             seen.add(image3)
-            return curve_helper(image2, image3, seen, keyword, iterations-1)
+            return curve_helper(image2, image3, seen, keyword, grid, iterations-1)
     else:
         return seen
 
-def focus_finder(initial_focus, step_size, keyword):
+def auto_focus_finder(initial_focus, step_size, keyword):
+
+    grid = Grid()
 
     seen = set()
     
     image1 = Event(keyword)
-    image1.sequence(initial_focus)
+    image1.sequence(initial_focus, grid)
+    grid.index += 1
 
     image2 = Event(keyword)
-    image2.sequence(initial_focus + step_size)
+    image2.sequence(initial_focus + step_size, grid)
+    grid.index += 1
 
-    curve = curve_finder(image1, image2, seen, keyword)
+    curve = curve_finder(image1, image2, seen, keyword, grid)
+    if len(curve) < 3:
+        raise Exception("Not enough images. Cannot find optimal focus.")
     curve = sorted(curve, key=lambda img: img.focus_value)
+
     x_values = []
     y_values = []
     print("Curve found with the following focus values:")
@@ -208,19 +215,55 @@ def focus_finder(initial_focus, step_size, keyword):
     x_vertex, y_vertex = quadratic.vertex(a, b, c)
     print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
 
+    grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex)
+
+    return x_values, y_values
+
+def manual_focus_finder(initial_focus, end_focus, step_size, keyword):
+    if (end_focus - initial_focus) // step_size < 3:
+        raise Exception("Not enough images to find a focus curve. Increase the range or decrease the step size.")
+
+    grid = Grid()
+
+    seen = set()
+    
+    focus = initial_focus
+    while focus <= end_focus:
+        image = Event(keyword)
+        image.sequence(focus, grid)
+        grid.index += 1
+        seen.add(image)
+        focus += step_size
+
+    x_values = []
+    y_values = []
+    print("Curve found with the following focus values:")
+    for img in seen:
+        print(f"Focus: {img.focus_value}, FWHM: {img.fwhm}")
+        x_values.append(img.focus_value)
+        y_values.append(img.fwhm)
+
+    a, b, c = quadratic.fit_quadratic(x_values, y_values)
+    x_vertex, y_vertex = quadratic.vertex(a, b, c)
+    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
+
+    grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex)
+
+    return x_values, y_values
 
 import argparse
 
 def main():
 
     parser = argparse.ArgumentParser(description="Automate the focus finding process.")
-    parser.add_argument('-f', '--focus_value', default=360, type=float, help='Focus value')
-    parser.add_argument('-e', '--exposure_length', default=1, type=float, help='Exposure length in seconds')
-    parser.add_argument('-w', '--window_size', default="0 0 2048 2048", help='Window size for exposure')
+    parser.add_argument('-fs', '--focus_start', default=350, type=float, help='Start Focus value')
+    parser.add_argument('-fe', '--focus_end', default=None, type=float, help='End Focus value')
+    parser.add_argument('-s', '--step_size', default=5, type=float, help='Step size for focus increments')
+    parser.add_argument('-l', '--length_exposure', default=1, type=float, help='Exposure length in seconds')
     args = parser.parse_args()
 
-    keyword = Keyword('Yes', args.window_size, args.exposure_length, 'Fast')
-    # Record: 0 No 1 Yes, Pane: start_col start_row num_col num_row, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
+    keyword = Keyword('Yes', args.length_exposure, 'Fast')
+    # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
 
     event = Event(keyword)
     print(f'EVENT: {keyword.event_key.read()}')
@@ -231,10 +274,22 @@ def main():
         raise Exception("Controller not ready. Cannot take exposure.")
 
     #check if pocstop is enabled
-    if keyword.stop_key.read() != 'enabled':
+    if keyword.stop_key.read() != 0:
         print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
     if not keyword.stop_key.waitFor('== 0', timeout=30):
         raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
+
+    if args.focus_end:
+        x_values, y_values = manual_focus_finder(args.focus_start, args.focus_end, args.step_size, keyword)
+    else:
+        x_values, y_values = auto_focus_finder(args.focus_start, args.step_size, keyword)
+
+    focus_data = 'focus_data.txt'
+    with open(focus_data, 'w') as f:
+        f.write(' '.join(map(str, x_values)) + '\n')
+        f.write(' '.join(map(str, y_values)) + '\n')
+
+    plt.show()
 
 
     # print("taking exposure")
@@ -245,10 +300,10 @@ def main():
 
     # event.sequence(args.focus_value)
 
-    focus = 355
-    while focus < 377:
-        event.sequence(focus)
-        focus += 2
+    # focus = 355
+    # while focus < 377:
+    #     event.sequence(focus)
+    #     focus += 2
 
     # focus_finder(args.focus_value, 5, keyword)
 
@@ -256,7 +311,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
 
 
 # /data/nickel

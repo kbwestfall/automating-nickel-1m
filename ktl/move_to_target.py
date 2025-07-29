@@ -68,7 +68,7 @@ ra_desired = ktl.cache('nickelpoco', 'POCRAD')
 dec_desired = ktl.cache('nickelpoco', 'POCDECD')
 
 
-if stop_key.read() != 'allowed':
+if stop_key.read() != 0:
     print("POCSTOP is 'disabled'. Waiting for 'allowed' to allow motion")
 if not stop_key.waitFor('== 0', timeout=30):
     raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")

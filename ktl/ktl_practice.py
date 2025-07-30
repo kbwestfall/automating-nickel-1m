@@ -61,7 +61,7 @@ class Event:
         self.keyword = keyword
 
     ### CHANGE FOCUS ###
-    def focus(self, focus_value):
+    def change_focus(self, focus_value):
 
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
@@ -116,7 +116,7 @@ class Event:
             pass
     ### TAKE EXPOSURE ###
 
-    def sequence(self, focus_value, grid):
+    def sequence(self, focus_value, grid, focus_coords=None):
 
         # if self.keyword.record == 'Yes':
         #     self.keyword.dir_key.write("/data")
@@ -124,7 +124,7 @@ class Event:
         #     self.keyword.obs_key.write(str(focus_value))
         #     self.keyword.suffix_key.write("fits")
 
-        self.focus(focus_value)
+        self.change_focus(focus_value)
         self.focus_value = focus_value
         self.exposure()
 
@@ -136,7 +136,8 @@ class Event:
         hdu = fits.open(filepath)
         print(hdu.info())
 
-        self.fwhm = photometry(filepath, obs_num, focus_value, grid, verbose=True)
+        self.focus_star = photometry(filepath, obs_num, focus_value, grid, focus_coords, verbose=True)
+        self.fwhm = self.focus_star['FWHM']
         print(f" {filepath} FWHM: {self.fwhm} \n")
 
 
@@ -217,9 +218,9 @@ def auto_focus_finder(initial_focus, step_size, keyword):
 
     grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex)
 
-    return x_values, y_values
+    return curve
 
-def manual_focus_finder(initial_focus, end_focus, step_size, keyword):
+def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keyword):
     if (end_focus - initial_focus) // step_size < 3:
         raise Exception("Not enough images to find a focus curve. Increase the range or decrease the step size.")
 
@@ -230,7 +231,7 @@ def manual_focus_finder(initial_focus, end_focus, step_size, keyword):
     focus = initial_focus
     while focus <= end_focus:
         image = Event(keyword)
-        image.sequence(focus, grid)
+        image.sequence(focus, grid, focus_coords)
         grid.index += 1
         seen.add(image)
         focus += step_size
@@ -249,10 +250,51 @@ def manual_focus_finder(initial_focus, end_focus, step_size, keyword):
 
     grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex)
 
-    return x_values, y_values
+    return seen
+
+def refit_curve(omit, verbose=False):
+    with open('focus_data.txt', 'r') as f:
+        lines = f.readlines()[1:]
+    curve = [dict(zip(['obs', 'focus_value', 'fwhm', 'centroid'], map(str.strip, line.split(',')))) for line in lines]
+    if omit:
+        curve = [img for img in curve if int(img['obs']) not in omit]
+        print(f'Refitting curve with the following observations omitted: {omit}')
+        if len(curve) <= 2:
+            print('Not enough observations left to refit the curve. Exiting.')
+            return None
+    else:
+        print('Refitting curve with all observations included.')
+
+    x_values = [float(img['focus_value']) for img in curve]
+    y_values = [float(img['fwhm']) for img in curve]
+
+    a, b, c = quadratic.fit_quadratic(x_values, y_values)
+    x_vertex, y_vertex = quadratic.vertex(a, b, c)
+
+    print(f"Refitted curve: Optimal focus: {x_vertex}, FWHM: {y_vertex}")
+
+    plt.figure(figsize=(12, 12))
+
+
+    x_min, x_max = min(x_values), max(x_values)
+    x_smooth = np.linspace(x_min, x_max, 50)
+    y_smooth = a * x_smooth**2 + b * x_smooth + c
+
+    plt.scatter(x_values, y_values, label='Measured FWHM', color='blue')
+    plt.plot(x_smooth, y_smooth, 'r-', label='Fitted Quadratic')
+    plt.scatter([x_vertex], [y_vertex], color='green', label='Optimal focus', zorder=3)
+    plt.axvline(x=x_vertex, color='green', linestyle='--')
+
+    plt.xlabel('Focus Value', fontsize=12)
+    plt.ylabel('FWHM (pixels)', fontsize=12)
+    plt.title('Focus Curve Analysis', fontsize=14, fontweight='bold')
+    plt.legend(loc='best')
+    plt.grid(True, alpha=0.3)
+
+    return curve
+
 
 import argparse
-
 def main():
 
     parser = argparse.ArgumentParser(description="Automate the focus finding process.")
@@ -260,6 +302,8 @@ def main():
     parser.add_argument('-fe', '--focus_end', default=None, type=float, help='End Focus value')
     parser.add_argument('-s', '--step_size', default=5, type=float, help='Step size for focus increments')
     parser.add_argument('-l', '--length_exposure', default=1, type=float, help='Exposure length in seconds')
+    parser.add_argument('--focus_coords', type=float, nargs='*', default=None, help='Focus star coordinates (x, y) for manual focus finding')
+    parser.add_argument('--refit', type=int, nargs='*', default=None, help='Refit the focus curve omitting specified observations')
     args = parser.parse_args()
 
     keyword = Keyword('Yes', args.length_exposure, 'Fast')
@@ -278,34 +322,27 @@ def main():
         print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
     if not keyword.stop_key.waitFor('== 0', timeout=30):
         raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
+    
+    if args.refit is None:
+        plt.ion()
+        plt.show(block=False)
 
-    if args.focus_end:
-        x_values, y_values = manual_focus_finder(args.focus_start, args.focus_end, args.step_size, keyword)
+
+        if args.focus_end:
+            curve = manual_focus_finder(args.focus_start, args.focus_end, args.step_size, args.focus_coords, keyword)
+        else:
+            curve = auto_focus_finder(args.focus_start, args.step_size, keyword)
+
+        focus_data = 'focus_data.txt'
+        with open(focus_data, 'w') as f:
+            f.write('Obs Num, Focus, FWHM, Centroid\n')
+            for img in curve:
+                f.write(f"{img['obs']}, {img['focus_value']}, {img['fwhm']}, {img['centroid']}\n")
     else:
-        x_values, y_values = auto_focus_finder(args.focus_start, args.step_size, keyword)
+        curve = refit_curve(args.refit, verbose=True)
 
-    focus_data = 'focus_data.txt'
-    with open(focus_data, 'w') as f:
-        f.write(' '.join(map(str, x_values)) + '\n')
-        f.write(' '.join(map(str, y_values)) + '\n')
-
+    plt.ioff()
     plt.show()
-
-
-    # print("taking exposure")
-    # event.exposure()
-    # print("Exposure taken")
-
-    # event.focus(365)
-
-    # event.sequence(args.focus_value)
-
-    # focus = 355
-    # while focus < 377:
-    #     event.sequence(focus)
-    #     focus += 2
-
-    # focus_finder(args.focus_value, 5, keyword)
 
 
 
@@ -317,7 +354,3 @@ if __name__ == "__main__":
 # /data/nickel
 # 8:30
 
-
-# find good keyword to monitor for filename callback
-
-# work on visual interface aspect; show focus star with centroid and pane, focus curve

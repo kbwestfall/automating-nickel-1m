@@ -70,13 +70,14 @@ class Grid:
                     fontsize=16, fontweight='bold')
 
     def set_left_axis(self, data):
+        self.ax_left.clear()
         norm = ImageNormalize(data, interval=ZScaleInterval(), stretch=LinearStretch())
         self.ax_left.imshow(data, cmap='viridis', origin='lower', norm=norm)
         self.ax_left.set_xticks([])
         self.ax_left.set_yticks([])
         self.ax_left.set_title('Full Image')
 
-    def set_center_axis(self, data, obs_num, focus_value):
+    def set_center_axis(self, data, obs_num, focus_value, rect):
         ax = self.get_center_axis_by_index(self.index)
         if ax is None:
             print(f"Index {self.index} is out of bounds for the center axes grid.")
@@ -87,6 +88,11 @@ class Grid:
         ax.set_title(f'd{obs_num} Focus: {focus_value}')
         ax.set_xticks([])
         ax.set_yticks([])
+
+        self.ax_left.add_patch(rect)
+
+        plt.draw()
+        plt.pause(1)
 
         # Add red rectangle around the cutout region
         # from matplotlib.patches import Rectangle
@@ -120,6 +126,8 @@ class Grid:
         return self.get_center_axis(row, col)
 
     def set_right_axis(self, x_values, y_values, a, b, c, x_vertex, y_vertex):
+        self.ax_right.clear()
+        
         x_min, x_max = min(x_values), max(x_values)
         x_smooth = np.linspace(x_min, x_max, 50)
         y_smooth = a * x_smooth**2 + b * x_smooth + c
@@ -289,10 +297,10 @@ def evaluate_sources(data, sources, focus_x, focus_y, verbose=False):
     min_dist = float('inf')
     focus_star = None
 
-    if focus_x is not None and focus_y is not None:
+    if focus_coords is not None:
         for source in results:
             centroid_x, centroid_y = source['Centroid']
-            dist = np.sqrt((centroid_x - focus_x)**2 + (centroid_y - focus_y)**2)
+            dist = np.sqrt((centroid_x - focus_coords[0])**2 + (centroid_y - focus_coords[1])**2)
 
             if dist < min_dist:
                 min_dist = dist
@@ -304,7 +312,7 @@ def evaluate_sources(data, sources, focus_x, focus_y, verbose=False):
     return focus_star
 
 
-def photometry(fits_file, obs_num, focus_value, plot, focus_x=None, focus_y=None, verbose=False):
+def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=False):
 
     if fits_file:
         hdu = fits.open(fits_file)
@@ -314,13 +322,15 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_x=None, focus_y=None
         raise ValueError("No FITS file provided. Please specify a file.")
 
     data, sources = find_sources(data)
-    focus_star = evaluate_sources(data, sources, focus_x=focus_x, focus_y=focus_y, verbose=verbose)
+    focus_star = evaluate_sources(data, sources, focus_coords, verbose=verbose)
+    focus_star['focus'] = focus_value
+    focus_star['ObsNum'] = obs_num
 
     fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
 
     if focus_star is not None:
         print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
-        return focus_star['FWHM']
+        return focus_star
 
 
 

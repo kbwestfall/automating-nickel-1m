@@ -93,7 +93,7 @@ class Grid:
         self.ax_left.add_patch(rect)
 
         plt.draw()
-        plt.pause(1)
+        plt.pause(0.1)
 
 
         # Add red rectangle around the cutout region
@@ -359,7 +359,7 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_x=None, focus_y=None
     else:
         return None
 
-def detect_outliers(curve, plot, threshold=2.0):
+def detect_outliers(curve, plot, threshold=3.0):
 
     centroid_x = np.array([img['Centroid'][0] for img in curve], dtype=float)
     centroid_y = np.array([img['Centroid'][1] for img in curve], dtype=float)

@@ -125,22 +125,28 @@ class Grid:
         
         return self.get_center_axis(row, col)
 
-    def set_right_axis(self, x_values, y_values, a, b, c, x_vertex, y_vertex):
+    def set_right_axis(self, x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers):
         self.ax_right.clear()
-        
+
         x_min, x_max = min(x_values), max(x_values)
         x_smooth = np.linspace(x_min, x_max, 50)
         y_smooth = a * x_smooth**2 + b * x_smooth + c
 
-        self.ax_right.scatter(x_values, y_values, label='Measured FWHM', color='blue')
-        self.ax_right.plot(x_smooth, y_smooth, 'r-', label='Fitted Quadratic')
+        self.ax_right.scatter(x_values, y_values, color='blue')
+        for i, obs in enumerate(obs_values):
+            self.ax_right.text(x_values[i] + 1, y_values[i], f'{obs}', color='blue', fontsize=12)
+        if (outliers):
+            for outlier in outliers:
+                self.ax_right.scatter(outlier['focus_value'], outlier['fwhm'], color='yellow', label=f'Outlier Obs {outlier["obs"]}')
+                self.ax_right.text(outlier['focus_value'] + 1, outlier['fwhm'], f'{outlier["obs"]}', color='yellow', fontsize=12)
+        self.ax_right.plot(x_smooth, y_smooth, 'r-')
         self.ax_right.scatter([x_vertex], [y_vertex], color='green', label='Optimal focus', zorder=3)
         self.ax_right.axvline(x=x_vertex, color='green', linestyle='--')
 
         self.ax_right.set_xlabel('Focus Value', fontsize=12)
         self.ax_right.set_ylabel('FWHM (pixels)', fontsize=12)
         self.ax_right.set_title('Focus Curve Analysis', fontsize=14, fontweight='bold')
-        self.ax_right.legend(loc='best')
+        self.ax_right.legend(loc='upper right')
         self.ax_right.grid(True, alpha=0.3)
 
         # Calculate aspect ratio to make plot square
@@ -237,7 +243,7 @@ def evaluate_shape(data, source_mask, verbose=False):
 
     shape = {
         'M0': M0,
-        'Centroid': (M1_x, M1_y),
+        'Centroid': (float(M1_x), float(M1_y)),
         'FWHM': average_FWHM
     }
 
@@ -274,7 +280,7 @@ def cutout(data, focus_star, obs_num, focus_value, plot, verbose=False):
     return fit
 
 
-def evaluate_sources(data, sources, focus_x, focus_y, verbose=False):
+def evaluate_sources(data, sources, focus_coords, verbose=False):
     print(f"Number of sources detected: {sources.nlabels}\n")
     results = []
 
@@ -323,14 +329,17 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=Fals
 
     data, sources = find_sources(data)
     focus_star = evaluate_sources(data, sources, focus_coords, verbose=verbose)
-    focus_star['focus'] = focus_value
-    focus_star['ObsNum'] = obs_num
 
-    fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
+    if focus_star['FWHM'] is not None:
+        focus_star['Focus'] = focus_value
+        focus_star['ObsNum'] = obs_num
 
-    if focus_star is not None:
+        fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
+
         print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
         return focus_star
+    else:
+        return None
 
 
 

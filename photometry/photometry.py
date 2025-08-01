@@ -4,6 +4,7 @@ from astropy.stats import SigmaClip, sigma_clipped_stats
 from photutils.segmentation import detect_threshold, detect_sources
 from scipy.ndimage import binary_dilation
 from astropy.visualization import (ImageNormalize, ZScaleInterval, LinearStretch)
+from astropy.table import Table
 
 
 import quadratic
@@ -126,33 +127,41 @@ class Grid:
         
         return self.get_center_axis(row, col)
 
-    def update_right_axis(self, x_values, y_values):
+    def update_right_axis(self, images):
         self.ax_right.clear()
-        self.ax_right.scatter(x_values, y_values, label='Measured FWHM', color='blue')
+        for img in images:
+            self.ax_right.scatter(img['Focus'], img['FWHM'], color='blue')
+            self.ax_right.text(img['Focus'] + 1, img['FWHM'], f'{img["ObsNum"]}', color='blue', fontsize=14)
         self.ax_right.set_xlabel('Focus Value', fontsize=12)
         self.ax_right.set_ylabel('FWHM (pixels)', fontsize=12)
         self.ax_right.set_title('Focus Curve Analysis', fontsize=14, fontweight='bold')
-        self.ax_right.legend(loc='best')
+        # self.ax_right.legend(loc='best')
         self.ax_right.grid(True, alpha=0.3)
 
         self.ax_right.set_aspect('auto')
 
-    def set_right_axis(self, x_values, y_values, a, b, c, x_vertex, y_vertex):
+    def set_right_axis(self, x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers):
         self.ax_right.clear()
 
         x_min, x_max = min(x_values), max(x_values)
         x_smooth = np.linspace(x_min, x_max, 50)
         y_smooth = a * x_smooth**2 + b * x_smooth + c
 
-        self.ax_right.scatter(x_values, y_values, label='Measured FWHM', color='blue')
-        self.ax_right.plot(x_smooth, y_smooth, 'r-', label='Fitted Quadratic')
+        self.ax_right.scatter(x_values, y_values, color='blue')
+        for i, obs in enumerate(obs_values):
+            self.ax_right.text(x_values[i] + 1, y_values[i], f'{obs}', color='blue', fontsize=12)
+        if (outliers):
+            for outlier in outliers:
+                self.ax_right.scatter(outlier['Focus'], outlier['FWHM'], color='yellow', label=f'Outlier Obs {outlier["ObsNum"]}')
+                self.ax_right.text(outlier['Focus'] + 1, outlier['FWHM'], f'{outlier["ObsNum"]}', color='yellow', fontsize=12)
+        self.ax_right.plot(x_smooth, y_smooth, 'r-')
         self.ax_right.scatter([x_vertex], [y_vertex], color='green', label='Optimal focus', zorder=3)
         self.ax_right.axvline(x=x_vertex, color='green', linestyle='--')
 
         self.ax_right.set_xlabel('Focus Value', fontsize=12)
         self.ax_right.set_ylabel('FWHM (pixels)', fontsize=12)
         self.ax_right.set_title('Focus Curve Analysis', fontsize=14, fontweight='bold')
-        self.ax_right.legend(loc='best')
+        self.ax_right.legend(loc='upper right')
         self.ax_right.grid(True, alpha=0.3)
 
         # Calculate aspect ratio to make plot square
@@ -249,7 +258,7 @@ def evaluate_shape(data, source_mask, verbose=False):
 
     shape = {
         'M0': M0,
-        'Centroid': (M1_x, M1_y),
+        'Centroid': (float(M1_x), float(M1_y)),
         'FWHM': average_FWHM
     }
 
@@ -338,22 +347,25 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_x=None, focus_y=None
 
     data, sources = find_sources(data)
     focus_star = evaluate_sources(data, sources, focus_x=focus_x, focus_y=focus_y, verbose=verbose)
-    focus_star['focus'] = focus_value
-    focus_star['ObsNum'] = obs_num
+    
 
-    fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
+    if focus_star["FWHM"] is not None:
+        focus_star['Focus'] = focus_value
+        focus_star['ObsNum'] = obs_num
 
-    if focus_star is not None:
+        fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
         print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
         return focus_star
+    else:
+        return None
 
 def detect_outliers(curve, plot, threshold=2.0):
-    
-    centroid_x = np.array([img['centroid'][0] for img in curve], dtype=float)
-    centroid_y = np.array([img['centroid'][1] for img in curve], dtype=float)
-    
-    median_x = np.median(centroid_x)
-    median_y = np.median(centroid_y)
+
+    centroid_x = np.array([img['Centroid'][0] for img in curve], dtype=float)
+    centroid_y = np.array([img['Centroid'][1] for img in curve], dtype=float)
+
+    median_x = float(np.median(centroid_x))
+    median_y = float(np.median(centroid_y))
 
     distances = np.sqrt((centroid_x - median_x)**2 + (centroid_y - median_y)**2)
     mean_distance = np.mean(distances)
@@ -365,28 +377,26 @@ def detect_outliers(curve, plot, threshold=2.0):
         if distances[i] > outlier_threshold:
             outliers.append(img)
 
-            cutout_size = int(3 * img['fwhm'])
+            cutout_size = int(3 * img['FWHM'])
 
             half_size = cutout_size // 2
     
             # Calculate cutout boundaries
-            x_center = int(round(img['centroid'][0]))
-            y_center = int(round(img['centroid'][1]))
+            x_center = int(round(img['Centroid'][0]))
+            y_center = int(round(img['Centroid'][1]))
             # WHEN MOVING TO KTLPRACTICE, MAKE SURE TO USE CORRECT DICT KEY
 
             x_min = max(0, x_center - half_size)
             x_max = min(1024, x_center + half_size + 1)
             y_min = max(0, y_center - half_size)
             y_max = min(1024, y_center + half_size + 1)
+            # USING HARDCODED 1024 FOR NOW
     
             # highlight cutout region
-            rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='blue', facecolor='none')
+            rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='yellow', facecolor='none')
             plot.ax_left.add_patch(rect)
 
-
-
-    return outliers, float(median_x), float(median_y)
-
+    return outliers, median_x, median_y
 
 # field fine
 # 1109    355
@@ -410,8 +420,6 @@ def focus_finder(obs_start, obs_end, initial_focus, step_size, focus_x=None, foc
     plt.pause(0.1)
 
     images = [] 
-    x_values = []
-    y_values = []
     for obs_index, obs in enumerate(range(obs_start, obs_end + 1)):
         filename = f"../obs_images/raw/d{obs}.fits"
         print(f"Processing {filename}...")
@@ -421,43 +429,46 @@ def focus_finder(obs_start, obs_end, initial_focus, step_size, focus_x=None, foc
 
         focus_star = photometry(filename, obs_num, focus_value, plot=plot, focus_x=focus_x, focus_y=focus_y, verbose=verbose)
         
+        if focus_star is None:
+            print(f"Skipping observation {obs_num} due to no valid focus star found.\n")
+            continue
 
         attr = {
-            'label': focus_star['Label'],
-            'obs': focus_star['ObsNum'],
-            'fwhm': focus_star['FWHM'],
-            'focus_value': focus_star['focus'],
-            'centroid': focus_star['Centroid']
+            'Label': focus_star['Label'],
+            'ObsNum': focus_star['ObsNum'],
+            'FWHM': focus_star['FWHM'],
+            'Focus': focus_star['Focus'],
+            'Centroid': focus_star['Centroid']
         }
         images.append(attr)
        
-        x_values.append(focus_value)
-        y_values.append(focus_star['FWHM'])
-        plot.update_right_axis(x_values, y_values)
+        plot.update_right_axis(images)
 
-    curve = sorted(images, key=lambda img: img['focus_value'])
+    curve = sorted(images, key=lambda img: img['Focus'])
     x_values = []
     y_values = []
+    obs_values = []
     print("Curve found with the following focus values:")
     for img in curve:
-        print(f"OBS: {img['obs']}, Focus: {img['focus_value']}, FWHM: {img['fwhm']}")
-        x_values.append(img['focus_value'])
-        y_values.append(img['fwhm'])
+        print(f"OBS: {img['ObsNum']}, Focus: {img['Focus']}, FWHM: {img['FWHM']}")
+        x_values.append(img['Focus'])
+        y_values.append(img['FWHM'])
+        obs_values.append(img['ObsNum'])
 
-    outliers, centroid_median_x, centroid_median_y = detect_outliers(curve, plot, threshold=2.0)
+    outliers, centroid_median_x, centroid_median_y = detect_outliers(curve, plot)
+    print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
     if outliers:
-        print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
         print(f"Outlier observations:")
         for outlier in outliers:
-            x, y = outlier['centroid']
-            print(f"   d{outlier['obs']}: ({x:.2f}, {y:.2f}) - Focus: {outlier['focus_value']}, FWHM: {outlier['fwhm']:.3f}")
-        
+            x, y = outlier['Centroid']
+            print(f"   d{outlier['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier['Focus']}, FWHM: {outlier['FWHM']:.3f}")
+
 
     a, b, c = quadratic.fit_quadratic(x_values, y_values)
     x_vertex, y_vertex = quadratic.vertex(a, b, c)
     print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
 
-    plot.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex)
+    plot.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers)
 
     plt.ioff()
     plt.show()
@@ -466,10 +477,16 @@ def focus_finder(obs_start, obs_end, initial_focus, step_size, focus_x=None, foc
     return curve
 
 
-def refit_curve(omit, verbose=False):
-    with open('focus_data.txt', 'r') as f:
-        lines = f.readlines()[1:]
-    curve = [dict(zip(['obs', 'focus_value', 'fwhm', 'centroid'], map(str.strip, line.split(',')))) for line in lines]
+def refit_curve(omit, focus_x, focus_y, verbose=False):
+    data = Table.read("focus_data.ecsv")
+    curve = []
+    for line in data:
+        curve.append({
+            'obs': line['ObsNum'],
+            'focus_value': line['Focus'],
+            'fwhm': line['FWHM'],
+            'centroid': (line['CentroidX'], line['CentroidY'])
+        })
     if omit:
         curve = [img for img in curve if int(img['obs']) not in omit]
         print(f'Refitting curve with the following observations omitted: {omit}')
@@ -477,7 +494,7 @@ def refit_curve(omit, verbose=False):
             print('Not enough observations left to refit the curve. Exiting.')
             return None
     else:
-        print('Refitting curve with all observations included.')
+        print('Refitting curve with all observations included.')     
 
     x_values = [float(img['focus_value']) for img in curve]
     y_values = [float(img['fwhm']) for img in curve]
@@ -494,8 +511,8 @@ def refit_curve(omit, verbose=False):
     x_smooth = np.linspace(x_min, x_max, 50)
     y_smooth = a * x_smooth**2 + b * x_smooth + c
 
-    plt.scatter(x_values, y_values, label='Measured FWHM', color='blue')
-    plt.plot(x_smooth, y_smooth, 'r-', label='Fitted Quadratic')
+    plt.scatter(x_values, y_values, color='blue')
+    plt.plot(x_smooth, y_smooth, 'r-')
     plt.scatter([x_vertex], [y_vertex], color='green', label='Optimal focus', zorder=3)
     plt.axvline(x=x_vertex, color='green', linestyle='--')
 
@@ -509,6 +526,70 @@ def refit_curve(omit, verbose=False):
 
     return curve
 
+def reevaluate_curve(focus_x=None, focus_y=None, verbose=False):
+
+    plt.ion()
+
+    plot = Grid(num_rows=4, num_cols=3)
+    plt.show(block=False)
+    plt.pause(0.1)
+
+    data = Table.read("focus_data.ecsv")
+    images = []
+    for line in data:
+        images.append({
+            'ObsNum': line['ObsNum'],
+            'Focus': line['Focus'],
+            'FWHM': line['FWHM'],
+            'Centroid': (line['CentroidX'], line['CentroidY'])
+        })
+
+    curve = []
+    for obs_index, obs in enumerate(images):
+        obs_num = obs['ObsNum']
+        filename = f"../obs_images/raw/d{obs_num}.fits"
+        print(f"Processing {filename}...")
+        focus_value = obs['Focus']
+        plot.index = obs_index
+        
+        focus_star = photometry(filename, obs_num, focus_value, plot=plot, focus_x=focus_x, focus_y=focus_y, verbose=verbose)
+        
+        if focus_star is None:
+            print(f"Skipping observation {obs_num} due to no valid focus star found.\n")
+            continue
+
+        curve.append(focus_star)
+    
+    curve = sorted(curve, key=lambda img: img['Focus'])
+    x_values = []
+    y_values = []
+    obs_values = []
+    print("Curve found with the following focus values:")
+    for img in curve:
+        print(f"OBS: {img['ObsNum']}, Focus: {img['Focus']}, FWHM: {img['FWHM']}")
+        x_values.append(img['Focus'])
+        y_values.append(img['FWHM'])
+        obs_values.append(img['ObsNum'])
+
+    outliers, centroid_median_x, centroid_median_y = detect_outliers(curve, plot)
+    print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
+    if outliers:
+        print(f"Outlier observations:")
+        for outlier in outliers:
+            x, y = outlier['Centroid']
+            print(f"   d{outlier['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier['Focus']}, FWHM: {outlier['FWHM']:.3f}")
+        
+
+    a, b, c = quadratic.fit_quadratic(x_values, y_values)
+    x_vertex, y_vertex = quadratic.vertex(a, b, c)
+    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
+
+    plot.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers)
+
+    plt.ioff()
+    plt.show()
+
+    return curve
 
 
 import argparse
@@ -524,21 +605,40 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--refit', action='store_true', help='Refit the focus curve with omitted outliers')
     parser.add_argument('--omit', type=int, nargs='*', default=None, help='List of observation numbers to omit from the curve fitting')
+    parser.add_argument('--reevaluate', action='store_true', help='Reevaluate the focus curve with existing data')
 
     args = parser.parse_args()
 
-    if args.refit:
-        curve = refit_curve(args.omit, verbose=args.verbose)
-    else:
+    if args.refit is False and args.reevaluate is False:
         curve = focus_finder(args.obs_start, args.obs_end, args.initial_focus, args.step_size,
                              focus_x=args.focus_x, focus_y=args.focus_y, verbose=args.verbose)
-        filename = 'focus_data.txt'
-        with open(filename, 'w') as f:
-            f.write('Obs Num, Focus, FWHM, Centroid\n')
-            for img in curve:
-                f.write(f"{img['obs']}, {img['focus_value']}, {img['fwhm']}, {img['centroid']}\n")
+        data = Table()
+        data['ObsNum'] = [np.array(img['ObsNum'], dtype=int) for img in curve]
+        data['Focus'] = [np.array(img['Focus'], dtype=float) for img in curve]
+        data['FWHM'] = [np.array(img['FWHM'], dtype=float) for img in curve]
+        data['CentroidX'] = [np.array(img['Centroid'][0], dtype=float) for img in curve]
+        data['CentroidY'] = [np.array(img['Centroid'][1], dtype=float) for img in curve]
+        data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
+        data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
+        data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
+        data.write("focus_data.ecsv", overwrite=True)
 
+    elif args.refit is True:
+       curve = refit_curve(args.omit, args.focus_x, args.focus_y, verbose=args.verbose)
+       
+    elif args.reevaluate is True:
+        curve = reevaluate_curve(focus_x=args.focus_x, focus_y=args.focus_y, verbose=args.verbose)
 
+        data = Table()
+        data['ObsNum'] = [np.array(img['ObsNum'], dtype=int) for img in curve]
+        data['Focus'] = [np.array(img['Focus'], dtype=float) for img in curve]
+        data['FWHM'] = [np.array(img['FWHM'], dtype=float) for img in curve]
+        data['CentroidX'] = [np.array(img['Centroid'][0], dtype=float) for img in curve]
+        data['CentroidY'] = [np.array(img['Centroid'][1], dtype=float) for img in curve]
+        data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
+        data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
+        data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
+        data.write("focus_data.ecsv", overwrite=True)
 
 if __name__ == "__main__":
     main()
@@ -552,3 +652,13 @@ if __name__ == "__main__":
 #       allow for refitting with omitted outliers
 #            - can do this by merging phot's photometry and ktl's photometry
 #       python logging
+
+#TODO:  outlier detection graph representation
+#       - option for user to specify sigma threshold
+#       refit using focus star coordinates without having to retake exposures
+#       when doing coarse focus sequence, if no focus star is found, skip it and continue with the next exposure
+#       ecsv output, putting important information in the header
+#       logging 
+#       documentation
+
+# DIFFERENCES: ECSV

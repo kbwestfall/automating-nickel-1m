@@ -268,6 +268,9 @@ def cutout(data, focus_star, obs_num, focus_value, plot, verbose=False):
     # Extract cutout from data
     cutout_data = data[y_min:y_max, x_min:x_max]
 
+     # highlight cutout region
+    rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='red', facecolor='none')
+
     if verbose:
         print(f"Cutout size: {cutout_size}x{cutout_size} pixels")
         print(f"Cutout bounds: x=[{x_min}:{x_max}], y=[{y_min}:{y_max}]")
@@ -275,7 +278,7 @@ def cutout(data, focus_star, obs_num, focus_value, plot, verbose=False):
 
     fit = fit_fwhm(cutout_data)
         
-    plot.set_center_axis(cutout_data, obs_num, focus_value)
+    plot.set_center_axis(cutout_data, obs_num, focus_value, rect)
 
     return fit
 
@@ -330,16 +333,17 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=Fals
     data, sources = find_sources(data)
     focus_star = evaluate_sources(data, sources, focus_coords, verbose=verbose)
 
+    
+    focus_star['Focus'] = focus_value
+    focus_star['ObsNum'] = obs_num
+
     if focus_star['FWHM'] is not None:
-        focus_star['Focus'] = focus_value
-        focus_star['ObsNum'] = obs_num
-
         fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
-
         print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
-        return focus_star
     else:
-        return None
+        print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']}. No fit_fwhm available.\n")
+
+    return focus_star
 
 
 

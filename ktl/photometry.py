@@ -34,11 +34,11 @@ class Grid:
         self.num_cols = num_cols
         self.index = 0
 
-        fig = plt.figure(figsize=(20, 10), constrained_layout=True)
+        self.fig = plt.figure(figsize=(20, 10), constrained_layout=True)
     
         # Create subfigures: left, center, right
-        subfigs = fig.subfigures(1, 3, width_ratios=[1, 2, 1])
-        
+        subfigs = self.fig.subfigures(1, 3, width_ratios=[1, 2, 1])
+
         # Left panel
         self.ax_left = subfigs[0].subplots(1, 1)
         self.ax_left.set_aspect('equal')
@@ -65,9 +65,6 @@ class Grid:
         self.ax_right.set_aspect('equal')
         self.ax_right.set_title('Focus Curve')
 
-        # Add title
-        fig.suptitle(f'Focus Sequence Analysis ({num_rows}×{num_cols})', 
-                    fontsize=16, fontweight='bold')
 
     def set_left_axis(self, data):
         self.ax_left.clear()
@@ -349,3 +346,4 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=Fals
 
 
 
+#TODO: PYTHON LOGGING< DOCUMENTATION< MOVE_TO_TARGET DRY RUN MODE

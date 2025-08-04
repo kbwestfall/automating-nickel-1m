@@ -51,6 +51,9 @@ def setup_logging(log_level='INFO', log_file=None):
 class Keyword:
     def __init__(self, record, exposure, speed):
 
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"Initializing Keyword with record={record}, exposure={exposure}, speed={speed}")
+
         self.record = record
         self.exposure = exposure
         self.speed = speed
@@ -79,13 +82,16 @@ class Keyword:
 
     def event_callback(self, keyword):
         self.event_value = keyword.read()
+        self.logger.debug(f'EVENT updated: {self.event_value}')
         print(f'update EVENT: {self.event_value}')
 
     def filepath_callback(self, keyword):
         self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
-        print(f'update FILEPATH: {self.filepath}')
+        self.logger.debug(f'FILEPATH updated: {self.filepath}')
+        # print(f'update FILEPATH: {self.filepath}')
 
     def wait_until(self, keyword, expected_value, timeout=15):
+        self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
         start_time = time.time()
         while time.time() - start_time < timeout:
             if keyword.read() in expected_value:
@@ -97,63 +103,79 @@ class Keyword:
 
 class Event:
     def __init__(self, keyword):
-
+        self.logger = logging.getLogger(__name__)
         self.keyword = keyword
 
     ### CHANGE FOCUS ###
     def change_focus(self, focus_value):
 
-        print(f'POCSECPD: {self.keyword.secpd_key.read()}')
-        print(f'POCSECPA: {self.keyword.secpa_key.read()}')
+        self.logger.info(f"Changing focus to {focus_value}")
+        
+        self.logger.debug(f'Current POCSECPD: {self.keyword.secpd_key.read()}')
+        self.logger.debug(f'Current POCSECPA: {self.keyword.secpa_key.read()}')
 
         if abs(float(self.keyword.secpd_key.read()) - focus_value) < .1:
             print(f'POCSECPD already set to {focus_value}. No change needed.')
             return
         
         if focus_value < 165 or focus_value > 500:
-            raise ValueError(f"Focus value {focus_value} is out of range (165-500).")
+            error_msg = f"Focus value {focus_value} is out of range (165-500)."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
-            raise Exception("Controller not ready. Cannot take exposure.")
+            error_msg = "Controller not ready. Cannot change focus."
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
 
-        print(f'POCSECLK: {self.keyword.seclk_key.read()}')
+        self.logger.debug(f'Current POCSECLK: {self.keyword.seclk_key.read()}')
         self.keyword.seclk_key.write('off')
-        print(f'POCSECLK: {self.keyword.seclk_key.read()}')
+        self.logger.debug("Set POCSECLK to 'off'")
 
-        self.keyword.secpd_key.write(focus_value)
-        print(f'POCSECPD: {self.keyword.secpd_key.read()}')
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
+        self.keyword.secpd_key.write(focus_value)
+        self.logger.debug(f'Set POCSECPD to {focus_value}')
+        print(f'POCSECPD: {self.keyword.secpd_key.read()}')
+        
 
         if not self.keyword.seclk_key.waitFor('== on', timeout=30):
-            raise Exception("POCSECLK did not turn on. Focus change failed.")
+            error_msg = "POCSECLK did not turn on. Focus change failed."
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+
+        self.logger.info(f"Successfully changed focus to {focus_value}")
     ### CHANGE FOCUS ###
 
     ### TAKE EXPOSURE ###
     def exposure(self):
+        self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
         if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
-            raise Exception("Controller not ready. Cannot take exposure.")
+            error_msg = "Controller not ready. Cannot take exposure."
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
 
         self.keyword.record_key.write(self.keyword.record)
-        record_value = self.keyword.record_key.read()
-        print(f'RECORD: {record_value}')
+        self.logger.debug(f'Set RECORD: {self.keyword.record_key.read()}')
 
         self.keyword.exposure_key.write(self.keyword.exposure)
-        exposure_value = self.keyword.exposure_key.read()
-        print(f'EXPOSURE: {exposure_value}')
+        self.logger.debug(f'Set EXPOSURE: {self.keyword.exposure_key.read()}')
 
         self.keyword.speed_key.write(self.keyword.speed)
-        speed_value = self.keyword.speed_key.read()
-        print(f'READSPEED: {speed_value}')
+        self.logger.debug(f'Set SPEED: {self.keyword.speed_key.read()}')
 
         self.keyword.start_key.write(self.keyword.start)
-        start_value = self.keyword.start_key.read()
-        print(f'START: {start_value}')
+        self.logger.debug(f'SET START: {self.keyword.start_key.read()}')
 
+        self.logger.debug("Waiting for ReadoutBegin...")
         self.keyword.event_key.waitFor('== ReadoutBegin', timeout=round(self.keyword.exposure * 1.2))
 
         if self.keyword.event_key.waitFor('== ReadoutEnd', timeout=30):
-            pass
+            self.logger.debug("Exposure completed successfully")
+        else:
+            error_msg = "ReadoutEnd not detected within timeout"
+            self.logger.warning(error_msg)
+            raise Exception(error_msg)
     ### TAKE EXPOSURE ###
 
     def sequence(self, focus_value, focus_coords, grid):
@@ -169,15 +191,16 @@ class Event:
         self.exposure()
 
         filepath = self.keyword.filepath
+        self.logger.debug(f"Exposure saved at: {filepath}")
         print(f"Exposure being saved at: {filepath}")
 
         obs_num = self.keyword.obs_key.read()
 
         hdu = fits.open(filepath)
-        print(hdu.info())
 
         self.focus_star = photometry(filepath, obs_num, focus_value, grid, focus_coords, verbose=True)
         self.fwhm = self.focus_star['FWHM']
+        self.logger.debug(f"Photometry complete - FWHM: {self.fwhm}")
         print(f" {filepath} FWHM: {self.fwhm} \n")
 
 
@@ -359,6 +382,8 @@ def detect_outliers(curve, plot, threshold=2.0):
             rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='yellow', facecolor='none')
             plot.ax_left.add_patch(rect)
 
+    plot.fig.suptitle(f'Median Centroid ({median_x:.2f}×{median_y:.2f})', fontsize=16, fontweight='bold')
+
     return outliers, float(median_x), float(median_y)
 
 
@@ -500,7 +525,6 @@ def main():
     # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
 
     event = Event(keyword)
-    print(f'EVENT: {keyword.event_key.read()}')
 
     filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
 

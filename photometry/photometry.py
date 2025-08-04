@@ -36,11 +36,11 @@ class Grid:
         self.num_cols = num_cols
         self.index = 0
 
-        fig = plt.figure(figsize=(20, 10), constrained_layout=True)
+        self.fig = plt.figure(figsize=(20, 10), constrained_layout=True)
     
         # Create subfigures: left, center, right
-        subfigs = fig.subfigures(1, 3, width_ratios=[1, 2, 1])
-        
+        subfigs = self.fig.subfigures(1, 3, width_ratios=[1, 2, 1])
+
         # Left panel
         self.ax_left = subfigs[0].subplots(1, 1)
         self.ax_left.set_aspect('equal')
@@ -65,10 +65,6 @@ class Grid:
         # Right panel
         self.ax_right = subfigs[2].subplots(1, 1)
         self.ax_right.set_title('Focus Curve')
-
-        # Add title
-        fig.suptitle(f'Focus Sequence Analysis ({num_rows}×{num_cols})', 
-                    fontsize=16, fontweight='bold')
 
     def set_left_axis(self, data):
         self.ax_left.clear()
@@ -393,8 +389,10 @@ def detect_outliers(curve, plot, threshold=3.0):
             # USING HARDCODED 1024 FOR NOW
     
             # highlight cutout region
-            rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='yellow', facecolor='none')
+            rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='blue', facecolor='none')
             plot.ax_left.add_patch(rect)
+
+    plot.fig.suptitle(f'Median Centroid ({median_x:.2f}×{median_y:.2f})', fontsize=16, fontweight='bold')
 
     return outliers, median_x, median_y
 

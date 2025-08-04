@@ -10,7 +10,9 @@ import quadratic
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import argparse
+
 
 # detect threshold
 # use threshold to detect sources

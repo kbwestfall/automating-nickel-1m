@@ -7,9 +7,11 @@ import sys
 from datetime import datetime
 
 from astropy.io import fits
+from astropy.table import Table
 from photometry import photometry, Grid
 import quadratic
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 
 def setup_logging(log_level='INFO', log_file=None):
@@ -83,7 +85,6 @@ class Keyword:
     def event_callback(self, keyword):
         self.event_value = keyword.read()
         self.logger.debug(f'EVENT updated: {self.event_value}')
-        print(f'update EVENT: {self.event_value}')
 
     def filepath_callback(self, keyword):
         self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
@@ -96,7 +97,6 @@ class Keyword:
         while time.time() - start_time < timeout:
             if keyword.read() in expected_value:
                 return True
-            time.sleep(1)
         return False
 
         
@@ -123,7 +123,7 @@ class Event:
             self.logger.error(error_msg)
             raise ValueError(error_msg)
 
-        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
+        if not self.keyword.wait_until(self.keyword.event_key,'ControllerReady', timeout=15):
             error_msg = "Controller not ready. Cannot change focus."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -136,13 +136,12 @@ class Event:
         self.keyword.secpd_key.write(focus_value)
         self.logger.debug(f'Set POCSECPD to {focus_value}')
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
-        
 
-        if not self.keyword.seclk_key.waitFor('== on', timeout=30):
+        if not self.keyword.wait_until(self.keyword.seclk_key, 'on', timeout=30):
             error_msg = "POCSECLK did not turn on. Focus change failed."
             self.logger.error(error_msg)
             raise Exception(error_msg)
-
+            
         self.logger.info(f"Successfully changed focus to {focus_value}")
     ### CHANGE FOCUS ###
 
@@ -150,7 +149,7 @@ class Event:
     def exposure(self):
         self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
-        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
+        if not self.keyword.wait_until(self.keyword.event_key, 'ControllerReady', timeout=15):
             error_msg = "Controller not ready. Cannot take exposure."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -168,12 +167,12 @@ class Event:
         self.logger.debug(f'SET START: {self.keyword.start_key.read()}')
 
         self.logger.debug("Waiting for ReadoutBegin...")
-        self.keyword.event_key.waitFor('== ReadoutBegin', timeout=round(self.keyword.exposure * 1.2))
+        self.keyword.wait_until(self.keyword.event_key, 'ReadoutBegin', timeout=round(self.keyword.exposure * 1.2))
 
-        if self.keyword.event_key.waitFor('== ReadoutEnd', timeout=30):
+        if self.keyword.wait_until(self.keyword.event_key, 'ControllerReady', timeout=30):
             self.logger.debug("Exposure completed successfully")
         else:
-            error_msg = "ReadoutEnd not detected within timeout"
+            error_msg = "ControllerReady not detected within timeout"
             self.logger.warning(error_msg)
             raise Exception(error_msg)
     ### TAKE EXPOSURE ###
@@ -185,6 +184,7 @@ class Event:
         #     self.keyword.file_key.write(f"{count}focus_")
         #     self.keyword.obs_key.write(str(focus_value))
         #     self.keyword.suffix_key.write("fits")
+
 
         self.change_focus(focus_value)
         self.focus_value = focus_value
@@ -204,7 +204,8 @@ class Event:
         print(f" {filepath} FWHM: {self.fwhm} \n")
 
 
-def curve_finder(image1, image2, seen, keyword, grid, direction=None):
+
+def curve_finder(image1, image2, seen, focus_coords, keyword, grid, direction=None):
     seen.add(image1)
     seen.add(image2)
 
@@ -215,24 +216,24 @@ def curve_finder(image1, image2, seen, keyword, grid, direction=None):
         if direction is None:
             direction = 'right'
         if direction == 'left':
-            return curve_helper(image1, image2, seen, keyword, grid)
+            return curve_helper(image1, image2, seen, focus_coords, keyword, grid)
         focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
         image3.sequence(focus3, focus_coords, grid)
         grid.index += 1
-        return curve_finder(image2, image3, seen, keyword, grid, direction)
+        return curve_finder(image2, image3, seen, focus_coords, keyword, grid, direction)
     elif image1.fwhm < image2.fwhm:
         if direction is None:
             direction = 'left'
         if direction == 'right':
-            return curve_helper(image1, image2, seen, keyword, grid)
+            return curve_helper(image1, image2, seen, focus_coords, keyword, grid)
         focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
         image3 = Event(keyword)
         image3.sequence(focus3, focus_coords, grid)
         grid.index += 1
-        return curve_finder(image3, image1, seen, keyword, grid, direction)
+        return curve_finder(image3, image1, seen, focus_coords, keyword, grid, direction)
 
-def curve_helper(image1, image2, seen, keyword, grid, iterations=2):
+def curve_helper(image1, image2, seen, focus_coords, keyword, grid, iterations=2):
     if iterations > 0:
         if image1.fwhm is None or image2.fwhm is None:
             raise Exception("A source could not be detected in one of the images. Cannot continue with focus finding.")
@@ -243,20 +244,23 @@ def curve_helper(image1, image2, seen, keyword, grid, iterations=2):
             image3.sequence(focus3, focus_coords, grid)
             grid.index += 1
             seen.add(image3)
-            return curve_helper(image3, image1, seen, keyword, grid, iterations-1)
+            return curve_helper(image3, image1, seen, focus_coords, keyword, grid, iterations-1)
         elif image1.fwhm < image2.fwhm:
             focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
             image3 = Event(keyword)
             image3.sequence(focus3, focus_coords, grid)
             grid.index += 1
             seen.add(image3)
-            return curve_helper(image2, image3, seen, keyword, grid, iterations-1)
+            return curve_helper(image2, image3, seen, focus_coords, keyword, grid, iterations-1)
     else:
         return seen
 
 def auto_focus_finder(initial_focus, step_size, focus_coords, keyword):
 
     grid = Grid()
+    plt.ion()
+    plt.show(block=False)
+    plt.pause(0.1)
 
     seen = set()
     
@@ -268,7 +272,7 @@ def auto_focus_finder(initial_focus, step_size, focus_coords, keyword):
     image2.sequence(initial_focus + step_size, focus_coords, grid)
     grid.index += 1
 
-    curve = curve_finder(image1, image2, seen, keyword, grid)
+    curve = curve_finder(image1, image2, seen, focus_coords, keyword, grid)
     if len(curve) < 3:
         raise Exception("Not enough images. Cannot find optimal focus.")
     curve = sorted(curve, key=lambda img: img.focus_value)
@@ -304,6 +308,9 @@ def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keywo
         raise Exception("Not enough images to find a focus curve. Increase the range or decrease the step size.")
 
     grid = Grid()
+    plt.ion()
+    plt.show(block=False)
+    plt.pause(0.1)
 
     curve = set()
     
@@ -317,10 +324,11 @@ def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keywo
             print(f"Image at focus {focus} has no FWHM. Skipping.")
             continue
         curve.add(image)
+        plt.draw()
 
     outliers, median_x, median_y = detect_outliers(curve, grid, threshold=2.0)
     if outliers:
-        print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
+        print(f"\n Median centroid: {median_x:.2f}, {median_y:.2f}")
         print(f"Outlier observations:")
         for outlier in outliers:
             x, y = outlier.focus_star['Centroid']
@@ -439,6 +447,10 @@ def refit_curve(omit, verbose=False):
 
     return curve
 
+class TempFocusObject:
+    def __init__(self, focus_star_dict):
+        self.focus_star = focus_star_dict
+
 def reevaluate(focus_coords, keyword):
 
     try:
@@ -456,9 +468,13 @@ def reevaluate(focus_coords, keyword):
         })
 
     grid = Grid()
+    plt.ion()
+    plt.show(block=False)
+    plt.pause(0.1)
+
     curve = set()
 
-    for obs_index, obs in enumerate(curve):
+    for obs_index, obs in enumerate(images):
         obs_num = obs['ObsNum']
         filename = f"{keyword.dir_key.read()}/nickel/{keyword.file_key.read()}{obs_num}.{keyword.suffix_key.read()}"
         focus_value = obs['Focus']
@@ -470,9 +486,10 @@ def reevaluate(focus_coords, keyword):
             print(f"Image {filename} has no FWHM. Skipping.")
             continue
 
-        curve.add(focus_star)
+        temp_obj = TempFocusObject(focus_star)
+        curve.add(temp_obj)
 
-    curve = sorted(curve, key=lambda img: img['Focus'])
+    curve = sorted(curve, key=lambda img: img.focus_star['Focus'])
 
     outliers, median_x, median_y = detect_outliers(curve, grid, threshold=2.0)
     if outliers:
@@ -482,16 +499,17 @@ def reevaluate(focus_coords, keyword):
             x, y = outlier.focus_star['Centroid']
             print(f"   d{outlier.focus_star['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier.focus_star['Focus']}, FWHM: {outlier.focus_star['FWHM']:.3f}")
 
+    print(curve)
     x_values = []
     y_values = []
     obs_values = []
     print("Reevaluated curve with the following focus values:")
     for img in curve:
-        print(f"OBS: {img['ObsNum']} Focus: {img['Focus']}, FWHM: {img['FWHM']}")
-        x_values.append(img['Focus'])
-        y_values.append(img['FWHM'])
-        obs_values.append(img['ObsNum'])
-    
+        print(f"OBS: {img.focus_star['ObsNum']} Focus: {img.focus_star['Focus']}, FWHM: {img.focus_star['FWHM']}")
+        x_values.append(img.focus_star['Focus'])
+        y_values.append(img.focus_star['FWHM'])
+        obs_values.append(img.focus_star['ObsNum'])
+
     a, b, c = quadratic.fit_quadratic(x_values, y_values)
     x_vertex, y_vertex = quadratic.vertex(a, b, c)
     print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
@@ -508,9 +526,9 @@ def main():
     logger.info("Starting focus finding process")
 
     parser = argparse.ArgumentParser(description="Automate the focus finding process.")
-    parser.add_argument('-fs', '--focus_start', default=350, type=float, help='Start Focus value')
-    parser.add_argument('-fe', '--focus_end', default=None, type=float, help='End Focus value')
-    parser.add_argument('-s', '--step_size', default=5, type=float, help='Step size for focus increments')
+    parser.add_argument('-fs', '--focus_start', default=350, type=int, help='Start Focus value')
+    parser.add_argument('-fe', '--focus_end', default=None, type=int, help='End Focus value')
+    parser.add_argument('-s', '--step_size', default=5, type=int, help='Step size for focus increments')
     parser.add_argument('-el', '--length_exposure', default=1, type=float, help='Exposure length in seconds')
     parser.add_argument('-es', '--exposure_speed', default='Fast', choices=['Slow', 'Medium', 'Fast'], help='Exposure speed: Slow, Medium, Fast')
     parser.add_argument('--focus_coords', type=float, nargs='*', default=None, help='Focus star coordinates (x, y) for manual focus finding')
@@ -529,17 +547,15 @@ def main():
     filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
 
     if args.reevaluate is True:
-        plt.ion()
-        plt.show(block=False)
 
         curve = reevaluate(args.focus_coords, keyword)
 
         data = Table()
-        data['ObsNum'] = [np.array(img['ObsNum'], dtype=int) for img in curve]
-        data['Focus'] = [np.array(img['Focus'], dtype=float) for img in curve]
-        data['FWHM'] = [np.array(img['FWHM'], dtype=float) for img in curve]
-        data['CentroidX'] = [np.array(img['Centroid'][0], dtype=float) for img in curve]
-        data['CentroidY'] = [np.array(img['Centroid'][1], dtype=float) for img in curve]
+        data['ObsNum'] = [np.array(img.focus_star['ObsNum'], dtype=int) for img in curve]
+        data['Focus'] = [np.array(img.focus_star['Focus'], dtype=float) for img in curve]
+        data['FWHM'] = [np.array(img.focus_star['FWHM'], dtype=float) for img in curve]
+        data['CentroidX'] = [np.array(img.focus_star['Centroid'][0], dtype=float) for img in curve]
+        data['CentroidY'] = [np.array(img.focus_star['Centroid'][1], dtype=float) for img in curve]
         data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
         data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
         data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
@@ -554,12 +570,10 @@ def main():
     #check if pocstop is enabled
     if keyword.stop_key.read() != 0:
         print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
-    if not keyword.stop_key.waitFor('== 0', timeout=30):
+    if not keyword.wait_until(keyword.stop_key, 'allowed', timeout=30):
         raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
     
     if args.refit is False and args.reevaluate is False:
-        plt.ion()
-        plt.show(block=False)
 
         if args.focus_end:
             curve = manual_focus_finder(args.focus_start, args.focus_end, args.step_size, args.focus_coords, keyword)
@@ -567,11 +581,11 @@ def main():
             curve = auto_focus_finder(args.focus_start, args.step_size, args.focus_coords, keyword)
 
         data = Table()
-        data['ObsNum'] = [np.array(img['ObsNum'], dtype=int) for img in curve]
-        data['Focus'] = [np.array(img['Focus'], dtype=float) for img in curve]
-        data['FWHM'] = [np.array(img['FWHM'], dtype=float) for img in curve]
-        data['CentroidX'] = [np.array(img['Centroid'][0], dtype=float) for img in curve]
-        data['CentroidY'] = [np.array(img['Centroid'][1], dtype=float) for img in curve]
+        data['ObsNum'] = [np.array(img.focus_star['ObsNum'], dtype=int) for img in curve]
+        data['Focus'] = [np.array(img.focus_star['Focus'], dtype=float) for img in curve]
+        data['FWHM'] = [np.array(img.focus_star['FWHM'], dtype=float) for img in curve]
+        data['CentroidX'] = [np.array(img.focus_star['Centroid'][0], dtype=float) for img in curve]
+        data['CentroidY'] = [np.array(img.focus_star['Centroid'][1], dtype=float) for img in curve]
         data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
         data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
         data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
@@ -579,7 +593,7 @@ def main():
    
 
     plt.ioff()
-    plt.show()
+    plt.show(block=True)
 
 
 if __name__ == "__main__":

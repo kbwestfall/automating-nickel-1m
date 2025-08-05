@@ -11,7 +11,6 @@ import warnings
 warnings.filterwarnings("ignore", message="Input line .* contained no data")
 
 def wait_until(self, keyword, expected_value, timeout=15):
-        self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
         start_time = time.time()
         while time.time() - start_time < timeout:
             if keyword.read() in expected_value:
@@ -62,8 +61,8 @@ def move_to_target(target_coords):
 
     if stop_key.read() != 0:
         print("POCSTOP is 'disabled'. Waiting for 'allowed' to allow motion")
-    if not stop_key.waitFor('== 0', timeout=30):
-        raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
+    if not wait_until(stop_key, 'allowed', timeout=30):
+        raise Exception("POCSTOP is 'disabled'. Set to 'allowed' to allow motion")
 
     if track_key.read() == 'off':
         raise Exception("Tracking is not enabled. Please enable tracking before moving to target.")
@@ -72,13 +71,13 @@ def move_to_target(target_coords):
     if target_key.read() != '0':
         print("Telescope not ready to move to target. Waiting for ready (POCOT to be 0)")
         # 1->have not reached target, 0-> on target and stable, -1-> failed to reach target within time limit and not on target.
-    if not target_key.waitFor('== 0', timeout=30):
+    if not wait_until(target_key, '0', timeout=30):
         raise Exception("Telescope is not ready to move to target. Please wait until the telescope is ready.")
 
     ra_desired.write(target_coords.ra.to('hourangle').value)
     dec_desired.write(target_coords.dec.to('deg').value)
 
-    if target_key.waitFor('== 0', timeout=60):
+    if wait_until(target_key, '0', timeout=60):
         print("Telescope is now on target.")
     else:
         if target_key.read() == '-1':

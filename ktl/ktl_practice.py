@@ -91,6 +91,18 @@ class Keyword:
         self.logger.debug(f'FILEPATH updated: {self.filepath}')
         # print(f'update FILEPATH: {self.filepath}')
 
+    def general_callback(self, keyword):
+        self.general = keyword.read()
+    
+    def wait_for(self, keyword, expected_value, timeout=15):
+        keyword.callback(self.general_callback)
+        keyword.monitor(start=True)
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if self.general in expected_value:
+                return True
+        return False
+
     def wait_until(self, keyword, expected_value, timeout=15):
         self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
         start_time = time.time()
@@ -102,9 +114,10 @@ class Keyword:
         
 
 class Event:
-    def __init__(self, keyword):
+    def __init__(self, keyword, verbose):
         self.logger = logging.getLogger(__name__)
         self.keyword = keyword
+        self.verbose = verbose
 
     ### CHANGE FOCUS ###
     def change_focus(self, focus_value):
@@ -123,7 +136,7 @@ class Event:
             self.logger.error(error_msg)
             raise ValueError(error_msg)
 
-        if not self.keyword.wait_until(self.keyword.event_key,'ControllerReady', timeout=15):
+        if not self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=15):
             error_msg = "Controller not ready. Cannot change focus."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -137,7 +150,7 @@ class Event:
         self.logger.debug(f'Set POCSECPD to {focus_value}')
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
 
-        if not self.keyword.wait_until(self.keyword.seclk_key, 'on', timeout=30):
+        if not self.keyword.wait_until(self.keyword.seclk_key, ['on'], timeout=30):
             error_msg = "POCSECLK did not turn on. Focus change failed."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -149,7 +162,7 @@ class Event:
     def exposure(self):
         self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
-        if not self.keyword.wait_until(self.keyword.event_key, 'ControllerReady', timeout=15):
+        if not self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=15):
             error_msg = "Controller not ready. Cannot take exposure."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -167,9 +180,9 @@ class Event:
         self.logger.debug(f'SET START: {self.keyword.start_key.read()}')
 
         self.logger.debug("Waiting for ReadoutBegin...")
-        self.keyword.wait_until(self.keyword.event_key, 'ReadoutBegin', timeout=round(self.keyword.exposure * 1.2))
+        self.keyword.wait_until(self.keyword.event_key, ['ReadoutBegin'], timeout=round(self.keyword.exposure * 1.2))
 
-        if self.keyword.wait_until(self.keyword.event_key, 'ControllerReady', timeout=30):
+        if self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=30):
             self.logger.debug("Exposure completed successfully")
         else:
             error_msg = "ControllerReady not detected within timeout"
@@ -198,7 +211,7 @@ class Event:
 
         hdu = fits.open(filepath)
 
-        self.focus_star = photometry(filepath, obs_num, focus_value, grid, focus_coords, verbose=True)
+        self.focus_star = photometry(filepath, obs_num, focus_value, grid, focus_coords, verbose=self.verbose)
         self.fwhm = self.focus_star['FWHM']
         self.logger.debug(f"Photometry complete - FWHM: {self.fwhm}")
         print(f" {filepath} FWHM: {self.fwhm} \n")
@@ -395,7 +408,7 @@ def detect_outliers(curve, plot, threshold=2.0):
     return outliers, float(median_x), float(median_y)
 
 
-def refit_curve(omit, verbose=False):
+def refit_curve(omit):
     try:
         data = Table.read("focus_data.ecsv")
     except Exception as e:
@@ -451,7 +464,7 @@ class TempFocusObject:
     def __init__(self, focus_star_dict):
         self.focus_star = focus_star_dict
 
-def reevaluate(focus_coords, keyword):
+def reevaluate(focus_coords, keyword, verbose):
 
     try:
         data = Table.read("focus_data.ecsv")
@@ -480,7 +493,7 @@ def reevaluate(focus_coords, keyword):
         focus_value = obs['Focus']
         grid.index = obs_index
 
-        focus_star = photometry(filename, obs_num, focus_value, grid, focus_coords, verbose=True)
+        focus_star = photometry(filename, obs_num, focus_value, grid, focus_coords, verbose=verbose)
 
         if focus_star is None:
             print(f"Image {filename} has no FWHM. Skipping.")
@@ -535,6 +548,7 @@ def main():
     parser.add_argument('--refit', action='store_true', help='Refit the focus curve with omitted outliers')
     parser.add_argument('--omit', type=int, nargs='*', default=None, help='List of observation numbers to omit from the curve fitting')
     parser.add_argument('--reevaluate', action='store_true', help='Reevaluate the focus curve with the last recorded focus data')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output for debugging')
     args = parser.parse_args()
 
     logger.info(f"Arguments: {vars(args)}")
@@ -542,13 +556,13 @@ def main():
     keyword = Keyword('Yes', args.length_exposure, args.exposure_speed)
     # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
 
-    event = Event(keyword)
+    event = Event(keyword, args.verbose)
 
     filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
 
     if args.reevaluate is True:
 
-        curve = reevaluate(args.focus_coords, keyword)
+        curve = reevaluate(args.focus_coords, keyword, args.verbose)
 
         data = Table()
         data['ObsNum'] = [np.array(img.focus_star['ObsNum'], dtype=int) for img in curve]
@@ -562,7 +576,7 @@ def main():
         data.write("focus_data.ecsv", overwrite=True)
 
     elif args.refit is True:
-        curve = refit_curve(args.omit, verbose=False)
+        curve = refit_curve(args.omit)
 
     if not keyword.wait_until(keyword.event_key, ['ControllerReady', 'ExposeSequenceDone'], timeout=15):
         raise Exception("Controller not ready. Cannot take exposure.")
@@ -570,7 +584,7 @@ def main():
     #check if pocstop is enabled
     if keyword.stop_key.read() != 0:
         print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
-    if not keyword.wait_until(keyword.stop_key, 'allowed', timeout=30):
+    if not keyword.wait_until(keyword.stop_key, ['allowed'], timeout=30):
         raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
     
     if args.refit is False and args.reevaluate is False:

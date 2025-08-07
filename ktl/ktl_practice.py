@@ -56,6 +56,8 @@ class Keyword:
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"Initializing Keyword with record={record}, exposure={exposure}, speed={speed}")
 
+        self.verbose = False
+
         self.record = record
         self.exposure = exposure
         self.speed = speed
@@ -96,7 +98,7 @@ class Keyword:
     
     def wait_for(self, keyword, expected_value, timeout=15):
         keyword.callback(self.general_callback)
-        keyword.monitor(start=True)
+        keyword.monitor(start=True, prime=True)
         start_time = time.time()
         while time.time() - start_time < timeout:
             if self.general in expected_value:
@@ -136,13 +138,14 @@ class Event:
             self.logger.error(error_msg)
             raise ValueError(error_msg)
 
-        if not self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=15):
+        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
             error_msg = "Controller not ready. Cannot change focus."
             self.logger.error(error_msg)
             raise Exception(error_msg)
 
         self.logger.debug(f'Current POCSECLK: {self.keyword.seclk_key.read()}')
         self.keyword.seclk_key.write('off')
+        self.keyword.seclk_key.read()
         self.logger.debug("Set POCSECLK to 'off'")
 
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
@@ -150,7 +153,7 @@ class Event:
         self.logger.debug(f'Set POCSECPD to {focus_value}')
         print(f'POCSECPD: {self.keyword.secpd_key.read()}')
 
-        if not self.keyword.wait_until(self.keyword.seclk_key, ['on'], timeout=30):
+        if not self.keyword.seclk_key.waitFor('== on', timeout=30):
             error_msg = "POCSECLK did not turn on. Focus change failed."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -162,7 +165,7 @@ class Event:
     def exposure(self):
         self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
-        if not self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=15):
+        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
             error_msg = "Controller not ready. Cannot take exposure."
             self.logger.error(error_msg)
             raise Exception(error_msg)
@@ -179,10 +182,18 @@ class Event:
         self.keyword.start_key.write(self.keyword.start)
         self.logger.debug(f'SET START: {self.keyword.start_key.read()}')
 
-        self.logger.debug("Waiting for ReadoutBegin...")
-        self.keyword.wait_until(self.keyword.event_key, ['ReadoutBegin'], timeout=round(self.keyword.exposure * 1.2))
+        if not self.keyword.event_key.waitFor('== ExposureBegin', timeout=30):
+            error_msg = "ExposureBegin not detected within timeout"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)  
 
-        if self.keyword.wait_until(self.keyword.event_key, ['ControllerReady'], timeout=30):
+        self.logger.debug("Waiting for ExposureEnd...")
+        if not self.keyword.event_key.waitFor('== ExposureEnd', timeout=round(self.keyword.exposure * 1.2)):
+            error_msg = "ExposureEnd not detected within timeout"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+
+        if self.keyword.event_key.waitFor('== ControllerReady', timeout=30):
             self.logger.debug("Exposure completed successfully")
         else:
             error_msg = "ControllerReady not detected within timeout"
@@ -317,7 +328,7 @@ def auto_focus_finder(initial_focus, step_size, focus_coords, keyword):
     return curve
 
 def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keyword):
-    if (end_focus - initial_focus) // step_size < 3:
+    if (end_focus - initial_focus) // step_size < 2:
         raise Exception("Not enough images to find a focus curve. Increase the range or decrease the step size.")
 
     grid = Grid()
@@ -329,7 +340,7 @@ def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keywo
     
     focus = initial_focus
     while focus <= end_focus:
-        image = Event(keyword)
+        image = Event(keyword, keyword.verbose)
         image.sequence(focus, focus_coords, grid)
         grid.index += 1
         focus += step_size
@@ -557,6 +568,7 @@ def main():
     # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
 
     event = Event(keyword, args.verbose)
+    keyword.verbose = args.verbose
 
     filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
 
@@ -578,13 +590,13 @@ def main():
     elif args.refit is True:
         curve = refit_curve(args.omit)
 
-    if not keyword.wait_until(keyword.event_key, ['ControllerReady', 'ExposeSequenceDone'], timeout=15):
+    if keyword.event_key.read() != 'ControllerReady' and keyword.event_key.read() != 'ExposeSequenceDone':
         raise Exception("Controller not ready. Cannot take exposure.")
 
     #check if pocstop is enabled
-    if keyword.stop_key.read() != 0:
+    if keyword.stop_key.read() == 1:
         print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
-    if not keyword.wait_until(keyword.stop_key, ['allowed'], timeout=30):
+    if not keyword.stop_key.waitFor('== allowed', timeout=30):
         raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
     
     if args.refit is False and args.reevaluate is False:

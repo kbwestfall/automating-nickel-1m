@@ -122,4 +122,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# note that if first time acquiring target and not idling on pocot=0, then it will timeout waiting for pocot=0
+# note: if first time acquiring target and not idling on pocot=0, it will timeout waiting for pocot=0 unless the user moves to a target and is successful within the timeout period.

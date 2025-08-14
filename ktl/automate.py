@@ -43,7 +43,7 @@ def setup_logging(log_level='INFO', log_file=None):
     # File handler (optional)
     if log_file:
         file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)  # Always log everything to file
+        file_handler.setLevel(logging.DEBUG)  
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     
@@ -96,22 +96,22 @@ class Keyword:
     def general_callback(self, keyword):
         self.general = keyword.read()
     
-    def wait_for(self, keyword, expected_value, timeout=15):
-        keyword.callback(self.general_callback)
-        keyword.monitor(start=True, prime=True)
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if self.general in expected_value:
-                return True
-        return False
+    # def wait_for(self, keyword, expected_value, timeout=15):
+    #     keyword.callback(self.general_callback)
+    #     keyword.monitor(start=True, prime=True)
+    #     start_time = time.time()
+    #     while time.time() - start_time < timeout:
+    #         if self.general in expected_value:
+    #             return True
+    #     return False
 
-    def wait_until(self, keyword, expected_value, timeout=15):
-        self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if keyword.read() in expected_value:
-                return True
-        return False
+    # def wait_until(self, keyword, expected_value, timeout=15):
+    #     self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
+    #     start_time = time.time()
+    #     while time.time() - start_time < timeout:
+    #         if keyword.read() in expected_value:
+    #             return True
+    #     return False
 
         
 

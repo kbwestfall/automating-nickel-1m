@@ -204,18 +204,21 @@ class FocusSequence:
             self.logger.error(error_msg)
             raise ValueError(error_msg)
         
-        embed()
-        exit()
-
-        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
-            error_msg = "Controller not ready. Cannot change focus."
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            error_msg = "Camera exposure state not ready. Cannot change focus."
             self.logger.error(error_msg)
             raise Exception(error_msg)
 
-        self.logger.debug(f'Current POCSECLK: {self.keyword.seclk_key.read()}')
-        self.keyword.seclk_key.write('off')
-        self.keyword.seclk_key.read()
+        self.logger.debug(f'Current POCSECLK: {self.seclk.read()}')
+        self.seclk.write('off')
+        self.seclk.read()
         self.logger.debug("Set POCSECLK to 'off'")
+
+        self.seclk.write('on')
+        self.seclk.read()
+        self.logger.debug("Set POCSECLK to 'on'")
+        embed()
+        exit()
 
         print(f'POCSECPA: {self.keyword.secpa_key.read()}')
         self.keyword.secpd_key.write(focus_value)

@@ -173,7 +173,19 @@ class FocusSequence:
         if self._seclk is None:
             self._seclk = ktl.cache('nickelpoco', 'POCSECLK')
         return self._seclk
+    
+    @property
+    def expstate(self):
+        if self._expstate is None:
+            self._expstate = ktl.cache('nscicam', 'EXPSTATE')
+            self._expstate.callback(self.expstate_callback)
+            self._expstate.monitor()
+        return self._expstate
 
+    def expstate_callback(self, keyword):
+        self.expstate_value = keyword.read()
+        self.logger.debug(f'EXPSTATE updated: {self.expstate_value}')
+    
     def set_focus(self, focus_value):
 
         self.logger.info(f"Changing focus to {focus_value}")

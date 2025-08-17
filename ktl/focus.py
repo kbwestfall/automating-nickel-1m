@@ -600,7 +600,9 @@ def reevaluate(focus_coords, keyword, verbose):
 import argparse
 def main():
 
-    print('hello')
+    fseq = FocusSequence()
+    fseq.set_focus()
+
     exit()
 
     # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

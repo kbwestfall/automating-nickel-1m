@@ -156,6 +156,8 @@ class FocusSequence:
         self._secpd = None
         self._seclk = None
 
+        self._expstate = None
+
     @property
     def secpa(self):
         if self._secpa is None:

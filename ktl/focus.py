@@ -601,7 +601,7 @@ import argparse
 def main():
 
     fseq = FocusSequence(340, 5)
-    fseq.set_focus(351)
+    fseq.set_focus(360)
 
     exit()
 

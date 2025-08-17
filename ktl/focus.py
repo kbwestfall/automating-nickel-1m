@@ -214,24 +214,17 @@ class FocusSequence:
         self.seclk.read()
         self.logger.debug("Set POCSECLK to 'off'")
 
-        self.seclk.write('on')
-        self.seclk.read()
-        self.logger.debug("Set POCSECLK to 'on'")
-        embed()
-        exit()
-
-        print(f'POCSECPA: {self.keyword.secpa_key.read()}')
-        self.keyword.secpd_key.write(focus_value)
+        print(f'POCSECPA: {self.secpa.read()}')
+        self.secpd.write(focus_value)
         self.logger.debug(f'Set POCSECPD to {focus_value}')
-        print(f'POCSECPD: {self.keyword.secpd_key.read()}')
+        print(f'POCSECPD: {self.secpd.read()}')
 
-        if not self.keyword.seclk_key.waitFor('== on', timeout=30):
+        if not self.seclk.waitFor('== on', timeout=30):
             error_msg = "POCSECLK did not turn on. Focus change failed."
             self.logger.error(error_msg)
             raise Exception(error_msg)
             
         self.logger.info(f"Successfully changed focus to {focus_value}")
-    ### CHANGE FOCUS ###
 
     ### TAKE EXPOSURE ###
     def exposure(self):
@@ -619,7 +612,9 @@ def main():
 
     fseq = FocusSequence(340, 5)
     fseq.set_focus(360)
+    fseq.set_focus(351)
 
+    embed()
     exit()
 
     # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

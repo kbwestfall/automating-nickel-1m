@@ -198,7 +198,7 @@ class FocusSequence:
     
     def set_focus(self, focus_value):
 
-        if not self.pocstop.waitFor('== allowed', timeout=10):
+        if not self.pocstop.waitFor('== allowed', timeout=0.5):
             error_msg = 'Telescope movement is disabled!'
             self.logger.error(error_msg)
             raise ValueError(error_msg)

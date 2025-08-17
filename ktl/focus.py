@@ -600,7 +600,7 @@ def reevaluate(focus_coords, keyword, verbose):
 import argparse
 def main():
 
-    fseq = FocusSequence()
+    fseq = FocusSequence(340, 5)
     fseq.set_focus()
 
     exit()

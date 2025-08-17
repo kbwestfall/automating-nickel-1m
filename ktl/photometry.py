@@ -1,5 +1,5 @@
 from astropy.io import fits
-from photutils.psf import fit_fwhm
+#from photutils.psf import fit_fwhm
 from astropy.stats import SigmaClip, sigma_clipped_stats
 from photutils.segmentation import detect_threshold, detect_sources
 from scipy.ndimage import binary_dilation
@@ -275,11 +275,11 @@ def cutout(data, focus_star, obs_num, focus_value, plot, verbose=False):
         print(f"Cutout bounds: x=[{x_min}:{x_max}], y=[{y_min}:{y_max}]")
         print(f"Actual cutout shape: {cutout_data.shape}")
 
-    fit = fit_fwhm(cutout_data)
+#    fit = fit_fwhm(cutout_data)
         
     plot.set_center_axis(cutout_data, obs_num, focus_value, rect)
 
-    return fit
+#    return fit
 
 
 def evaluate_sources(data, sources, focus_coords, verbose=False):
@@ -337,8 +337,9 @@ def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=Fals
     focus_star['ObsNum'] = obs_num
 
     if focus_star['FWHM'] is not None:
-        fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
-        print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
+        cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
+#        fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
+#        print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
     else:
         print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']}. No fit_fwhm available.\n")
 

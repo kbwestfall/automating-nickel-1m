@@ -151,12 +151,20 @@ class FocusSequence:
 #        self.keyword = keyword
         self.verbose = verbose
 
-        # Keys
+        # POCO keywords
         self._secpa = None
         self._secpd = None
         self._seclk = None
+        self._pocstop = None
 
+        # SCICAM keywords
         self._expstate = None
+
+    @property
+    def pocstop(self):
+        if self._pocstop is None:
+            self._pocstop = ktl.cache('nickelpoco', 'POCSTOP')
+        return self._pocstop
 
     @property
     def secpa(self):
@@ -190,8 +198,22 @@ class FocusSequence:
     
     def set_focus(self, focus_value):
 
-        self.logger.info(f"Changing focus to {focus_value}")
+        if not self.pocstop.waitFor('== allowed', timeout=10):
+            error_msg = 'Telescope movement is disabled!'
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            error_msg = "Camera exposure state not ready. Cannot change focus."
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+
+        if focus_value < 165 or focus_value > 500:
+            error_msg = f"Focus value {focus_value} is out of range (165-500)."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
         
+        self.logger.info(f'Changing focus to {focus_value}')
         self.logger.debug(f'Current POCSECPD: {self.secpd.read()}')
         self.logger.debug(f'Current POCSECPA: {self.secpa.read()}')
 
@@ -199,16 +221,6 @@ class FocusSequence:
             print(f'POCSECPD already set to {focus_value}. No change needed.')
             return
         
-        if focus_value < 165 or focus_value > 500:
-            error_msg = f"Focus value {focus_value} is out of range (165-500)."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-        
-        if not self.expstate.waitFor('== Ready', timeout=15):
-            error_msg = "Camera exposure state not ready. Cannot change focus."
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-
         self.logger.debug(f'Current POCSECLK: {self.seclk.read()}')
         self.seclk.write('off')
         self.seclk.read()

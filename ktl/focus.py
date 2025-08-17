@@ -599,6 +599,10 @@ def reevaluate(focus_coords, keyword, verbose):
 
 import argparse
 def main():
+
+    print('hello')
+    exit()
+
     # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f'focus_finding.log'
     logger = setup_logging(log_level='INFO', log_file=log_filename)

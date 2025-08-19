@@ -143,6 +143,24 @@ class ExposurePath:
     def for_obsnum(self, obsnum):
         path = Path(self.recorddir.read()).absolute()
         return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
+    
+
+class ExposureConfig:
+    def __init__(self):
+        self.exprec = ktl.cache('nscicam', 'RECORD')
+        self.exptime = ktl.cache('nscicam', 'EXPOSURE')
+        self.expspeed  = ktl.cache('nscicam', 'AMPCONF')
+        self.expbin  = ktl.cache('nscicam', 'BINNING')
+
+    def configure(self, record=None, exptime=None, speed=None, binning=None):
+        if record is not None:
+            self.exprec.write(record)
+        if exptime is not None:
+            self.exptime.write(exptime)
+        if speed is not None:
+            self.expspeed.write(speed)
+        if binning is not None:
+            self.expbin.write(binning)
 
 
 class FocusSequence:
@@ -184,108 +202,28 @@ class FocusSequence:
 
         # Object used to change the focus
         self._focus = Focus()
-
-        # SCICAM file keywords
-        self._fileobs = None
-        self._obs = None
-        self._obs = None
-        self._obs = None
+        self._exppath = ExposurePath()
+        self._expcfg = ExposureConfig()
 
         # SCICAM exposure keywords
-        self._expstate = None
-        self._expstart = None
-        self._exprec = None
+        self.expstate = ktl.cache('nscicam', 'EXPSTATE')
+        self.expstate.callback(self._expstate_callback)
+        self.expstate.monitor()
+        self.expstate_value = None
 
-    @property
-    def expstate(self):
-        if self._expstate is None:
-            self._expstate = ktl.cache('nscicam', 'EXPSTATE')
-            self._expstate.callback(self.expstate_callback)
-            self._expstate.monitor()
-        return self._expstate
+        self.expstart = ktl.cache('nscicam', 'EXPOSE')
+        self.expstart.callback(self._filepath_callback)
+        self.expstart.monitor()
+        self.filepath = None
 
-    def expstate_callback(self, keyword):
+
+    def _expstate_callback(self, keyword):
         self.expstate_value = keyword.read()
-        self.logger.debug(f'EXPSTATE updated: {self.expstate_value}')
+        print(f'EXPSTATE updated: {self.expstate_value}')
 
-    @property
-    def expstart(self):
-        if self._expstart is None:
-            self._expstart = ktl.cache('nscicam', 'EXPOSE')
-            self._expstart.callback(self.filepath_callback)
-            self._expstart.monitor()
-        return self._expstart
-
-    def filepath_callback(self, keyword):
-        self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
-        self.logger.debug(f'FILEPATH updated: {self.filepath}')
-        # print(f'update FILEPATH: {self.filepath}')
-
-    def set_focus(self, focus_value):
-        """
-        Set the focus to the provided value.
-
-        Movement must be enabled and there must not be an ongoing exposure.
-
-        Parameters
-        ----------
-        focus_value : :obj:`int`
-            The requested focus value.  Must be between 165 and 500, inclusive.
-            If the requested position is already within 0.1 of the current
-            value, no change is made.
-
-        Raises
-        ------
-        ValueError
-            Raised if the focus value is outside the allowed range, if movement
-            is disabled, or if the exposure state is anything except that the
-            camera is ready for another exposure to begin.
-        """
-
-        # Check that the requested focus value is valid
-        if focus_value < 165 or focus_value > 500:
-            error_msg = f"Focus value {focus_value} is out of range (165-500)."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-        
-        # Make sure movement is enabled.  Do NOT enable movement via this
-        # script!
-        if not self.pocstop.waitFor('== allowed', timeout=0.5):
-            error_msg = 'Telescope movement is disabled!'
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-
-        # Check that an exposure isn't currently happening
-        if not self.expstate.waitFor('== Ready', timeout=15):
-            error_msg = "Camera exposure state not ready. Cannot change focus."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-
-        self.logger.info(f'Changing focus to {focus_value}')
-        self.logger.debug(f'Current POCSECPD: {self.secpd.read()}')
-        self.logger.debug(f'Current POCSECPA: {self.secpa.read()}')
-
-        if abs(float(self.secpd.read()) - focus_value) < .1:
-            print(f'POCSECPD already set to {focus_value}. No change needed.')
-            return
-        
-        self.logger.debug(f'Current POCSECLK: {self.seclk.read()}')
-        self.seclk.write('off')
-        self.seclk.read()
-        self.logger.debug("Set POCSECLK to 'off'")
-
-        print(f'POCSECPA: {self.secpa.read()}')
-        self.secpd.write(focus_value)
-        self.logger.debug(f'Set POCSECPD to {focus_value}')
-        print(f'POCSECPD: {self.secpd.read()}')
-
-        if not self.seclk.waitFor('== on', timeout=30):
-            error_msg = "POCSECLK did not turn on. Focus change failed."
-            # TODO: Explicitly set the lock to on?
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-            
-        self.logger.info(f"Successfully changed focus to {focus_value}")
+    def _filepath_callback(self, keyword):
+        self.filepath = self._exppath.next()
+        print(f'FILEPATH updated: {self.filepath}')
 
     def take_exposure(self, record=True):
 

@@ -2,6 +2,7 @@
 
 from IPython import embed
 
+from pathlib import Path
 import logging
 import sys
 
@@ -63,6 +64,9 @@ class Focus:
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
 
     def current(self):
+        """
+        Return the current focus position
+        """
         return self.secpa.read()
 
     def set_to(self, focus_value):
@@ -96,7 +100,7 @@ class Focus:
             raise ValueError('Telescope movement is disabled!')
 
         # Check that an exposure isn't currently happening
-        if not self.expstate.waitFor('== Ready', timeout=15):
+        if not self.expstate.waitFor('== Ready', timeout=0.5):
             raise ValueError('Camera exposure state not ready. Cannot change focus.')
 
         print(f'Current POCSECPD: {self.secpd.read()}')
@@ -120,6 +124,25 @@ class Focus:
             raise ValueError("POCSECLK did not turn on. Focus change failed.")
             
         print(f"Successfully changed focus to {focus_value}")
+
+
+class ExposurePath:
+    def __init__(self, scratch=False):
+        self.expresult = ktl.cache('nscicam', 'EXPRESULT')
+        self.recorddir = ktl.cache('nscicam', 'SCRATCHDIR' if scratch else 'RECORDDIR')
+        self.prefix = ktl.cache('nscicam', 'FITSPREFIX')
+        self.obsnum = ktl.cache('nscicam', 'OBSNUM')
+        self.suffix = ktl.cache('nscicam', 'FITSSUFFIX')
+
+    def previous(self):
+        return self.expresult.read()
+
+    def next(self):
+        return self.for_obsnum(self.obsnum.read())
+
+    def for_obsnum(self, obsnum):
+        path = Path(self.recorddir).absolute()
+        return path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}'
 
 
 class FocusSequence:
@@ -159,11 +182,8 @@ class FocusSequence:
 #        self.keyword = keyword
         self.verbose = verbose
 
-        # POCO keywords to change the focus
-        self._secpa = None
-        self._secpd = None
-        self._seclk = None
-        self._pocstop = None
+        # Object used to change the focus
+        self._focus = Focus()
 
         # SCICAM file keywords
         self._fileobs = None
@@ -176,30 +196,6 @@ class FocusSequence:
         self._expstart = None
         self._exprec = None
 
-    @property
-    def pocstop(self):
-        if self._pocstop is None:
-            self._pocstop = ktl.cache('nickelpoco', 'POCSTOP')
-        return self._pocstop
-
-    @property
-    def secpa(self):
-        if self._secpa is None:
-            self._secpa = ktl.cache('nickelpoco', 'POCSECPA')
-        return self._secpa
-
-    @property
-    def secpd(self):
-        if self._secpd is None:
-            self._secpd = ktl.cache('nickelpoco', 'POCSECPD')
-        return self._secpd
-
-    @property
-    def seclk(self):
-        if self._seclk is None:
-            self._seclk = ktl.cache('nickelpoco', 'POCSECLK')
-        return self._seclk
-    
     @property
     def expstate(self):
         if self._expstate is None:

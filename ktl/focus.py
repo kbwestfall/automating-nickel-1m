@@ -129,9 +129,11 @@ class Focus:
 
 
 class ExposurePath:
-    def __init__(self, scratch=False):
+    def __init__(self):
+        self.exprec = ktl.cache('nscicam', 'RECORD')
         self.expresult = ktl.cache('nscicam', 'EXPRESULT')
-        self.recorddir = ktl.cache('nscicam', 'SCRATCHDIR' if scratch else 'RECORDDIR')
+        self.scratchdir = ktl.cache('nscicam', 'SCRATCHDIR')
+        self.recorddir = ktl.cache('nscicam', 'RECORDDIR')
         self.prefix = ktl.cache('nscicam', 'FITSPREFIX')
         self.obsnum = ktl.cache('nscicam', 'OBSNUM')
         self.suffix = ktl.cache('nscicam', 'FITSSUFFIX')
@@ -145,7 +147,11 @@ class ExposurePath:
         return self.for_obsnum(self.obsnum.read())
 
     def for_obsnum(self, obsnum):
-        path = Path(self.recorddir.read()).absolute()
+        # TODO: Is this the correct way to check the keyword has a given value?
+        if self.exprec.read() == 'Yes':
+            path = Path(self.recorddir.read()).absolute()
+        if self.exprec.read() == 'No':
+            path = Path(self.scratchdir.read()).absolute()
         return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
     
 
@@ -199,11 +205,11 @@ class Exposure:
 
     def _expstate_callback(self, keyword):
         self.expstate_value = keyword.read()
-        print(f'EXPSTATE updated: {self.expstate_value}')
+#        print(f'EXPSTATE updated: {self.expstate_value}')
 
     def _filepath_callback(self, keyword):
         self.filepath = self._exppath.next
-        print(f'FILEPATH updated: {self.filepath}')
+#        print(f'FILEPATH updated: {self.filepath}')
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 

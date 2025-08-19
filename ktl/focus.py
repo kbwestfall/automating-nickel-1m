@@ -60,6 +60,7 @@ class Focus:
         self.secpa = ktl.cache('nickelpoco', 'POCSECPA')
         self.secpd = ktl.cache('nickelpoco', 'POCSECPD')
         self.seclk = ktl.cache('nickelpoco', 'POCSECLK')
+        self.expstate = ktl.cache('nscicam', 'EXPSTATE')
 
     def current(self):
         return self.secpa.read()

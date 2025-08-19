@@ -54,71 +54,6 @@ def setup_logging(log_level='INFO', log_file=None):
     return logger
 
 
-class Keyword:
-    def __init__(self, record, exposure, speed):
-
-        self.logger = logging.getLogger(__name__)
-        self.logger.info(f"Initializing Keyword with record={record}, exposure={exposure}, speed={speed}")
-
-        self.verbose = False
-
-        self.record = record
-        self.exposure = exposure
-        self.speed = speed
-        self.start = 'Yes'
-
-        self.secpa_key = ktl.cache('nickelpoco', 'POCSECPA')
-        self.secpd_key = ktl.cache('nickelpoco', 'POCSECPD')
-        self.seclk_key = ktl.cache('nickelpoco', 'POCSECLK')
-        self.obs_key = ktl.cache('nickucam', 'OBSNUM')
-        self.dir_key = ktl.cache('nickucam', 'OUTDIR')
-        self.file_key = ktl.cache('nickucam', 'OUTFILE')
-        self.suffix_key = ktl.cache('nickucam', 'RECORD_SUFFIX')
-        self.record_key = ktl.cache('nickucam', 'RECORD')
-        self.exposure_key = ktl.cache('nickucam', 'EXPOSURE')
-        self.speed_key = ktl.cache('nickucam', 'READSPEED')
-        self.start_key = ktl.cache('nickucam', 'START')
-
-        self.stop_key = ktl.cache('nickelpoco', 'POCSTOP')
-
-        self.event_key = ktl.cache('nickucam', 'EVENT')
-        self.event_key.callback(self.event_callback)
-        self.event_key.monitor()
-
-        self.start_key.callback(self.filepath_callback)
-        self.start_key.monitor()
-
-    def event_callback(self, keyword):
-        self.event_value = keyword.read()
-        self.logger.debug(f'EVENT updated: {self.event_value}')
-
-    def filepath_callback(self, keyword):
-        self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
-        self.logger.debug(f'FILEPATH updated: {self.filepath}')
-        # print(f'update FILEPATH: {self.filepath}')
-
-#    def general_callback(self, keyword):
-#        self.general = keyword.read()
-    
-    # def wait_for(self, keyword, expected_value, timeout=15):
-    #     keyword.callback(self.general_callback)
-    #     keyword.monitor(start=True, prime=True)
-    #     start_time = time.time()
-    #     while time.time() - start_time < timeout:
-    #         if self.general in expected_value:
-    #             return True
-    #     return False
-
-    # def wait_until(self, keyword, expected_value, timeout=15):
-    #     self.logger.debug(f"Waiting for {keyword} to be in {expected_value} (timeout: {timeout}s)")
-    #     start_time = time.time()
-    #     while time.time() - start_time < timeout:
-    #         if keyword.read() in expected_value:
-    #             return True
-    #     return False
-
-        
-
 class FocusSequence:
     """
     Perform a focus sequence.
@@ -144,9 +79,14 @@ class FocusSequence:
         Verbose output the screen.
     """
     def __init__(self, focus_start, focus_step, focus_end=None, nstep=None, obsnum=None,
-                 verbose=True):
+                 speed='1.0MHz', binning='2,2', exptime=5, verbose=True):
         self.start = focus_start
         self.step = focus_step
+
+        self.speed = speed
+        self.binning = binning
+        self.exptime = exptime
+
         self.logger = logging.getLogger(__name__)
 #        self.keyword = keyword
         self.verbose = verbose
@@ -159,6 +99,7 @@ class FocusSequence:
 
         # SCICAM keywords
         self._expstate = None
+        self._expstart = None
 
     @property
     def pocstop(self):
@@ -195,24 +136,60 @@ class FocusSequence:
     def expstate_callback(self, keyword):
         self.expstate_value = keyword.read()
         self.logger.debug(f'EXPSTATE updated: {self.expstate_value}')
-    
+
+    @property
+    def expstart(self):
+        if self._expstart is None:
+            self._expstart = ktl.cache('nscicam', 'EXPOSE')
+            self._expstart.callback(self.filepath_callback)
+            self._expstart.monitor()
+        return self._expstart
+
+    def filepath_callback(self, keyword):
+        self.filepath = f"{self.dir_key.read()}/nickel/{self.file_key.read()}{self.obs_key.read()}.{self.suffix_key.read()}"
+        self.logger.debug(f'FILEPATH updated: {self.filepath}')
+        # print(f'update FILEPATH: {self.filepath}')
+
     def set_focus(self, focus_value):
+        """
+        Set the focus to the provided value.
 
-        if not self.pocstop.waitFor('== allowed', timeout=0.5):
-            error_msg = 'Telescope movement is disabled!'
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
+        Movement must be enabled and there must not be an ongoing exposure.
 
-        if not self.expstate.waitFor('== Ready', timeout=15):
-            error_msg = "Camera exposure state not ready. Cannot change focus."
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
+        Parameters
+        ----------
+        focus_value : :obj:`int`
+            The requested focus value.  Must be between 165 and 500, inclusive.
+            If the requested position is already within 0.1 of the current
+            value, no change is made.
 
+        Raises
+        ------
+        ValueError
+            Raised if the focus value is outside the allowed range, if movement
+            is disabled, or if the exposure state is anything except that the
+            camera is ready for another exposure to begin.
+        """
+
+        # Check that the requested focus value is valid
         if focus_value < 165 or focus_value > 500:
             error_msg = f"Focus value {focus_value} is out of range (165-500)."
             self.logger.error(error_msg)
             raise ValueError(error_msg)
         
+        # Make sure movement is enabled.  Do NOT enable movement via this
+        # script!
+        if not self.pocstop.waitFor('== allowed', timeout=0.5):
+            error_msg = 'Telescope movement is disabled!'
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Check that an exposure isn't currently happening
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            error_msg = "Camera exposure state not ready. Cannot change focus."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
         self.logger.info(f'Changing focus to {focus_value}')
         self.logger.debug(f'Current POCSECPD: {self.secpd.read()}')
         self.logger.debug(f'Current POCSECPA: {self.secpa.read()}')
@@ -233,19 +210,26 @@ class FocusSequence:
 
         if not self.seclk.waitFor('== on', timeout=30):
             error_msg = "POCSECLK did not turn on. Focus change failed."
+            # TODO: Explicitly set the lock to on?
             self.logger.error(error_msg)
             raise Exception(error_msg)
             
         self.logger.info(f"Successfully changed focus to {focus_value}")
 
     ### TAKE EXPOSURE ###
-    def exposure(self):
+    def exposure(self, record, ):
+        # Check that an exposure isn't currently happening
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            error_msg = "Camera exposure state not ready. Cannot take exposure."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
         self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
-        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
-            error_msg = "Controller not ready. Cannot take exposure."
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
+#        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
+#            error_msg = "Controller not ready. Cannot take exposure."
+#            self.logger.error(error_msg)
+#            raise Exception(error_msg)
 
         self.keyword.record_key.write(self.keyword.record)
         self.logger.debug(f'Set RECORD: {self.keyword.record_key.read()}')

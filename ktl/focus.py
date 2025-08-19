@@ -163,11 +163,13 @@ class ExposureConfig:
             self.expbin.write(binning)
 
     def __repr__(self):
-        print('Exposure settings:')
-        print(f'    Record: {self.exprec.read()}')
-        print(f'    Time: {self.exptime.read()}')
-        print(f'    Speed: {self.expspeed.read()}')
-        print(f'    Binning: {self.expspeed.read()}')
+        return (
+            'Exposure settings:\n'
+            f'    Record: {self.exprec.read()}\n'
+            f'    Time: {self.exptime.read()}\n'
+            f'    Speed: {self.expspeed.read()}\n'
+            f'    Binning: {self.expbin.read()}\n'
+        )
 
 
 class FocusSequence:

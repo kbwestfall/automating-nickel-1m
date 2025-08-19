@@ -14,7 +14,8 @@ import quadratic
 from astropy.io import fits
 from astropy.table import Table
 
-from photometry import photometry, Grid
+from photometry import image_quality
+from photometry import Grid
 
 import ktl
 

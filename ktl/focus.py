@@ -54,6 +54,73 @@ def setup_logging(log_level='INFO', log_file=None):
     return logger
 
 
+class Focus:
+    def __init__(self):
+        self.pocstop = ktl.cache('nickelpoco', 'POCSTOP')
+        self.secpa = ktl.cache('nickelpoco', 'POCSECPA')
+        self.secpd = ktl.cache('nickelpoco', 'POCSECPD')
+        self.seclk = ktl.cache('nickelpoco', 'POCSECLK')
+
+    def current():
+        return self.secpa.read()
+
+    def set_to(self, focus_value):
+        """
+        Set the focus to the provided value.
+
+        Movement must be enabled and there must not be an ongoing exposure.
+
+        Parameters
+        ----------
+        focus_value : :obj:`int`
+            The requested focus value.  Must be between 165 and 500, inclusive.
+            If the requested position is already within 0.1 of the current
+            value, no change is made.
+
+        Raises
+        ------
+        ValueError
+            Raised if the focus value is outside the allowed range, if movement
+            is disabled, or if the exposure state is anything except that the
+            camera is ready for another exposure to begin.
+        """
+
+        # Check that the requested focus value is valid
+        if focus_value < 165 or focus_value > 500:
+            raise ValueError(f'Focus value {focus_value} is out of range (165-500).')
+        
+        # Make sure movement is enabled.  Do NOT enable movement via this
+        # script!
+        if not self.pocstop.waitFor('== allowed', timeout=0.5):
+            raise ValueError('Telescope movement is disabled!')
+
+        # Check that an exposure isn't currently happening
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            raise ValueError('Camera exposure state not ready. Cannot change focus.')
+
+        print(f'Current POCSECPD: {self.secpd.read()}')
+        print(f'Current POCSECPA: {self.secpa.read()}')
+
+        if abs(float(self.secpd.read()) - focus_value) < .1:
+            print(f'POCSECPD already set to {focus_value}. No change needed.')
+            return
+        
+        print(f'Current POCSECLK: {self.seclk.read()}')
+        self.seclk.write('off')
+        self.seclk.read()
+        print('Set POCSECLK to off')
+
+        print(f'POCSECPA: {self.secpa.read()}')
+        self.secpd.write(focus_value)
+        print(f'POCSECPD: {self.secpd.read()}')
+
+        if not self.seclk.waitFor('== on', timeout=30):
+            # TODO: Explicitly set the lock to on?
+            raise ValueError("POCSECLK did not turn on. Focus change failed.")
+            
+        print(f"Successfully changed focus to {focus_value}")
+
+
 class FocusSequence:
     """
     Perform a focus sequence.
@@ -91,15 +158,22 @@ class FocusSequence:
 #        self.keyword = keyword
         self.verbose = verbose
 
-        # POCO keywords
+        # POCO keywords to change the focus
         self._secpa = None
         self._secpd = None
         self._seclk = None
         self._pocstop = None
 
-        # SCICAM keywords
+        # SCICAM file keywords
+        self._fileobs = None
+        self._obs = None
+        self._obs = None
+        self._obs = None
+
+        # SCICAM exposure keywords
         self._expstate = None
         self._expstart = None
+        self._exprec = None
 
     @property
     def pocstop(self):
@@ -218,14 +292,14 @@ class FocusSequence:
 
     def take_exposure(self, record=True):
 
-        embed()
-        exit()
-
         # Check that an exposure isn't currently happening
         if not self.expstate.waitFor('== Ready', timeout=15):
             error_msg = "Camera exposure state not ready. Cannot take exposure."
             self.logger.error(error_msg)
             raise ValueError(error_msg)
+
+        embed()
+        exit()
 
         self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
 
@@ -608,6 +682,11 @@ def reevaluate(focus_coords, keyword, verbose):
 
 import argparse
 def main():
+
+    focus = Focus()
+
+    embed()
+    exit()
 
     fseq = FocusSequence(340, 5)
     #fseq.set_focus(360)

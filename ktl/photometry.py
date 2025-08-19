@@ -1,18 +1,16 @@
-from astropy.io import fits
-#from photutils.psf import fit_fwhm
-from astropy.stats import SigmaClip, sigma_clipped_stats
-from photutils.segmentation import detect_threshold, detect_sources
-from scipy.ndimage import binary_dilation
-from astropy.visualization import (ImageNormalize, ZScaleInterval, LinearStretch)
-
-
-import quadratic
+import warnings
+from IPython import embed
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-import argparse
+from scipy.ndimage import binary_dilation
 
+from astropy.io import fits
+from astropy import table
+from astropy.stats import SigmaClip, sigma_clipped_stats
+from photutils import segmentation
+from astropy.visualization import (ImageNormalize, ZScaleInterval, LinearStretch)
 
 # detect threshold
 # use threshold to detect sources
@@ -159,38 +157,79 @@ class Grid:
         self.ax_right.set_aspect(aspect_ratio, adjustable='box')
 
 
-def find_sources(data, max_iterations=5, verbose=False):
+def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01, verbose=False):
+    """
+    Find sources in an image.
 
-    previous_threshold = None
+    Iteratively uses `photutils.segmentation.detect_threshold` to determine the
+    image detection threshold and `photutils.segmentation.detect_sources` to
+    identify pixels with sources.  Source pixels masks are grown and the
+    non-source pixels are used to measure and subtract the background.
+    Iterations stop when subsequent measurements of the threshold are within the
+    provided relative tolerance.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Image data
+    max_iteration : :obj:`int`, optional
+        Maximum number of iterations
+    grow : :obj:`int`, optional
+        Number of pixels to grow the source mask.
+    atol : :obj:`float`, optional
+        Absolute tolerance used to test for convergence of the detection
+        threshold.  See `numpy.isclose`.
+    rtol : :obj:`float`, optional
+        Relative tolerance used to test for convergence of the detection
+        threshold.  See `numpy.isclose`.
+    verbose : :obj:`bool`, optional
+        Print progress
+
+    Returns
+    -------
+    background : :obj:`float`
+        The estimated background in the image
+    source_mask : `photutils.segmentation.core.SegmentationImage`
+        Segmentation image.
+    """
+    previous_threshold = None               # Previous threshold value
+    bkg = 0.0                               # Background
+    # Sigma-clipping object
+    sigma_clip = SigmaClip(sigma=3.0, maxiters=10)
+    # Structure used to grow the mask
+    structure = np.ones((grow, grow), dtype=bool)
 
     for iteration in range(max_iterations):
-        
-        sigma_clip = SigmaClip(sigma=3.0, maxiters=10)
-        threshold = detect_threshold(data, nsigma=5.0, sigma_clip=sigma_clip)
-        
-        sources = detect_sources(data, threshold, npixels=10)
 
-        source_mask = sources.data_ma
-        structure = np.ones((7, 7), dtype=bool)
-        grown_source_mask = binary_dilation(source_mask, structure=structure)
+        # Subtract the background
+        _data = data - bkg
+        # Get the threshold image     
+        threshold = segmentation.detect_threshold(_data, nsigma=5.0, sigma_clip=sigma_clip)
+        # Detect sources above the threshold
+        sources = segmentation.detect_sources(_data, threshold, npixels=10)
+        # Grow the mask
+        grown_source_mask = binary_dilation(sources.data_ma, structure=structure)
+        # Get the background and add it to the total
+        bkg += sigma_clipped_stats(_data, sigma=3.0, mask=grown_source_mask)[1]
+        if verbose:
+            print(f'Updated background: {bkg:.1f}')
 
-
-        mean, median, std = sigma_clipped_stats(data, sigma=3.0, mask=grown_source_mask)
-
-        data = data - median
-
-        if previous_threshold is not None:
-            threshold_median = np.median(threshold)
-            previous_threshold_median = np.median(previous_threshold)
-            threshold_change = abs(threshold_median - previous_threshold_median) / previous_threshold_median
+        # Calculate the median of the threshold image
+        med_threshold = np.median(threshold)
+        if previous_threshold is None or \
+                not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol):
             if verbose:
-                print(f"Threshold change: {threshold_change:.6f}")
-            
-            if threshold_change < 0.01:
-                print(f"Converged after {iteration + 1} iterations\n")
-                return data, sources
-        
-        previous_threshold = threshold
+                print(f'Updated threshold: {med_threshold:.1f}')
+            # This is the first iteration
+            previous_threshold = med_threshold
+            continue
+
+        # Converged
+        if verbose:
+            print(f'Source detection converged after {iteration+1} iterations')
+        break
+
+    return bkg, sources
 
 
 def evaluate_shape(data, source_mask, verbose=False):
@@ -282,71 +321,177 @@ def cutout(data, focus_star, obs_num, focus_value, plot, verbose=False):
 #    return fit
 
 
-def evaluate_sources(data, sources, focus_coords, verbose=False):
-    print(f"Number of sources detected: {sources.nlabels}\n")
-    results = []
+def moment2d(x, y, z):
+    """
+    Calculate moments of a 2D dataset.
 
-    for source in sources.segments:
+    Parameters
+    ----------
+    x : array-like
+        First coordinate of the data
+    y : array-like
+        Second coordinate of the data
+    z : array-like
+        Value of the data at each provide x and y coordinate.
 
-        source_mask = sources.data == source.label
+    Returns:
+    tot : :obj:`float`
+        Sum of ``z``
+    cx : :obj:`float`
+        Weighted mean of ``x``
+    cy : :obj:`float`
+        Weighted mean of ``y``
+    sx : :obj:`float`
+        Weighted standard deviation of ``x``
+    sy : :obj:`float`
+        Weighted standard deviation of ``y``
+    """
+    _x = np.asarray(x)
+    _y = np.asarray(y)
+    _z = np.asarray(z)
+
+    tot = np.sum(_z)
+    if np.absolute(tot) < 1e-6:
+        raise ValueErrror('Sum of the data is too close to 0.')
+
+    cx = np.sum(_x*_z)/tot
+    cy = np.sum(_y*_z)/tot
+
+    sx = np.sqrt(np.sum(_x**2*_z)/tot - cx**2)
+    sy = np.sqrt(np.sum(_y**2*_z)/tot - cy**2)
+
+    return tot, cx, cy, sx, sy
+
+
+def empty_source_table(length):
+    return table.Table([
+        table.Column(name='ID', dtype=int, length=length, description='Source ID'),
+        table.Column(name='CNTS', dtype=float, length=length, description='Total counts'),
+        table.Column(name='CENX', dtype=float, length=length, description='X centroid'),
+        table.Column(name='CENY', dtype=float, length=length, description='Y centroid'),
+        table.Column(name='SIGX', dtype=float, length=length, description='X sigma'),
+        table.Column(name='SIGY', dtype=float, length=length, description='Y sigma'),
+    ])
+
+
+def evaluate_sources(data, sources, verbose=False):
+    """
+    Provided a source segmentation image, measure the first 3 moments of all
+    sources.
+
+    Parameters
+    ----------
+    data : `numpy.ndarray`
+        Background subtracted, raw image data
+    sources : `photutils.segmentation.core.SegmentationImage`
+        Source segmentation image.
+    verbose : :obj:`bool`, optional
+        Print progress messages
+
+    Returns
+    -------
+    `astropy.table.Table`
+        Table with the source measurements.  Columns are:
+            - ID: Source ID number
+            - CENX : center along X (column)
+            - CENY : center along Y (row)
+            - SIGX : dispersion along X (column)
+            - SIGY : dispersion along Y (row)
+    """
+    if verbose:
+        print(f"Number of sources detected: {sources.nlabels}\n")
+    if sources.nlabels == 0:
+        raise ValueError('No sources found.')
+
+    # Construct the coordinate images
+    img_x, img_y = np.meshgrid(np.arange(data.shape[1]), np.arange(data.shape[0]))
+
+    # For each source, get the total flux, and the 1st and 2nd moments along each axis.
+    src_data = empty_source_table(sources.nlabels)
+    for i, source in enumerate(sources.segments):
         if verbose:
             print(f"Evaluating source with label {source.label}")
-        shape = evaluate_shape(data, source_mask, verbose=verbose)
+        src_data['ID'][i] = source.label
+        indx = sources.data == source.label
+        if np.sum(indx) == 0:
+            warnings.warn(f'No data assocated with source {source.label}')
+        src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i], \
+            src_data['SIGX'][i], src_data['SIGY'][i] \
+                = moment2d(img_x[indx], img_y[indx], data[indx])
 
-        source_attr = {
-            'Label': source.label,
-            'M0': shape['M0'],
-            'Centroid': shape['Centroid'],
-            'FWHM': shape['FWHM']
-        }
+    # Check if sources are real        
+    #   - Bad sigma measurements
+    small_sources = (src_data['SIGX'] < 1e-8) |  (src_data['SIGY'] < 1e-8)
+    if np.any(small_sources):
+        if verbose:
+            warnings.warn(f'Removing {np.sum(small_sources)} sources with errantly small widths.')
+        src_data = src_data[np.logical_not(small_sources)]
 
-        results.append(source_attr)
+    if len(src_data) == 0:
+        raise ValueError('No good sources found')
 
-    min_dist = float('inf')
-    focus_star = None
+    axis_ratio = src_data['SIGX'] / src_data['SIGY']
+    ellip_sources = (axis_ratio < 0.5) | (axis_ratio > 2)
+    if np.any(ellip_sources):
+        if verbose:
+            warnings.warn(f'Removing {np.sum(small_sources)} sources with large ellipticity.')
+        src_data = src_data[np.logical_not(ellip_sources)]
 
-    if focus_coords is not None:
-        for source in results:
-            centroid_x, centroid_y = source['Centroid']
-            dist = np.sqrt((centroid_x - focus_coords[0])**2 + (centroid_y - focus_coords[1])**2)
+    if len(src_data) == 0:
+        raise ValueError('No good sources found')
 
-            if dist < min_dist:
-                min_dist = dist
-                focus_star = source
+    return src_data
+
+
+def image_quality(fits_file, method='brightest', verbose=False):
+    """
+    Evaluate the image quality of the provided data.
+
+    Parameters
+    ----------
+    fits_file : :obj:`str`, `Path`
+        File with raw image data
+    method : :obj:`str`, :obj:`tuple`, optional
+        Method used to measure the image quality.  Must be:
+
+            - ``brightest``: Return image quality measurement for the brightest
+              source in the field
+
+            - ``weighted``: Return the flux-weighted mean of the image-quality
+              measurements for all sources.
+
+            - :obj:`tuple`: Provide a tuple with coordinates and use the source
+              closest to the provides coordinates.
+    verbose : :obj:`bool`, optional
+        Print status messages
+
+    Returns
+    -------
+
+    """
+    with fits.open(fits_file) as hdu:
+        data = hdu[0].data.astype(float)
+    bkg, sources = find_sources(data)
+    src_data = evaluate_sources(data-bkg, sources, verbose=verbose)
+
+    if method == 'brightest':
+        target_source = np.argmax(src_data['CNTS'])
+        img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
+    elif method == 'weighted':
+        img_quality = np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2) \
+                        / np.sum(src_data['CNTS'])
+    elif not isinstance(method, tuple):
+        raise ValueError('image_quality method must be brightest, weighted, or a tuple of '
+                         'coordinates')
     else:
-        focus_star = max(results, key=lambda x: x['M0'])
+        try:
+            dist = (src_data['CENX'] - method[0])**2 + (src_data['CENY'] - method[1])**2
+        except Exception as e:
+            raise ValueError('Could not use tuple provided to method keyword to find nearest '
+                             'source to use for image quality measurement.  Original excception '
+                             f'message: {e}.')
+        target_source = np.argmin(dist)
+        img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
 
+    return data, bkg, src_data, img_quality   
 
-    return focus_star
-
-
-def photometry(fits_file, obs_num, focus_value, plot, focus_coords, verbose=False):
-
-    if fits_file:
-        hdu = fits.open(fits_file)
-        data = hdu[0].data
-        plot.set_left_axis(data)
-    else:
-        raise ValueError("No FITS file provided. Please specify a file.")
-
-    data, sources = find_sources(data)
-    focus_star = evaluate_sources(data, sources, focus_coords, verbose=verbose)
-
-    
-    focus_star['Focus'] = focus_value
-    focus_star['ObsNum'] = obs_num
-
-    if focus_star['FWHM'] is not None:
-        cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
-#        fit = cutout(data, focus_star, obs_num, focus_value, plot, verbose=verbose)
-#        print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']} and fit_fwhm: {fit}\n")
-    else:
-        print(f"Using source with label {focus_star['Label']} at ({focus_star['Centroid'][0]}, {focus_star['Centroid'][1]}) with FWHM: {focus_star['FWHM']}. No fit_fwhm available.\n")
-
-    return focus_star
-
-
-
-
-
-#TODO: PYTHON LOGGING< DOCUMENTATION< MOVE_TO_TARGET DRY RUN MODE

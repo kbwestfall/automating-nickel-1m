@@ -63,6 +63,7 @@ class Focus:
         self.seclk = ktl.cache('nickelpoco', 'POCSECLK')
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
 
+    @property
     def current(self):
         """
         Return the current focus position
@@ -134,9 +135,11 @@ class ExposurePath:
         self.obsnum = ktl.cache('nscicam', 'OBSNUM')
         self.suffix = ktl.cache('nscicam', 'FITSSUFFIX')
 
+    @property
     def previous(self):
         return self.expresult.read()
 
+    @property
     def next(self):
         return self.for_obsnum(self.obsnum.read())
 
@@ -148,28 +151,83 @@ class ExposurePath:
 class ExposureConfig:
     def __init__(self):
         self.exprec = ktl.cache('nscicam', 'RECORD')
-        self.exptime = ktl.cache('nscicam', 'EXPOSURE')
+        self.inttime = ktl.cache('nscicam', 'EXPOSURE')
         self.expspeed  = ktl.cache('nscicam', 'AMPCONF')
         self.expbin  = ktl.cache('nscicam', 'BINNING')
 
-    def configure(self, record=None, exptime=None, speed=None, binning=None):
+    def configure(self, record=None, speed=None, binning=None, exptime=None):
         if record is not None:
             self.exprec.write(record)
-        if exptime is not None:
-            self.exptime.write(exptime)
         if speed is not None:
             self.expspeed.write(speed)
         if binning is not None:
             self.expbin.write(binning)
+        if exptime is not None:
+            self.inttime.write(exptime)
+
+    @property
+    def exptime(self):
+        return self.inttime.read()
 
     def __repr__(self):
         return (
             'Exposure settings:\n'
             f'    Record: {self.exprec.read()}\n'
-            f'    Time: {self.exptime.read()}\n'
+            f'    Time: {self.inttime.read()}\n'
             f'    Speed: {self.expspeed.read()}\n'
             f'    Binning: {self.expbin.read()}\n'
         )
+    
+class Exposure:
+
+    def __init__(self):
+    
+        self._exppath = ExposurePath()
+        self._expcfg = ExposureConfig()
+
+        # SCICAM exposure keywords
+        self.expstate = ktl.cache('nscicam', 'EXPSTATE')
+        self.expstate.callback(self._expstate_callback)
+        self.expstate.monitor()
+        self.expstate_value = None
+
+        self.expstart = ktl.cache('nscicam', 'EXPOSE')
+        self.expstart.callback(self._filepath_callback)
+        self.expstart.monitor()
+        self.filepath = None
+
+    def _expstate_callback(self, keyword):
+        self.expstate_value = keyword.read()
+        print(f'EXPSTATE updated: {self.expstate_value}')
+
+    def _filepath_callback(self, keyword):
+        self.filepath = self._exppath.next()
+        print(f'FILEPATH updated: {self.filepath}')
+
+    def expose(self, record=None, speed=None, binning=None, exptime=None):
+
+        self._expcfg.configure(record=record, speed=speed, binning=binning, exptime=exptime)
+
+        # Check that an exposure isn't currently happening
+        if not self.expstate.waitFor('== Ready', timeout=15):
+            error_msg = "Camera exposure state not ready. Cannot take exposure."
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        self.expstart.write('StartX')
+
+        if not self.expstate.waitFor('== Start', timeout=30):
+            raise ValueError('Exposure start (EXPSTATE == Start) not detected within timeout')
+
+        if self.expstate.waitFor('== Ready', timeout=round(self._expcfg.exptime + 90.)):
+            print('Exposure completed successfully')
+        else:
+            raise ValueError('Exposure EXPSTATE=Ready not detected within timeout')
+        
+
+#class FocusData:
+    #def __init__(self, image):
+
 
 
 class FocusSequence:
@@ -196,101 +254,35 @@ class FocusSequence:
     verbose : :obj:`bool`, optional
         Verbose output the screen.
     """
-    def __init__(self, focus_start, focus_step, focus_end=None, nstep=None, obsnum=None,
-                 speed='1.0MHz', binning='2,2', exptime=5, verbose=True):
-        self.start = focus_start
-        self.step = focus_step
-
-        self.speed = speed
-        self.binning = binning
-        self.exptime = exptime
+    def __init__(self):
 
         self.logger = logging.getLogger(__name__)
-#        self.keyword = keyword
         self.verbose = verbose
+
+        self.data = None
 
         # Object used to change the focus
         self._focus = Focus()
-        self._exppath = ExposurePath()
-        self._expcfg = ExposureConfig()
+        self._exposure = Exposure()
 
-        # SCICAM exposure keywords
-        self.expstate = ktl.cache('nscicam', 'EXPSTATE')
-        self.expstate.callback(self._expstate_callback)
-        self.expstate.monitor()
-        self.expstate_value = None
+    def execute(self, speed='0.05MHz', binning='2,2', exptime=5, verbose=True):
 
-        self.expstart = ktl.cache('nscicam', 'EXPOSE')
-        self.expstart.callback(self._filepath_callback)
-        self.expstart.monitor()
-        self.filepath = None
+        self._exposure.configure(record=True, speed=speed, binning=binning, exptime=exptime)
+
+        while not self.done():
+            self.step_focus()
+            self._exposure.expose()
+            self.measure_fwhm()
+
+        self.fit_best_focus()
+
+    def measure_fwhm(self):
 
 
-    def _expstate_callback(self, keyword):
-        self.expstate_value = keyword.read()
-        print(f'EXPSTATE updated: {self.expstate_value}')
 
-    def _filepath_callback(self, keyword):
-        self.filepath = self._exppath.next()
-        print(f'FILEPATH updated: {self.filepath}')
 
-    def take_exposure(self, record=True):
 
-        # Check that an exposure isn't currently happening
-        if not self.expstate.waitFor('== Ready', timeout=15):
-            error_msg = "Camera exposure state not ready. Cannot take exposure."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-
-        embed()
-        exit()
-
-        self.logger.info(f"Starting exposure: {self.keyword.exposure}s at {self.keyword.speed} speed")
-
-#        if not self.keyword.event_key.waitFor('== ControllerReady', timeout=15):
-#            error_msg = "Controller not ready. Cannot take exposure."
-#            self.logger.error(error_msg)
-#            raise Exception(error_msg)
-
-        self.keyword.record_key.write(self.keyword.record)
-        self.logger.debug(f'Set RECORD: {self.keyword.record_key.read()}')
-
-        self.keyword.exposure_key.write(self.keyword.exposure)
-        self.logger.debug(f'Set EXPOSURE: {self.keyword.exposure_key.read()}')
-
-        self.keyword.speed_key.write(self.keyword.speed)
-        self.logger.debug(f'Set SPEED: {self.keyword.speed_key.read()}')
-
-        self.keyword.start_key.write(self.keyword.start)
-        self.logger.debug(f'SET START: {self.keyword.start_key.read()}')
-
-        if not self.keyword.event_key.waitFor('== ExposureBegin', timeout=30):
-            error_msg = "ExposureBegin not detected within timeout"
-            self.logger.error(error_msg)
-            raise Exception(error_msg)  
-
-        self.logger.debug("Waiting for ExposureEnd...")
-        if not self.keyword.event_key.waitFor('== ExposureEnd', timeout=round(self.keyword.exposure * 1.2)):
-            error_msg = "ExposureEnd not detected within timeout"
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-
-        if self.keyword.event_key.waitFor('== ControllerReady', timeout=30):
-            self.logger.debug("Exposure completed successfully")
-        else:
-            error_msg = "ControllerReady not detected within timeout"
-            self.logger.warning(error_msg)
-            raise Exception(error_msg)
-    ### TAKE EXPOSURE ###
-
-    def sequence(self, focus_value, focus_coords, grid):
-
-        # if self.keyword.record == 'Yes':
-        #     self.keyword.dir_key.write("/data")
-        #     self.keyword.file_key.write(f"{count}focus_")
-        #     self.keyword.obs_key.write(str(focus_value))
-        #     self.keyword.suffix_key.write("fits")
-
+        start, step, end=None, nstep=None, obsnum=None, 
 
         self.change_focus(focus_value)
         self.focus_value = focus_value

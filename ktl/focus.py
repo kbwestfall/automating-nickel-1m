@@ -202,7 +202,7 @@ class Exposure:
         print(f'EXPSTATE updated: {self.expstate_value}')
 
     def _filepath_callback(self, keyword):
-        self.filepath = self._exppath.next()
+        self.filepath = self._exppath.next
         print(f'FILEPATH updated: {self.filepath}')
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):

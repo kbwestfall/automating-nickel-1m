@@ -216,8 +216,11 @@ class FocusSequence:
             
         self.logger.info(f"Successfully changed focus to {focus_value}")
 
-    ### TAKE EXPOSURE ###
-    def exposure(self, record, ):
+    def take_exposure(self, record=True):
+
+        embed()
+        exit()
+
         # Check that an exposure isn't currently happening
         if not self.expstate.waitFor('== Ready', timeout=15):
             error_msg = "Camera exposure state not ready. Cannot take exposure."
@@ -609,6 +612,7 @@ def main():
     fseq = FocusSequence(340, 5)
     fseq.set_focus(360)
     fseq.set_focus(351)
+    fseq.take_exposure(record=False)
 
     embed()
     exit()

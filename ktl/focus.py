@@ -141,7 +141,7 @@ class ExposurePath:
         return self.for_obsnum(self.obsnum.read())
 
     def for_obsnum(self, obsnum):
-        path = Path(self.recorddir).absolute()
+        path = Path(self.recorddir.read()).absolute()
         return path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}'
 
 

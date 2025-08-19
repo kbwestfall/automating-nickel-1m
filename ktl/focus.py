@@ -61,7 +61,7 @@ class Focus:
         self.secpd = ktl.cache('nickelpoco', 'POCSECPD')
         self.seclk = ktl.cache('nickelpoco', 'POCSECLK')
 
-    def current():
+    def current(self):
         return self.secpa.read()
 
     def set_to(self, focus_value):

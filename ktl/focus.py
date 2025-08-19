@@ -220,7 +220,7 @@ class Exposure:
         if not self.expstate.waitFor('== Start', timeout=30):
             raise ValueError('Exposure start (EXPSTATE == Start) not detected within timeout')
 
-        if self.expstate.waitFor('== Ready', timeout=round(self._expcfg.exptime + 90.)):
+        if self.expstate.waitFor('== Ready', timeout=round(float(self._expcfg.exptime) + 90.)):
             print('Exposure completed successfully')
         else:
             raise ValueError('Exposure EXPSTATE=Ready not detected within timeout')

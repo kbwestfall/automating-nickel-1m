@@ -162,6 +162,13 @@ class ExposureConfig:
         if binning is not None:
             self.expbin.write(binning)
 
+    def __repr__(self):
+        print('Exposure settings:')
+        print(f'    Record: {self.exprec.read()}')
+        print(f'    Time: {self.exptime.read()}')
+        print(f'    Speed: {self.expspeed.read()}')
+        print(f'    Binning: {self.expspeed.read()}')
+
 
 class FocusSequence:
     """

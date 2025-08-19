@@ -278,12 +278,6 @@ class FocusSequence:
 
     def measure_fwhm(self):
 
-
-
-
-
-        start, step, end=None, nstep=None, obsnum=None, 
-
         self.change_focus(focus_value)
         self.focus_value = focus_value
         self.exposure()

@@ -142,7 +142,7 @@ class ExposurePath:
 
     def for_obsnum(self, obsnum):
         path = Path(self.recorddir.read()).absolute()
-        return path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}'
+        return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
 
 
 class FocusSequence:

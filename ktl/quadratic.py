@@ -1,20 +1,16 @@
 import numpy as np
 
 
-def fit_quadratic(x_values, y_values):
-    x = np.array(x_values)
-    y = np.array(y_values)
-
-    if len(x) < 3:
+def fit_quadratic(x, y):
+    _x = np.asarray(x)
+    _y = np.asarray(y)
+    if _x.size < 3:
         raise ValueError("At least three data points are required to fit a quadratic function.")
-    
-    coefficients = np.polyfit(x, y, 2)
-    a, b, c = coefficients
+    if _y.size != _x.size:
+        raise ValueError('Mismatch between the number of x and y values.')
+    return np.polyfit(_x, _y, 2)
 
-    return a, b, c
 
 def vertex(a, b, c):
-    x_vertex = -b / (2 * a)
-    y_vertex = c - (b**2 / (4 * a))
-    return x_vertex, y_vertex
+    return -b / (2 * a), c - (b**2 / (4 * a))
 

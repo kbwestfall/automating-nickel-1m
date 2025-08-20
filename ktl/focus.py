@@ -1,5 +1,6 @@
 #! @KPYTHON@
 
+import warnings
 from IPython import embed
 
 from pathlib import Path
@@ -11,7 +12,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import quadratic
 
-from astropy.io import fits
 from astropy.table import Table
 
 from photometry import image_quality
@@ -146,11 +146,12 @@ class ExposurePath:
     def next(self):
         return self.for_obsnum(self.obsnum.read())
 
-    def for_obsnum(self, obsnum):
+    def for_obsnum(self, obsnum, assume_recorded=False):
         # TODO: Is this the correct way to check the keyword has a given value?
-        if self.exprec.read() == 'Yes':
+        record = self.exprec.read() == 'Yes'
+        if record or assume_recorded:
             path = Path(self.recorddir.read()).absolute()
-        if self.exprec.read() == 'No':
+        else:
             path = Path(self.scratchdir.read()).absolute()
         return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
     
@@ -189,8 +190,8 @@ class Exposure:
 
     def __init__(self):
     
-        self._exppath = ExposurePath()
-        self._expcfg = ExposureConfig()
+        self.path = ExposurePath()
+        self.cfg = ExposureConfig()
 
         # SCICAM exposure keywords
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
@@ -208,249 +209,182 @@ class Exposure:
 #        print(f'EXPSTATE updated: {self.expstate_value}')
 
     def _filepath_callback(self, keyword):
-        self.filepath = self._exppath.next
+        self.filepath = self.path.next
 #        print(f'FILEPATH updated: {self.filepath}')
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 
-        self._expcfg.configure(record=record, speed=speed, binning=binning, exptime=exptime)
+        self.cfg.configure(record=record, speed=speed, binning=binning, exptime=exptime)
 
         # Check that an exposure isn't currently happening
         if not self.expstate.waitFor('== Ready', timeout=15):
-            error_msg = "Camera exposure state not ready. Cannot take exposure."
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-        
+            raise ValueError('Camera exposure state not ready. Cannot take exposure.')
+
+        # Start the exposure
         self.expstart.write('StartX')
 
+        # Wait for it to start
         if not self.expstate.waitFor('== Start', timeout=30):
             raise ValueError('Exposure start (EXPSTATE == Start) not detected within timeout')
 
-        if self.expstate.waitFor('== Ready', timeout=round(float(self._expcfg.exptime) + 90.)):
+        # Then wait for it to be ready again
+        if self.expstate.waitFor('== Ready', timeout=round(float(self.cfg.exptime) + 90.)):
             print('Exposure completed successfully')
         else:
             raise ValueError('Exposure EXPSTATE=Ready not detected within timeout')
         
 
-#class FocusData:
-    #def __init__(self, image):
-
-
-
 class FocusSequence:
     """
     Perform a focus sequence.
 
-    Parameters
-    ----------
-    focus_start : :obj:`int`, :obj`float`
-        Starting focus value; e.g., 330
-    focus_step : :obj:`int`, :obj:`float`
-        Change in focus between different images; e.g., 5
-    focus_end : :obj:`int`, :obj:`float`, optional
-        The focus at which to stop, inclusive.  If None and ``nstep`` is None,
-        use the automated procedure to find the best focus.  If both are
-        provided, ``focus_end`` takes precedence.
-    nstep : :obj:`int`, optional
-        The number of focus steps to take.  If None and ``focus_end`` is None, 
-        use the automated procedure to find the best focus.  If both are
-        provided, ``focus_end`` takes precedence.
-    obsnum : :obj:`int`, optional
-        Observation number to start with for a previously observed sequence.  If
-        None, new images are taken.
-    verbose : :obj:`bool`, optional
-        Verbose output the screen.
+    This is the base class for other derived classes that specify how the focus
+    sequence proceeds.
     """
     def __init__(self):
-
-        self.logger = logging.getLogger(__name__)
-        self.verbose = verbose
-
-        self.data = None
-
-        # Object used to change the focus
         self._focus = Focus()
         self._exposure = Exposure()
+        self.method = None
+        self.reset()
 
-    def execute(self, speed='0.05MHz', binning='2,2', exptime=5, verbose=True):
+    def reset(self):
+        self.observed_focus = []
+        self.exposures = []
+        self.img_quality = []
+        self.step_iter = 0
+        self.source_stamps = []
 
-        self._exposure.configure(record=True, speed=speed, binning=binning, exptime=exptime)
+    def execute(self, verbose=True, goto=True, method='brightest', **exp_kwargs):
 
-        while not self.done():
-            self.step_focus()
-            self._exposure.expose()
-            self.measure_fwhm()
+        self._exposure.configure(**exp_kwargs)
+        self.reset()
 
-        self.fit_best_focus()
+        while self.continue_sequence():
+            self.observed_focus += [self.step_focus()]
+            self.exposures += [self.take_exposure()]
+            data, bkg, src_data, img_quality, source_stamp \
+                = image_quality(self.exposures[-1], method=method)
+#            self.show(data-bkg, source_stamp, src_data, self._focus.current, img_quality)
+            self.source_stamps += [source_stamp]
+            self.img_quality += [img_quality]
+            self.step_iter += 1
 
-    def measure_fwhm(self):
+        best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
+        if goto:
+            self._focus.set_to(best_focus)
+            self.take_exposure()
+            sigma_at_best_focus = self.measure_fwhm(self.exposures[-1])
 
-        self.change_focus(focus_value)
-        self.focus_value = focus_value
-        self.exposure()
+        return best_focus, best_img_quality
 
-        filepath = self.keyword.filepath
-        self.logger.debug(f"Exposure saved at: {filepath}")
-        print(f"Exposure being saved at: {filepath}")
+    def continue_sequence(self):
+        raise NotImplementedError(
+            'Method used to check if the sequence should continue is not implemented by the '
+            'base class.'
+        )
 
-        obs_num = self.keyword.obs_key.read()
+    def step_focus(self):
+        raise NotImplementedError(
+            'Method used to increment the focus setting is not implemented by the base class!'
+        )
 
-        hdu = fits.open(filepath)
+    def take_exposure(self):
+        self._exposure.expose()
+        return self._exposure.path.previous
 
-        self.focus_star = photometry(filepath, obs_num, focus_value, grid, focus_coords, verbose=self.verbose)
-        self.fwhm = self.focus_star['FWHM']
-        self.logger.debug(f"Photometry complete - FWHM: {self.fwhm}")
-        print(f" {filepath} FWHM: {self.fwhm} \n")
+    @staticmethod
+    def fit_best_focus(focus, img_quality):
+        if len(focus) < 3:
+            raise ValueError('Insufficient number of focus values observed.')
+        a, b, c = quadratic.fit_quadratic(focus, img_quality)
+        return quadratic.vertex(a, b, c)
 
 
+class GridFocusSequence(FocusSequence):
+    def __init__(self, start, step, end=None, nstep=None):
 
-def curve_finder(image1, image2, seen, focus_coords, keyword, grid, direction=None):
-    seen.add(image1)
-    seen.add(image2)
+        super().__init__()
 
-    if image1.fwhm is None or image2.fwhm is None:
-        raise Exception("A source could not be detected in one of the images. Cannot continue with focus finding.")
+        if end is None and nstep is None:
+            raise ValueError('Must provide either the ending value or the number of steps.')
+        self.nstep = nstep if end is None else int((end-start)/step+1)
+        self.target_focus = np.round(np.linspace(start, end, self.nstep))
+
+    def continue_sequence(self):
+        return self.step_iter < self.nstep
     
-    if image1.fwhm > image2.fwhm:
-        if direction is None:
-            direction = 'right'
-        if direction == 'left':
-            return curve_helper(image1, image2, seen, focus_coords, keyword, grid)
-        focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
-        image3 = Event(keyword)
-        image3.sequence(focus3, focus_coords, grid)
-        grid.index += 1
-        return curve_finder(image2, image3, seen, focus_coords, keyword, grid, direction)
-    elif image1.fwhm < image2.fwhm:
-        if direction is None:
-            direction = 'left'
-        if direction == 'right':
-            return curve_helper(image1, image2, seen, focus_coords, keyword, grid)
-        focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
-        image3 = Event(keyword)
-        image3.sequence(focus3, focus_coords, grid)
-        grid.index += 1
-        return curve_finder(image3, image1, seen, focus_coords, keyword, grid, direction)
+    def step_focus(self):
+        self._focus.set_to(self.focus_values[self.step_iter])
+        return self._focus.current
 
-def curve_helper(image1, image2, seen, focus_coords, keyword, grid, iterations=2):
-    if iterations > 0:
-        if image1.fwhm is None or image2.fwhm is None:
-            raise Exception("A source could not be detected in one of the images. Cannot continue with focus finding.")
 
-        if image1.fwhm > image2.fwhm:
-            focus3 = image1.focus_value - (image2.focus_value - image1.focus_value)
-            image3 = Event(keyword)
-            image3.sequence(focus3, focus_coords, grid)
-            grid.index += 1
-            seen.add(image3)
-            return curve_helper(image3, image1, seen, focus_coords, keyword, grid, iterations-1)
-        elif image1.fwhm < image2.fwhm:
-            focus3 = image2.focus_value + (image2.focus_value - image1.focus_value)
-            image3 = Event(keyword)
-            image3.sequence(focus3, focus_coords, grid)
-            grid.index += 1
-            seen.add(image3)
-            return curve_helper(image2, image3, seen, focus_coords, keyword, grid, iterations-1)
-    else:
-        return seen
+class AutomatedFocusSequence(FocusSequence):
+    def __init__(self, start, step, maxsteps=12):
 
-def auto_focus_finder(initial_focus, step_size, focus_coords, keyword):
+        if maxsteps is None or maxsteps < 2:
+            raise ValueError('maxsteps cannot be None and must be at least 2.')
 
-    grid = Grid()
-    plt.ion()
-    plt.show(block=False)
-    plt.pause(0.1)
+        super().__init__()
 
-    seen = set()
+        self.start = start
+        self.step = step
+        self.direction = None
+        self.last = None
+        self.maxsteps = maxsteps
+
+    def reset(self):
+        super().reset()
+        self.direction = None
+        self.last = None
+
+    def continue_sequence(self):
+        return (
+            self.step_iter < maxsteps
+            and (self.step_iter < 2 
+                or (self.last is not None and self.step_iter < self.last)
+            )
+        )
     
-    image1 = Event(keyword)
-    image1.sequence(initial_focus, focus_coords, grid)
-    grid.index += 1
+    def step_focus(self):
+        if self.step_iter == 0:
+            next_focus = self.start
+        elif self.step_iter == 1:
+            next_focus = self.start + self.step
+        elif self.step_iter == 2 and self.img_quality[0] > self.img_quality[1]:
+            self.direction = 1
+            next_focus = self.focus_values[1] + self.step
+        elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
+            self.direction = -1
+            next_focus = self.focus_values[0] - self.step
+        elif self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
+            self.last = self.step_iter + 2
+            if self.last > self.maxsteps:
+                warnings.warn(
+                    f'Number of steps to fulfill sequence ({self.last}) is more than the '
+                    f'maximum number of steps requested ({self.maxsteps}).')
+            next_focus = self.focus_values[-1] + self.direction * self.step
+        else:
+            next_focus = self.focus_values[-1] + self.direction * self.step
+        self._focus.set_to(next_focus)
+        return self._focus.current
 
-    image2 = Event(keyword)
-    image2.sequence(initial_focus + step_size, focus_coords, grid)
-    grid.index += 1
 
-    curve = curve_finder(image1, image2, seen, focus_coords, keyword, grid)
-    if len(curve) < 3:
-        raise Exception("Not enough images. Cannot find optimal focus.")
-    curve = sorted(curve, key=lambda img: img.focus_value)
+class ArchiveFocusSequence(FocusSequence):
+    def __init__(self, observed_focus, exposures):
+        super().__init__()
 
-    outliers, median_x, median_y = detect_outliers(curve, grid, threshold=2.0)
-    if outliers:
-        print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
-        print(f"Outlier observations:")
-        for outlier in outliers:
-            x, y = outlier.focus_star['Centroid']
-            print(f"   d{outlier.focus_star['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier.focus_star['Focus']}, FWHM: {outlier.focus_star['FWHM']:.3f}")
+        self._observed_focus = observed_focus
+        self._exposures = exposures
 
-    x_values = []
-    y_values = []
-    obs_values = []
-    print("Curve found with the following focus values:")
-    for img in curve:
-        print(f"OBS: {img.focus_star['ObsNum']} Focus: {img.focus_value}, FWHM: {img.fwhm}")
-        x_values.append(img.focus_value)
-        y_values.append(img.fwhm)
-        obs_values.append(img.focus_star['ObsNum'])
-
-    a, b, c = quadratic.fit_quadratic(x_values, y_values)
-    x_vertex, y_vertex = quadratic.vertex(a, b, c)
-    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
-
-    grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers)
-
-    return curve
-
-def manual_focus_finder(initial_focus, end_focus, step_size, focus_coords, keyword):
-    if (end_focus - initial_focus) // step_size < 2:
-        raise Exception("Not enough images to find a focus curve. Increase the range or decrease the step size.")
-
-    grid = Grid()
-    plt.ion()
-    plt.show(block=False)
-    plt.pause(0.1)
-
-    curve = set()
+    def continue_sequence(self):
+        return self.step_iter < self.nstep
     
-    focus = initial_focus
-    while focus <= end_focus:
-        image = Event(keyword, keyword.verbose)
-        image.sequence(focus, focus_coords, grid)
-        grid.index += 1
-        focus += step_size
-        if image.fwhm is None:
-            print(f"Image at focus {focus} has no FWHM. Skipping.")
-            continue
-        curve.add(image)
-        plt.draw()
+    def step_focus(self):
+        return self._observed_focus[self.step_iter]
 
-    outliers, median_x, median_y = detect_outliers(curve, grid, threshold=2.0)
-    if outliers:
-        print(f"\n Median centroid: {median_x:.2f}, {median_y:.2f}")
-        print(f"Outlier observations:")
-        for outlier in outliers:
-            x, y = outlier.focus_star['Centroid']
-            print(f"   d{outlier.focus_star['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier.focus_star['Focus']}, FWHM: {outlier.focus_star['FWHM']:.3f}")
-    
+    def take_exposure(self):
+        return self._exposures[self.step_iter]
 
-    x_values = []
-    y_values = []
-    obs_values = []
-    print("Curve found with the following focus values:")
-    for img in curve:
-        print(f"OBS: {img.focus_star['ObsNum']} Focus: {img.focus_value}, FWHM: {img.fwhm}")
-        x_values.append(img.focus_value)
-        y_values.append(img.fwhm)
-        obs_values.append(img.focus_star['ObsNum'])
-
-    a, b, c = quadratic.fit_quadratic(x_values, y_values)
-    x_vertex, y_vertex = quadratic.vertex(a, b, c)
-    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
-
-    grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers)
-
-    return curve
 
 def detect_outliers(curve, plot, threshold=2.0):
     
@@ -618,40 +552,108 @@ def reevaluate(focus_coords, keyword, verbose):
     return curve
 
 import argparse
+
 def main():
 
-    focus = Focus()
-
-    embed()
-    exit()
-
-    fseq = FocusSequence(340, 5)
-    #fseq.set_focus(360)
-    #fseq.set_focus(351)
-    fseq.take_exposure(record=False)
-
-    embed()
-    exit()
-
-    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f'focus_finding.log'
-    logger = setup_logging(log_level='INFO', log_file=log_filename)
-    logger.info("Starting focus finding process")
+#    log_filename = f'focus_finding.log'
+#    logger = setup_logging(log_level='INFO', log_file=log_filename)
+#    logger.info("Starting focus finding process")
 
     parser = argparse.ArgumentParser(description="Automate the focus finding process.")
-    parser.add_argument('-fs', '--focus_start', default=350, type=int, help='Start Focus value')
-    parser.add_argument('-fe', '--focus_end', default=None, type=int, help='End Focus value')
-    parser.add_argument('-s', '--step_size', default=5, type=int, help='Step size for focus increments')
-    parser.add_argument('-el', '--length_exposure', default=1, type=float, help='Exposure length in seconds')
-    parser.add_argument('-es', '--exposure_speed', default='Fast', choices=['Slow', 'Medium', 'Fast'], help='Exposure speed: Slow, Medium, Fast')
-    parser.add_argument('--focus_coords', type=float, nargs='*', default=None, help='Focus star coordinates (x, y) for manual focus finding')
-    parser.add_argument('--refit', action='store_true', help='Refit the focus curve with omitted outliers')
-    parser.add_argument('--omit', type=int, nargs='*', default=None, help='List of observation numbers to omit from the curve fitting')
-    parser.add_argument('--reevaluate', action='store_true', help='Reevaluate the focus curve with the last recorded focus data')
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose output for debugging')
+
+    parser.add_argument('focus', nargs='+', type=float,
+        help='Focus starting value and step size.  You can also provide the last focus value.  '
+             'Use --n to set the number of steps instead of the last focus value.  If neither '
+             'are provided (last focus or number of focus steps), the code performs an automated '
+             'number of steps to fill out the focus curve.'
+    )
+    parser.add_argument('-n', '--nstep', default=None, type=int,
+        help='The number of focus steps to perform.  Ignored if the ending focus value is '
+             'provided (see --focus).'
+    )
+    parser.add_argument('--method', type=float, nargs='+', default='brightest',
+        help='The method used for calculating the image quality.  Must be "brightest" to use the '
+             'brightest detected source in the field, "weighted" to use a weighted mean of all '
+             'detected sources, or provide two pixel coordinates (x,y or column,row) to use a '
+             'the detected source closest to the provided coordinates.'
+    )
+    parser.add_argument('--maxsteps', type=int, default=12,
+        help='If using the automated focus sequence, this is the maximum of steps that are '
+             'allowed.'
+    )
+    parser.add_argument('--obsnum', type=int, default=None,
+        help='Re-analyze a focus sequence starting with the provided focus values and this '
+             'observation number.  The number of available images must match the focus sequence '
+             'requested.'
+    )
+    parser.add_argument('-t', '--exptime', default=5, type=float,
+                        help='Exposure time in seconds for each exposure.')
+    parser.add_argument('-s', '--speed', default='Fast', choices=['Slow', 'Fast'],
+                        help='Exposure speed.  Must be Slow or Fast.')
+    parser.add_argument('-o', '--ofile', default=None, type=str,
+        help='Output file for the measured focus data.  This can be used to exclude and refit the '
+             'best focus.'
+    )
+    parser.add_argument('--refit', action='store_true',
+        help='Refit the focus curve.  The output file (see --ofile) must be provided.'
+    )
+    parser.add_argument('--omit', type=int, nargs='+', default=None,
+        help='List of observation numbers to omit from the curve fitting.'
+    )
+    parser.add_argument('--verbose', action='store_true',
+        help='Enable verbose output for debugging'
+    )
     args = parser.parse_args()
 
-    logger.info(f"Arguments: {vars(args)}")
+    embed()
+    exit()
+
+    if args.refit:
+        if args.ofile is None:
+            raise ValueError(
+                'To refit, must provide output file name from a previous focus sequence.'
+            )
+        _ofile = Path(args.ofile).absolute()
+        if not _ofile.is_file():
+            raise FileNotFoundError(f'{_ofile.name} not found!  Correct the output file name.')
+        tbl = Table.read(_ofile, format='ecsv')
+        if args.omit is not None:
+            # Find the entries in the table and remove them
+            pass
+        best_focus, best_img_quality = FocusSequence.fit_best_focus(tbl['FOCUS'], tbl['SIGMA'])
+        # And then finish this out
+        return
+    
+    # Check if output file exists
+
+    if len(args.focus) == 3 or args.nstep is not None:
+        # Perform a grid or archive sequence
+        end = None if len(args.focus) == 2 else args.focus[2]
+        seq = GridFocusSequence(args.focus[0], args.focus[1], end=end, nstep=args.nstep)
+
+        if args.obsnum is not None:
+            # Use GridFocusSequence to set the expected focus values
+            expected_files = np.array([
+                seq._exposure.path.from_obsnum(args.obsnum + i, assumed_recorded=True)
+                for i in range(seq.nsteps)
+            ])
+            indx = np.array([Path(f).absolute().is_file() for f in expected_files])
+            if not np.all(indx):
+                raise FileNotFoundError('Expected to find the following files, but they are not '
+                                        f'available: {", ".join(expected_files[indx].tolist())}')
+            seq = ArchiveFocusSequence(seq.target_focus, expected_files)
+    else:
+        seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
+
+    best_focus, best_img_quality = seq.execute(goto=False, method=args.method)
+    
+    # - Print the best focus and the img quality
+    # - Write the output file if provided
+
+            
+
+
+#    logger.info(f"Arguments: {vars(args)}")
 
     keyword = Keyword('Yes', args.length_exposure, args.exposure_speed)
     # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast

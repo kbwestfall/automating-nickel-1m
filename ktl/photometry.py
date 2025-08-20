@@ -352,7 +352,7 @@ def moment2d(x, y, z):
 
     tot = np.sum(_z)
     if np.absolute(tot) < 1e-6:
-        raise ValueErrror('Sum of the data is too close to 0.')
+        raise ValueError('Sum of the data is too close to 0.')
 
     cx = np.sum(_x*_z)/tot
     cy = np.sum(_y*_z)/tot
@@ -477,9 +477,14 @@ def image_quality(fits_file, method='brightest', verbose=False):
     if method == 'brightest':
         target_source = np.argmax(src_data['CNTS'])
         img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
+        coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
+        stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif method == 'weighted':
         img_quality = np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2) \
                         / np.sum(src_data['CNTS'])
+        target_source = np.argmax(src_data['CNTS'])
+        coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
+        stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif not isinstance(method, tuple):
         raise ValueError('image_quality method must be brightest, weighted, or a tuple of '
                          'coordinates')
@@ -492,6 +497,17 @@ def image_quality(fits_file, method='brightest', verbose=False):
                              f'message: {e}.')
         target_source = np.argmin(dist)
         img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
+        coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
+        stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
 
-    return data, bkg, src_data, img_quality   
+    return data, bkg, src_data, img_quality, stamp
+
+
+def extract_stamp(data, coords, size):
+    sx = int(np.floor(coords[0] - size / 2))
+    ex = int(np.ceil(coords[0] + size / 2)) + 1
+    sy = int(np.floor(coords[1] - size / 2))
+    ey = int(np.ceil(coords[1] + size / 2)) + 1
+    return data[sy:ey,sx:ex]
+
 

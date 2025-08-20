@@ -346,6 +346,7 @@ class AutomatedFocusSequence(FocusSequence):
         )
     
     def step_focus(self):
+        embed(header='beginning of step_focus')
         if self.step_iter == 0:
             next_focus = self.start
         elif self.step_iter == 1:
@@ -365,7 +366,7 @@ class AutomatedFocusSequence(FocusSequence):
             next_focus = self.focus_values[-1] + self.direction * self.step
         else:
             next_focus = self.focus_values[-1] + self.direction * self.step
-        embed()
+        embed(header='end of step_focus')
         self._focus.set_to(next_focus)
         return self._focus.current
 

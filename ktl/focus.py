@@ -339,7 +339,7 @@ class AutomatedFocusSequence(FocusSequence):
 
     def continue_sequence(self):
         return (
-            self.step_iter < maxsteps
+            self.step_iter < self.maxsteps
             and (self.step_iter < 2 
                 or (self.last is not None and self.step_iter < self.last)
             )

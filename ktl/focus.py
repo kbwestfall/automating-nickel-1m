@@ -69,7 +69,7 @@ class Focus:
         """
         Return the current focus position
         """
-        return self.secpa.read()
+        return float(self.secpa.read())
 
     def set_to(self, focus_value):
         """
@@ -270,9 +270,11 @@ class FocusSequence:
             self.step_iter += 1
 
         embed()
-        exit()
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
+
+        embed()
+        exit()
         if goto:
             self._focus.set_to(best_focus)
             self.take_exposure()

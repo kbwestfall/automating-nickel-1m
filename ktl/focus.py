@@ -359,7 +359,7 @@ class AutomatedFocusSequence(FocusSequence):
         elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
             self.direction = -1
             next_focus = self.observed_focus[0] - self.step
-        elif self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
+        elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
                 warnings.warn(

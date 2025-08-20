@@ -655,6 +655,10 @@ def main():
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
 
+    embed()
+    exit()
+
+
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,
                                                binning=args.binning)

@@ -617,9 +617,6 @@ def main():
     elif _speed == 'Fast':
         _speed = '1.0MHz'
 
-    embed()
-    exit()
-
     if args.refit:
         raise NotImplementedError('Not ready to refit.')
         if args.ofile is None:
@@ -657,6 +654,9 @@ def main():
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
+
+    embed()
+    exit()
 
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,

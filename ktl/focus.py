@@ -648,19 +648,13 @@ def main():
                 seq._exposure.path.for_obsnum(args.obsnum + i, assume_recorded=True)
                 for i in range(seq.nstep)
             ])
-            embed()
-
             indx = np.array([Path(f).absolute().is_file() for f in expected_files])
             if not np.all(indx):
                 raise FileNotFoundError('Expected to find the following files, but they are not '
                                         f'available: {", ".join(expected_files[indx].tolist())}')
-            embed()
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
-
-    embed()
-    exit()
 
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,

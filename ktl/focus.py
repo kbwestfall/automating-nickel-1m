@@ -485,7 +485,7 @@ def main():
                                                speed=_speed, exptime=args.exptime,
                                                binning=args.binning)
     print(f'Best focus: {best_focus:.1f}')
-    print(f'Expected sigma: {best_img_quality::.1f} pixels')
+    print(f'Expected sigma: {best_img_quality:.1f} pixels')
 
     # TODO:
     # - Plot

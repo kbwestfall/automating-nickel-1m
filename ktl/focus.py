@@ -259,6 +259,7 @@ class FocusSequence:
         self._exposure.configure(**exp_kwargs)
         self.reset()
 
+        embed()
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
@@ -268,6 +269,8 @@ class FocusSequence:
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.step_iter += 1
+            embed()
+            exit()
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
         if goto:
@@ -656,12 +659,12 @@ def main():
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
 
-    embed()
-    exit()
-
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,
                                                binning=args.binning)
+    embed()
+    exit()
+
     
     # - Print the best focus and the img quality
     # - Write the output file if provided

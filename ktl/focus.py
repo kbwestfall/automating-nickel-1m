@@ -588,8 +588,10 @@ def main():
     )
     parser.add_argument('-t', '--exptime', default=5, type=float,
                         help='Exposure time in seconds for each exposure.')
-    parser.add_argument('-s', '--speed', default='Fast', choices=['Slow', 'Fast'],
-                        help='Exposure speed.  Must be Slow or Fast.')
+    parser.add_argument('-b', '--binning', default=None, choices=['1,1', '2,2', '4,4'],
+                        help='BinningExposure speed.  Must be "1,1", "2,2", or "4.4".')
+    parser.add_argument('-s', '--speed', default=None, choices=['Slow', 'Fast'],
+                        help='Exposure speed.  Must be Slow or Fast.  If None')
     parser.add_argument('-o', '--ofile', default=None, type=str,
         help='Output file for the measured focus data.  This can be used to exclude and refit the '
              'best focus.'
@@ -605,10 +607,21 @@ def main():
     )
     args = parser.parse_args()
 
+    # Set the read speed
+    _speed = args.speed
+    if _speed == 'Fast':
+        warnings.warn('Fast does not work!  Setting to slow.')
+        _speed == 'Slow'
+    if _speed == 'Slow':
+        _speed = '0.05MHz'
+    elif _speed == 'Fast':
+        _speed = '1.0MHz'
+
     embed()
     exit()
 
     if args.refit:
+        raise NotImplementedError('Not ready to refit.')
         if args.ofile is None:
             raise ValueError(
                 'To refit, must provide output file name from a previous focus sequence.'
@@ -645,7 +658,9 @@ def main():
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
 
-    best_focus, best_img_quality = seq.execute(goto=False, method=args.method)
+    best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
+                                               speed=_speed, exptime=args.exptime,
+                                               binning=args.binning)
     
     # - Print the best focus and the img quality
     # - Write the output file if provided

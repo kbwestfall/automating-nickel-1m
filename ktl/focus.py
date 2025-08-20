@@ -571,7 +571,7 @@ def main():
         help='The number of focus steps to perform.  Ignored if the ending focus value is '
              'provided (see --focus).'
     )
-    parser.add_argument('--method', type=float, nargs='+', default='brightest',
+    parser.add_argument('--method', type=str, nargs='+', default='brightest',
         help='The method used for calculating the image quality.  Must be "brightest" to use the '
              'brightest detected source in the field, "weighted" to use a weighted mean of all '
              'detected sources, or provide two pixel coordinates (x,y or column,row) to use a '

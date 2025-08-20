@@ -376,6 +376,7 @@ class ArchiveFocusSequence(FocusSequence):
 
         self._observed_focus = observed_focus
         self._exposures = exposures
+        self.nstep = len(self._observed_focus)
 
     def continue_sequence(self):
         return self.step_iter < self.nstep

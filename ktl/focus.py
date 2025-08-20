@@ -1,5 +1,6 @@
 #! @KPYTHON@
 
+import argparse
 import warnings
 from IPython import embed
 
@@ -20,40 +21,40 @@ from photometry import Grid
 import ktl
 
 
-def setup_logging(log_level='INFO', log_file=None):
-    """
-    Setup logging configuration
-    
-    Parameters:
-    log_level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
-    log_file: Optional filename to save logs to file
-    """
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-    )
-    
-    # Setup root logger
-    logger = logging.getLogger()
-    logger.setLevel(getattr(logging, log_level.upper()))
-    
-    # Clear any existing handlers
-    logger.handlers.clear()
-    
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, log_level.upper()))
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-    
-    # File handler (optional)
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)  
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    
-    return logger
+#def setup_logging(log_level='INFO', log_file=None):
+#    """
+#    Setup logging configuration
+#    
+#    Parameters:
+#    log_level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'
+#    log_file: Optional filename to save logs to file
+#    """
+#    # Create formatter
+#    formatter = logging.Formatter(
+#        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+#    )
+#    
+#    # Setup root logger
+#    logger = logging.getLogger()
+#    logger.setLevel(getattr(logging, log_level.upper()))
+#    
+#    # Clear any existing handlers
+#    logger.handlers.clear()
+#    
+#    # Console handler
+#    console_handler = logging.StreamHandler(sys.stdout)
+#    console_handler.setLevel(getattr(logging, log_level.upper()))
+#    console_handler.setFormatter(formatter)
+#    logger.addHandler(console_handler)
+#    
+#    # File handler (optional)
+#    if log_file:
+#        file_handler = logging.FileHandler(log_file)
+#        file_handler.setLevel(logging.DEBUG)  
+#        file_handler.setFormatter(formatter)
+#        logger.addHandler(file_handler)
+#    
+#    return logger
 
 
 class Focus:
@@ -193,22 +194,12 @@ class Exposure:
 
         # SCICAM exposure keywords
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
-#        self.expstate.callback(self._expstate_callback)
         self.expstate.monitor()
         self.expstate_value = None
 
         self.expstart = ktl.cache('nscicam', 'EXPOSE')
-#        self.expstart.callback(self._filepath_callback)
         self.expstart.monitor()
         self.filepath = None
-
-#    def _expstate_callback(self, keyword):
-#        self.expstate_value = keyword.read()
-##        print(f'EXPSTATE updated: {self.expstate_value}')
-#
-#    def _filepath_callback(self, keyword):
-#        self.filepath = self.path.next
-##        print(f'FILEPATH updated: {self.filepath}')
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 
@@ -388,173 +379,6 @@ class ArchiveFocusSequence(FocusSequence):
         return self._exposures[self.step_iter]
 
 
-def detect_outliers(curve, plot, threshold=2.0):
-    
-    centroid_x = np.array([img.focus_star['Centroid'][0] for img in curve], dtype=float)
-    centroid_y = np.array([img.focus_star['Centroid'][1] for img in curve], dtype=float)
-
-    median_x = np.median(centroid_x)
-    median_y = np.median(centroid_y)
-
-    distances = np.sqrt((centroid_x - median_x)**2 + (centroid_y - median_y)**2)
-    mean_distance = np.mean(distances)
-    std_distance = np.std(distances)
-    outlier_threshold = mean_distance + threshold * std_distance
-
-    outliers = []
-    for i, img in enumerate(curve):
-        if distances[i] > outlier_threshold:
-            outliers.append(img)
-
-            cutout_size = int(3 * img.focus_star['FWHM'])
-
-            half_size = cutout_size // 2
-    
-            # Calculate cutout boundaries
-            x_center = int(round(img.focus_star['Centroid'][0]))
-            y_center = int(round(img.focus_star['Centroid'][1]))
-            # WHEN MOVING TO KTLPRACTICE, MAKE SURE TO USE CORRECT DICT KEY
-
-            x_min = max(0, x_center - half_size)
-            x_max = min(1024, x_center + half_size + 1)
-            y_min = max(0, y_center - half_size)
-            y_max = min(1024, y_center + half_size + 1)
-            # USING HARDCODED 1024 FOR NOW
-    
-            # highlight cutout region
-            rect = Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='yellow', facecolor='none')
-            plot.ax_left.add_patch(rect)
-
-    plot.fig.suptitle(f'Median Centroid ({median_x:.2f}×{median_y:.2f})', fontsize=16, fontweight='bold')
-
-    return outliers, float(median_x), float(median_y)
-
-
-def refit_curve(omit):
-    try:
-        data = Table.read("focus_data.ecsv")
-    except Exception as e:
-        raise Exception(f"Error reading focus data: {e}")
-
-    images = []
-    for line in data:
-        images.append({
-            'ObsNum': line['ObsNum'],
-            'Focus': line['Focus'],
-            'FWHM': line['FWHM'],
-            'Centroid': (line['CentroidX'], line['CentroidY'])
-        })
-
-    if omit:
-        curve = [img for img in images if int(img['ObsNum']) not in omit]
-        print(f'Refitting curve with the following observations omitted: {omit}')
-        if len(curve) <= 2:
-            print('Not enough observations left to refit the curve. Exiting.')
-            return None
-    else:
-        print('Refitting curve with all observations included.')
-
-    x_values = [float(img['Focus']) for img in curve]
-    y_values = [float(img['FWHM']) for img in curve]
-
-    a, b, c = quadratic.fit_quadratic(x_values, y_values)
-    x_vertex, y_vertex = quadratic.vertex(a, b, c)
-
-    print(f"Refitted curve: Optimal focus: {x_vertex}, FWHM: {y_vertex}")
-
-    plt.figure(figsize=(12, 12))
-
-
-    x_min, x_max = min(x_values), max(x_values)
-    x_smooth = np.linspace(x_min, x_max, 50)
-    y_smooth = a * x_smooth**2 + b * x_smooth + c
-
-    plt.scatter(x_values, y_values, label='Measured FWHM', color='blue')
-    plt.plot(x_smooth, y_smooth, 'r-', label='Fitted Quadratic')
-    plt.scatter([x_vertex], [y_vertex], color='green', label='Optimal focus', zorder=3)
-    plt.axvline(x=x_vertex, color='green', linestyle='--')
-
-    plt.xlabel('Focus Value', fontsize=12)
-    plt.ylabel('FWHM (pixels)', fontsize=12)
-    plt.title('Focus Curve Analysis', fontsize=14, fontweight='bold')
-    plt.legend(loc='best')
-    plt.grid(True, alpha=0.3)
-
-    return curve
-
-class TempFocusObject:
-    def __init__(self, focus_star_dict):
-        self.focus_star = focus_star_dict
-
-def reevaluate(focus_coords, keyword, verbose):
-
-    try:
-        data = Table.read("focus_data.ecsv")
-    except Exception as e:
-        raise Exception(f"Error reading focus data: {e}")
-
-    images = []
-    for line in data:
-        images.append({
-            'ObsNum': line['ObsNum'],
-            'Focus': line['Focus'],
-            'FWHM': line['FWHM'],
-            'Centroid': (line['CentroidX'], line['CentroidY'])
-        })
-
-    grid = Grid()
-    plt.ion()
-    plt.show(block=False)
-    plt.pause(0.1)
-
-    curve = set()
-
-    for obs_index, obs in enumerate(images):
-        obs_num = obs['ObsNum']
-        filename = f"{keyword.dir_key.read()}/nickel/{keyword.file_key.read()}{obs_num}.{keyword.suffix_key.read()}"
-        focus_value = obs['Focus']
-        grid.index = obs_index
-
-        focus_star = photometry(filename, obs_num, focus_value, grid, focus_coords, verbose=verbose)
-
-        if focus_star is None:
-            print(f"Image {filename} has no FWHM. Skipping.")
-            continue
-
-        temp_obj = TempFocusObject(focus_star)
-        curve.add(temp_obj)
-
-    curve = sorted(curve, key=lambda img: img.focus_star['Focus'])
-
-    outliers, median_x, median_y = detect_outliers(curve, grid, threshold=2.0)
-    if outliers:
-        print(f"\n Median centroid: {centroid_median_x:.2f}, {centroid_median_y:.2f}")
-        print(f"Outlier observations:")
-        for outlier in outliers:
-            x, y = outlier.focus_star['Centroid']
-            print(f"   d{outlier.focus_star['ObsNum']}: ({x:.2f}, {y:.2f}) - Focus: {outlier.focus_star['Focus']}, FWHM: {outlier.focus_star['FWHM']:.3f}")
-
-    print(curve)
-    x_values = []
-    y_values = []
-    obs_values = []
-    print("Reevaluated curve with the following focus values:")
-    for img in curve:
-        print(f"OBS: {img.focus_star['ObsNum']} Focus: {img.focus_star['Focus']}, FWHM: {img.focus_star['FWHM']}")
-        x_values.append(img.focus_star['Focus'])
-        y_values.append(img.focus_star['FWHM'])
-        obs_values.append(img.focus_star['ObsNum'])
-
-    a, b, c = quadratic.fit_quadratic(x_values, y_values)
-    x_vertex, y_vertex = quadratic.vertex(a, b, c)
-    print(f"\nOptimal focus: {x_vertex}, FWHM: {y_vertex}")
-
-    grid.set_right_axis(x_values, y_values, a, b, c, x_vertex, y_vertex, obs_values, outliers)
-
-    return curve
-
-import argparse
-
 def main():
 
 #    log_filename = f'focus_finding.log'
@@ -660,80 +484,14 @@ def main():
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,
                                                binning=args.binning)
-    embed()
-    exit()
+    print(f'Best focus: {best_focus:.1f}')
+    print(f'Expected sigma: {best_img_quality::.1f} pixels')
 
-    
-    # - Print the best focus and the img quality
+    # TODO:
+    # - Plot
     # - Write the output file if provided
-
-            
-
-
-#    logger.info(f"Arguments: {vars(args)}")
-
-    keyword = Keyword('Yes', args.length_exposure, args.exposure_speed)
-    # Record: 0 No 1 Yes, Exposure: seconds, Speed: 0 Slow 1 Medium 2 Fast
-
-    event = Event(keyword, args.verbose)
-    keyword.verbose = args.verbose
-
-    filepath = f"{keyword.dir_key.read()}/{keyword.file_key.read()}{keyword.obs_key.read()}.{keyword.suffix_key.read()}"
-
-    if args.reevaluate is True:
-
-        curve = reevaluate(args.focus_coords, keyword, args.verbose)
-
-        data = Table()
-        data['ObsNum'] = [np.array(img.focus_star['ObsNum'], dtype=int) for img in curve]
-        data['Focus'] = [np.array(img.focus_star['Focus'], dtype=float) for img in curve]
-        data['FWHM'] = [np.array(img.focus_star['FWHM'], dtype=float) for img in curve]
-        data['CentroidX'] = [np.array(img.focus_star['Centroid'][0], dtype=float) for img in curve]
-        data['CentroidY'] = [np.array(img.focus_star['Centroid'][1], dtype=float) for img in curve]
-        data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
-        data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
-        data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
-        data.write("focus_data.ecsv", overwrite=True)
-
-    elif args.refit is True:
-        curve = refit_curve(args.omit)
-
-    if keyword.event_key.read() != 'ControllerReady' and keyword.event_key.read() != 'ExposeSequenceDone':
-        raise Exception("Controller not ready. Cannot take exposure.")
-
-    #check if pocstop is enabled
-    if keyword.stop_key.read() == 1:
-        print("POCSTOP is 'disabled'. Waiting for 'enabled' to allow motion")
-    if not keyword.stop_key.waitFor('== allowed', timeout=30):
-        raise Exception("POCSTOP is 'disabled'. Set to 'enabled' to allow motion")
-    
-    if args.refit is False and args.reevaluate is False:
-
-        if args.focus_end:
-            curve = manual_focus_finder(args.focus_start, args.focus_end, args.step_size, args.focus_coords, keyword)
-        else:
-            curve = auto_focus_finder(args.focus_start, args.step_size, args.focus_coords, keyword)
-
-        data = Table()
-        data['ObsNum'] = [np.array(img.focus_star['ObsNum'], dtype=int) for img in curve]
-        data['Focus'] = [np.array(img.focus_star['Focus'], dtype=float) for img in curve]
-        data['FWHM'] = [np.array(img.focus_star['FWHM'], dtype=float) for img in curve]
-        data['CentroidX'] = [np.array(img.focus_star['Centroid'][0], dtype=float) for img in curve]
-        data['CentroidY'] = [np.array(img.focus_star['Centroid'][1], dtype=float) for img in curve]
-        data.description = 'Focus curve data with observations, focus values, FWHM, and centroids'
-        data.meta['CentroidX'] = f'median: {np.median(data["CentroidX"]):.2f}, std: {np.std(data["CentroidX"]):.2f}'
-        data.meta['CentroidY'] = f'median: {np.median(data["CentroidY"]):.2f}, std: {np.std(data["CentroidY"]):.2f}'
-        data.write("focus_data.ecsv", overwrite=True)
-   
-
-    plt.ioff()
-    plt.show(block=True)
 
 
 if __name__ == "__main__":
     main()
-
-
-# /data/nickel
-# 8:30
 

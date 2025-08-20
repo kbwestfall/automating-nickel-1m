@@ -308,9 +308,10 @@ class GridFocusSequence(FocusSequence):
         if end is None and nstep is None:
             raise ValueError('Must provide either the ending value or the number of steps.')
         self.nstep = nstep if end is None else int((end-start)/step+1)
+        _end = start + (self.nstep-1)*step
+        self.target_focus = np.round(np.linspace(start, end, self.nstep))
         embed()
         exit()
-        self.target_focus = np.round(np.linspace(start, end, self.nstep))
 
     def continue_sequence(self):
         return self.step_iter < self.nstep

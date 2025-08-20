@@ -259,7 +259,6 @@ class FocusSequence:
         self._exposure.cfg.configure(**exp_kwargs)
         self.reset()
 
-        embed()
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
@@ -269,8 +268,9 @@ class FocusSequence:
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.step_iter += 1
-            embed()
-            exit()
+
+        embed()
+        exit()
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
         if goto:

@@ -105,24 +105,22 @@ class Focus:
         if not self.expstate.waitFor('== Ready', timeout=0.5):
             raise ValueError('Camera exposure state not ready. Cannot change focus.')
 
-        print(f'Current POCSECPD: {self.secpd.read()}')
-        print(f'Current POCSECPA: {self.secpa.read()}')
-
         if abs(float(self.secpd.read()) - focus_value) < .1:
             print(f'POCSECPD already set to {focus_value}. No change needed.')
             return
         
-        print(f'Current POCSECLK: {self.seclk.read()}')
+        print('Unlocking secondary')
         self.seclk.write('off')
         self.seclk.read()
-        print('Set POCSECLK to off')
 
-        print(f'POCSECPA: {self.secpa.read()}')
+        print(f'Actual position: {self.secpa.read()}')
         self.secpd.write(focus_value)
-        print(f'POCSECPD: {self.secpd.read()}')
+        print(f'Desired position: {self.secpd.read()}')
 
         if not self.seclk.waitFor('== on', timeout=30):
             # TODO: Explicitly set the lock to on?
+#            self.seclk.write('on')
+#            self.seclk.read()
             raise ValueError("POCSECLK did not turn on. Focus change failed.")
             
         print(f"Successfully changed focus to {focus_value}")
@@ -269,12 +267,8 @@ class FocusSequence:
             self.img_quality += [img_quality]
             self.step_iter += 1
 
-        embed()
-
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
 
-        embed()
-        exit()
         if goto:
             self._focus.set_to(best_focus)
             self.take_exposure()

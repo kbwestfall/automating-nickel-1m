@@ -310,8 +310,6 @@ class GridFocusSequence(FocusSequence):
         self.nstep = nstep if end is None else int((end-start)/step+1)
         _end = start + (self.nstep-1)*step
         self.target_focus = np.round(np.linspace(start, _end, self.nstep))
-        embed()
-        exit()
 
     def continue_sequence(self):
         return self.step_iter < self.nstep

@@ -646,7 +646,7 @@ def main():
             # Use GridFocusSequence to set the expected focus values
             expected_files = np.array([
                 seq._exposure.path.from_obsnum(args.obsnum + i, assumed_recorded=True)
-                for i in range(seq.nsteps)
+                for i in range(seq.nstep)
             ])
             embed()
 

@@ -365,6 +365,7 @@ class AutomatedFocusSequence(FocusSequence):
             next_focus = self.focus_values[-1] + self.direction * self.step
         else:
             next_focus = self.focus_values[-1] + self.direction * self.step
+        embed()
         self._focus.set_to(next_focus)
         return self._focus.current
 
@@ -654,10 +655,6 @@ def main():
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
-
-    embed()
-    exit()
-
 
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,

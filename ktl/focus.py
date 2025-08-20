@@ -338,10 +338,12 @@ class AutomatedFocusSequence(FocusSequence):
         self.last = None
 
     def continue_sequence(self):
+        embed(header='in continue')
         return (
             self.step_iter < self.maxsteps
             and (self.step_iter < 2 
-                or (self.last is not None and self.step_iter < self.last)
+                 or self.last is None
+                 or (self.last is not None and self.step_iter < self.last)
             )
         )
     

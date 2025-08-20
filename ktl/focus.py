@@ -193,22 +193,22 @@ class Exposure:
 
         # SCICAM exposure keywords
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
-        self.expstate.callback(self._expstate_callback)
+#        self.expstate.callback(self._expstate_callback)
         self.expstate.monitor()
         self.expstate_value = None
 
         self.expstart = ktl.cache('nscicam', 'EXPOSE')
-        self.expstart.callback(self._filepath_callback)
+#        self.expstart.callback(self._filepath_callback)
         self.expstart.monitor()
         self.filepath = None
 
-    def _expstate_callback(self, keyword):
-        self.expstate_value = keyword.read()
-#        print(f'EXPSTATE updated: {self.expstate_value}')
-
-    def _filepath_callback(self, keyword):
-        self.filepath = self.path.next
-#        print(f'FILEPATH updated: {self.filepath}')
+#    def _expstate_callback(self, keyword):
+#        self.expstate_value = keyword.read()
+##        print(f'EXPSTATE updated: {self.expstate_value}')
+#
+#    def _filepath_callback(self, keyword):
+#        self.filepath = self.path.next
+##        print(f'FILEPATH updated: {self.filepath}')
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 

@@ -256,7 +256,7 @@ class FocusSequence:
 
     def execute(self, verbose=True, goto=True, method='brightest', **exp_kwargs):
 
-        self._exposure.configure(**exp_kwargs)
+        self._exposure.cfg.configure(**exp_kwargs)
         self.reset()
 
         embed()

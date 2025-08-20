@@ -338,7 +338,6 @@ class AutomatedFocusSequence(FocusSequence):
         self.last = None
 
     def continue_sequence(self):
-        embed(header='in continue')
         return (
             self.step_iter < self.maxsteps
             and (self.step_iter < 2 
@@ -348,7 +347,6 @@ class AutomatedFocusSequence(FocusSequence):
         )
     
     def step_focus(self):
-        embed(header='beginning of step_focus')
         if self.step_iter == 0:
             next_focus = self.start
         elif self.step_iter == 1:
@@ -368,7 +366,6 @@ class AutomatedFocusSequence(FocusSequence):
             next_focus = self.observed_focus[-1] + self.direction * self.step
         else:
             next_focus = self.observed_focus[-1] + self.direction * self.step
-        embed(header='end of step_focus')
         self._focus.set_to(next_focus)
         return self._focus.current
 
@@ -646,6 +643,9 @@ def main():
         seq = GridFocusSequence(args.focus[0], args.focus[1], end=end, nstep=args.nstep)
 
         if args.obsnum is not None:
+            embed()
+            exit()
+
             # Use GridFocusSequence to set the expected focus values
             expected_files = np.array([
                 seq._exposure.path.from_obsnum(args.obsnum + i, assumed_recorded=True)
@@ -658,6 +658,9 @@ def main():
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
+
+    embed()
+    exit()
 
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,

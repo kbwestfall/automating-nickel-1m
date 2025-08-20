@@ -315,7 +315,7 @@ class GridFocusSequence(FocusSequence):
         return self.step_iter < self.nstep
     
     def step_focus(self):
-        self._focus.set_to(self.focus_values[self.step_iter])
+        self._focus.set_to(self.target_focus[self.step_iter])
         return self._focus.current
 
 

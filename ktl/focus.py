@@ -643,18 +643,18 @@ def main():
         seq = GridFocusSequence(args.focus[0], args.focus[1], end=end, nstep=args.nstep)
 
         if args.obsnum is not None:
-            embed()
-            exit()
-
             # Use GridFocusSequence to set the expected focus values
             expected_files = np.array([
                 seq._exposure.path.from_obsnum(args.obsnum + i, assumed_recorded=True)
                 for i in range(seq.nsteps)
             ])
+            embed()
+
             indx = np.array([Path(f).absolute().is_file() for f in expected_files])
             if not np.all(indx):
                 raise FileNotFoundError('Expected to find the following files, but they are not '
                                         f'available: {", ".join(expected_files[indx].tolist())}')
+            embed()
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)

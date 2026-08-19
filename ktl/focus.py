@@ -170,7 +170,7 @@ class ExposureConfig:
         self.inttime = ktl.cache('nscicam', 'EXPOSURE')
         # NOTE: AMPCONFLIST gives the options
         self.expspeed  = ktl.cache('nscicam', 'AMPCONF')
-        self.expspeed_opt = ktl.cache('nscicam', 'AMPCONFLIST')
+        self.expspeed_options = ktl.cache('nscicam', 'AMPCONFLIST').read().split(',')
         self.expbin  = ktl.cache('nscicam', 'BINNING')
 
     def configure(self, record=None, speed=None, binning=None, exptime=None):

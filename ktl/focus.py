@@ -68,6 +68,11 @@ class Focus:
 
     """
     def __init__(self):
+        if ktl is None:
+            raise RuntimeError(
+                'The ktl package is not available.  Controlling the telescope focus requires a '
+                'kpython environment with ktl installed.'
+            )
         # Controls overall movement of mechanisms
         self.pocstop = ktl.cache('nickelpoco', 'POCSTOP')
         # Actual secondary position
@@ -219,7 +224,11 @@ class ExposureConfig:
 class Exposure:
 
     def __init__(self):
-    
+        if ktl is None:
+            raise RuntimeError(
+                'The ktl package is not available.  Taking new exposures requires a kpython '
+                'environment with ktl installed.'
+            )
         self.path = ExposurePath()
         self.cfg = ExposureConfig()
 
@@ -232,11 +241,11 @@ class Exposure:
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 
-        self.cfg.configure(record=record, speed=speed, binning=binning, exptime=exptime)
-
         # Check that an exposure isn't currently happening
         if not self.expstate.waitFor('== Ready', timeout=15):
             raise ValueError('Camera exposure state not ready. Cannot take exposure.')
+
+        self.cfg.configure(record=record, speed=speed, binning=binning, exptime=exptime)
 
         # Start the exposure
         # TODO: This needs to be confirmed once Will settles on the naming
@@ -261,8 +270,12 @@ class FocusSequence:
     sequence proceeds.
     """
     def __init__(self):
-        self._focus = Focus()
-        self._exposure = Exposure()
+        # `_focus` and `_exposure` control the telescope and camera hardware.
+        # They require a live ktl connection, which is not needed by
+        # sequences (e.g., ArchiveFocusSequence) that only reprocess
+        # exposures that already exist on disk.
+        self._focus = Focus() if ktl is not None else None
+        self._exposure = Exposure() if ktl is not None else None
         self.method = None
         self.reset()
 
@@ -275,7 +288,8 @@ class FocusSequence:
 
     def execute(self, verbose=True, goto=True, method='brightest', **exp_kwargs):
 
-        self._exposure.cfg.configure(**exp_kwargs)
+        if self._exposure is not None:
+            self._exposure.cfg.configure(**exp_kwargs)
         self.reset()
 
         while self.continue_sequence():
@@ -291,6 +305,11 @@ class FocusSequence:
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
 
         if goto:
+            if self._focus is None:
+                raise ValueError(
+                    'No telescope focus control is available (ktl not connected); cannot move '
+                    'to the best-fit focus.'
+                )
             self._focus.set_to(best_focus)
             self.take_exposure()
             sigma_at_best_focus = self.measure_fwhm(self.exposures[-1])
@@ -440,7 +459,18 @@ def main():
     parser.add_argument('--obsnum', type=int, default=None,
         help='Re-analyze a focus sequence starting with the provided focus values and this '
              'observation number.  The number of available images must match the focus sequence '
-             'requested.'
+             'requested.  Requires --datadir, --prefix, and --suffix to locate the exposures; '
+             'does not require a ktl connection.'
+    )
+    parser.add_argument('--datadir', default='.', type=str,
+        help='Directory holding the archived exposures to re-analyze.  Only used with --obsnum.'
+    )
+    parser.add_argument('--prefix', default='n', type=str,
+        help='Filename prefix of the archived exposures, e.g. "n" for files named like '
+             '"n2165.fits".  Only used with --obsnum.'
+    )
+    parser.add_argument('--suffix', default='.fits', type=str,
+        help='Filename suffix of the archived exposures, e.g. ".fits".  Only used with --obsnum.'
     )
     parser.add_argument('-t', '--exptime', default=5, type=float,
                         help='Exposure time in seconds for each exposure.')
@@ -468,13 +498,13 @@ def main():
 
     # Set the read speed
     _speed = args.speed
-    if _speed == 'Fast':
-        warnings.warn('Fast does not work!  Setting to slow.')
-        _speed == 'Slow'
-    if _speed == 'Slow':
-        _speed = '0.05MHz'
-    elif _speed == 'Fast':
-        _speed = '1.0MHz'
+#    if _speed == 'Fast':
+#        warnings.warn('Fast does not work!  Setting to slow.')
+#        _speed == 'Slow'
+#    if _speed == 'Slow':
+#        _speed = '0.05MHz'
+#    elif _speed == 'Fast':
+#        _speed = '1.0MHz'
 
     if args.refit:
         raise NotImplementedError('Not ready to refit.')
@@ -501,15 +531,19 @@ def main():
         seq = GridFocusSequence(args.focus[0], args.focus[1], end=end, nstep=args.nstep)
 
         if args.obsnum is not None:
-            # Use GridFocusSequence to set the expected focus values
+            # Construct the expected exposure filenames directly, instead of
+            # asking ktl for the recording directory/prefix/suffix, so that
+            # archived sequences can be re-analyzed without a ktl connection.
+            datadir = Path(args.datadir).absolute()
             expected_files = np.array([
-                seq._exposure.path.for_obsnum(args.obsnum + i, assume_recorded=True)
+                str(datadir / f'{args.prefix}{args.obsnum + i}{args.suffix}')
                 for i in range(seq.nstep)
             ])
-            indx = np.array([Path(f).absolute().is_file() for f in expected_files])
+            indx = np.array([Path(f).is_file() for f in expected_files])
             if not np.all(indx):
+                missing = expected_files[np.logical_not(indx)]
                 raise FileNotFoundError('Expected to find the following files, but they are not '
-                                        f'available: {", ".join(expected_files[indx].tolist())}')
+                                        f'available: {", ".join(missing.tolist())}')
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)

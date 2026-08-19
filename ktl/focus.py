@@ -61,6 +61,11 @@ except ModuleNotFoundError:
 class Focus:
     """
     KTL object used to manipulate the telescope focus.
+
+    Attributes
+    ----------
+    pocstop : ktl.Keyword
+
     """
     def __init__(self):
         # Controls overall movement of mechanisms
@@ -115,10 +120,12 @@ class Focus:
         if not self.expstate.waitFor('== Ready', timeout=0.5):
             raise ValueError('Camera exposure state not ready. Cannot change focus.')
 
+        # Check if the focus is already at the requested position.
         if abs(float(self.secpd.read()) - focus_value) < .1:
             print(f'POCSECPD already set to {focus_value}. No change needed.')
             return
-        
+
+        # Change the focus       
         print('Unlocking secondary')
         self.seclk.write('off')
         self.seclk.read()
@@ -137,6 +144,9 @@ class Focus:
 
 
 class ExposurePath:
+    """
+    KTL object used to read and set the paths for the image exposures.
+    """
     def __init__(self):
         self.exprec = ktl.cache('nscicam', 'RECORD')
         self.expresult = ktl.cache('nscicam', 'EXPRESULT')
@@ -171,14 +181,28 @@ class ExposureConfig:
         # NOTE: AMPCONFLIST gives the options
         self.expspeed  = ktl.cache('nscicam', 'AMPCONF')
         self.expspeed_options = ktl.cache('nscicam', 'AMPCONFLIST').read().split(',')
+        # TODO: Is there a way to programmatically get the binning options
         self.expbin  = ktl.cache('nscicam', 'BINNING')
+        self.expbin_options = ['1,1', '2,2', '4,4']
 
     def configure(self, record=None, speed=None, binning=None, exptime=None):
         if record is not None:
+            if record.lower() not in ['no', 'yes']:
+                raise ValueError(
+                    f'{record} is not a valid record option.   Must be yes or no.'
+                )
             self.exprec.write(record)
         if speed is not None:
+            if speed not in self.expspeed_options:
+                raise ValueError(
+                    f'{speed} is not a valid read speed.  Must be one of {self.expspeed_options}.'
+                )
             self.expspeed.write(speed)
         if binning is not None:
+            if binning not in self.expbin_options:
+                raise ValueError(
+                    f'{binning} is not a valid binning.  Must be one of {self.expbin_options}.'
+                )
             self.expbin.write(binning)
         if exptime is not None:
             self.inttime.write(exptime)
@@ -437,6 +461,9 @@ def main():
     )
     parser.add_argument('--omit', type=int, nargs='+', default=None,
         help='List of observation numbers to omit from the curve fitting.'
+    )
+    parser.add_argument('--config', action='store_true',
+        help='Only print the current exposure configuration and focus'
     )
     parser.add_argument('--verbose', action='store_true',
         help='Enable verbose output for debugging'

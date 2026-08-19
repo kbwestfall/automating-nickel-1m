@@ -467,7 +467,18 @@ def image_quality(fits_file, method='brightest', verbose=False):
 
     Returns
     -------
-
+    data : `numpy.ndarray`
+        Raw image data.
+    bkg : :obj:`float`
+        Estimated background.
+    src_data : `astropy.table.Table`
+        Table with the source measurements; see :func:`evaluate_sources`.
+    img_quality : :obj:`float`
+        The image-quality measurement (mean of the source's x and y sigma).
+    stamp : `numpy.ndarray`
+        Cutout of the background-subtracted data around the selected source.
+    coords : :obj:`tuple`
+        The (x,y) centroid of the selected source.
     """
     with fits.open(fits_file) as hdu:
         data = hdu[0].data.astype(float)
@@ -500,7 +511,7 @@ def image_quality(fits_file, method='brightest', verbose=False):
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
         stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
 
-    return data, bkg, src_data, img_quality, stamp
+    return data, bkg, src_data, img_quality, stamp, coords
 
 
 def extract_stamp(data, coords, size):

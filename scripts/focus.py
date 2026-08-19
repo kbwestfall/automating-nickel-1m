@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib import pyplot, patches
 
 from astropy.table import Table
+from astropy.visualization import ImageNormalize, ZScaleInterval, LinearStretch
 
 from photometry import image_quality
 import quadratic
@@ -262,6 +263,126 @@ class Exposure:
             raise ValueError('Exposure EXPSTATE=Ready not detected within timeout')
         
 
+class FocusPlot:
+    """
+    Live view of a focus sequence in progress.
+
+    Shows the most recent exposure (with the measured source boxed, and
+    flagged if its centroid looks like an outlier relative to the rest of
+    the sequence collected so far), a grid of the per-exposure source
+    stamps, and an evolving plot of FWHM versus focus value.
+
+    Parameters
+    ----------
+    nstamps : :obj:`int`
+        Number of stamps to reserve space for (an upper bound on the number
+        of exposures expected in the sequence).
+    ncols : :obj:`int`, optional
+        Number of columns in the stamp grid.
+    """
+    def __init__(self, nstamps, ncols=4):
+        self.ncols = ncols
+        self.nrows = int(np.ceil(nstamps / ncols))
+
+        self.fig = pyplot.figure(figsize=(6 + 3*self.ncols, max(3*self.nrows, 6)),
+                                  constrained_layout=True)
+        subfigs = self.fig.subfigures(1, 3, width_ratios=[1.2, self.ncols, 1.2])
+
+        self.frame_ax = subfigs[0].subplots(1, 1)
+        self.frame_ax.set_aspect('equal')
+
+        self.stamp_axes = subfigs[1].subplots(self.nrows, self.ncols, squeeze=False)
+        for ax in self.stamp_axes.flat:
+            ax.axis('off')
+
+        self.curve_ax = subfigs[2].subplots(1, 1)
+        self._reset_curve_axis()
+
+        pyplot.ion()
+        pyplot.show(block=False)
+        pyplot.pause(0.1)
+
+    def _reset_curve_axis(self):
+        self.curve_ax.clear()
+        self.curve_ax.set_xlabel('Focus Value')
+        self.curve_ax.set_ylabel('FWHM (pixels)')
+        self.curve_ax.set_title('Focus Curve')
+        self.curve_ax.grid(True, alpha=0.3)
+
+    def update_frame(self, data, coords, stamp_size, label, focus_value, is_outlier):
+        """Show the most recent full frame, with the measured source boxed."""
+        self.frame_ax.clear()
+        norm = ImageNormalize(data, interval=ZScaleInterval(), stretch=LinearStretch())
+        self.frame_ax.imshow(data, cmap='viridis', origin='lower', norm=norm)
+        self.frame_ax.set_xticks([])
+        self.frame_ax.set_yticks([])
+        self.frame_ax.set_title(f'{label}  Focus: {focus_value:.1f}')
+
+        half = stamp_size / 2
+        color = 'yellow' if is_outlier else 'red'
+        rect = patches.Rectangle((coords[0]-half, coords[1]-half), stamp_size, stamp_size,
+                                  linewidth=2, edgecolor=color, facecolor='none')
+        self.frame_ax.add_patch(rect)
+        if is_outlier:
+            self.frame_ax.text(coords[0], coords[1]+half+5, 'Outlier centroid', color='yellow',
+                                fontsize=10, ha='center')
+        self._draw()
+
+    def add_stamp(self, index, stamp, focus_value, fwhm, is_outlier=False):
+        """Show the source stamp for the index-th exposure taken so far."""
+        row, col = divmod(index, self.ncols)
+        if row >= self.nrows:
+            warnings.warn(f'No plot space left for stamp {index}; skipping.')
+            return
+        ax = self.stamp_axes[row, col]
+        ax.clear()
+        ax.axis('off')
+        norm = ImageNormalize(stamp, interval=ZScaleInterval(), stretch=LinearStretch())
+        ax.imshow(stamp, origin='lower', cmap='viridis', norm=norm)
+        title_color = 'darkorange' if is_outlier else 'black'
+        ax.set_title(f'Focus {focus_value:.1f}, FWHM {fwhm:.2f}', fontsize=9, color=title_color)
+        self._draw()
+
+    def update_curve(self, focus_values, fwhm_values):
+        """
+        Redraw the focus-vs-FWHM curve, including the best-fit quadratic
+        once there are enough points to fit one.
+        """
+        self._reset_curve_axis()
+        self.curve_ax.scatter(focus_values, fwhm_values, color='tab:blue')
+
+        if len(focus_values) >= 3:
+            a, b, c = quadratic.fit_quadratic(focus_values, fwhm_values)
+            x_vertex, y_vertex = quadratic.vertex(a, b, c)
+            x_smooth = np.linspace(min(focus_values), max(focus_values), 50)
+            y_smooth = a*x_smooth**2 + b*x_smooth + c
+            self.curve_ax.plot(x_smooth, y_smooth, 'r-')
+            self.curve_ax.scatter([x_vertex], [y_vertex], color='green', zorder=3,
+                                   label=f'Best focus: {x_vertex:.1f}')
+            self.curve_ax.legend(loc='best')
+
+        self._draw()
+
+    def _draw(self):
+        self.fig.canvas.draw_idle()
+        pyplot.pause(0.001)
+
+    @staticmethod
+    def is_outlier(centroids, threshold=2.0):
+        """
+        Check whether the most recently added centroid in ``centroids`` is
+        an outlier relative to the full set collected so far, using the same
+        median-distance statistic as the original focus-finding code.
+        """
+        _centroids = np.atleast_2d(centroids).astype(float)
+        if len(_centroids) < 3:
+            return False
+        median = np.median(_centroids, axis=0)
+        distances = np.sqrt(np.sum((_centroids - median)**2, axis=1))
+        outlier_threshold = np.mean(distances) + threshold * np.std(distances)
+        return distances[-1] > outlier_threshold
+
+
 class FocusSequence:
     """
     Perform a focus sequence.
@@ -285,21 +406,41 @@ class FocusSequence:
         self.img_quality = []
         self.step_iter = 0
         self.source_stamps = []
+        self.centroids = []
 
-    def execute(self, verbose=True, goto=True, method='brightest', **exp_kwargs):
+    @property
+    def expected_steps(self):
+        raise NotImplementedError(
+            'Subclasses must report the (maximum) number of steps in the sequence, used to size '
+            'the live plot.'
+        )
+
+    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
 
         if self._exposure is not None:
             self._exposure.cfg.configure(**exp_kwargs)
         self.reset()
 
+        self.plot = FocusPlot(self.expected_steps) if plot else None
+
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
-            data, bkg, src_data, img_quality, source_stamp \
+            data, bkg, src_data, img_quality, source_stamp, coords \
                 = image_quality(self.exposures[-1], method=method)
-#            self.show(data-bkg, source_stamp, src_data, self._focus.current, img_quality)
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
+            self.centroids += [coords]
+
+            if self.plot is not None:
+                outlier = FocusPlot.is_outlier(self.centroids)
+                self.plot.update_frame(data - bkg, coords, int(img_quality*10),
+                                        Path(self.exposures[-1]).stem, self.observed_focus[-1],
+                                        outlier)
+                self.plot.add_stamp(self.step_iter, source_stamp, self.observed_focus[-1],
+                                     img_quality, is_outlier=outlier)
+                self.plot.update_curve(self.observed_focus, self.img_quality)
+
             self.step_iter += 1
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
@@ -350,9 +491,13 @@ class GridFocusSequence(FocusSequence):
         _end = start + (self.nstep-1)*step
         self.target_focus = np.round(np.linspace(start, _end, self.nstep))
 
+    @property
+    def expected_steps(self):
+        return self.nstep
+
     def continue_sequence(self):
         return self.step_iter < self.nstep
-    
+
     def step_focus(self):
         self._focus.set_to(self.target_focus[self.step_iter])
         return self._focus.current
@@ -376,6 +521,10 @@ class AutomatedFocusSequence(FocusSequence):
         super().reset()
         self.direction = None
         self.last = None
+
+    @property
+    def expected_steps(self):
+        return self.maxsteps
 
     def continue_sequence(self):
         return (
@@ -418,9 +567,13 @@ class ArchiveFocusSequence(FocusSequence):
         self._exposures = exposures
         self.nstep = len(self._observed_focus)
 
+    @property
+    def expected_steps(self):
+        return self.nstep
+
     def continue_sequence(self):
         return self.step_iter < self.nstep
-    
+
     def step_focus(self):
         return self._observed_focus[self.step_iter]
 
@@ -494,6 +647,9 @@ def main():
     parser.add_argument('--verbose', action='store_true',
         help='Enable verbose output for debugging'
     )
+    parser.add_argument('--no-plot', action='store_true',
+        help='Disable the live focus-sequence plot.'
+    )
     args = parser.parse_args()
 
     # Set the read speed
@@ -550,12 +706,15 @@ def main():
 
     best_focus, best_img_quality = seq.execute(goto=False, method=args.method, record=True,
                                                speed=_speed, exptime=args.exptime,
-                                               binning=args.binning)
+                                               binning=args.binning, plot=not args.no_plot)
     print(f'Best focus: {best_focus:.1f}')
     print(f'Expected sigma: {best_img_quality:.1f} pixels')
 
+    if seq.plot is not None:
+        pyplot.ioff()
+        pyplot.show(block=True)
+
     # TODO:
-    # - Plot
     # - Write the output file if provided
 
 

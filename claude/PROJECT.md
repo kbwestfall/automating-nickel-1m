@@ -71,7 +71,12 @@ environment).
   from explicit `--datadir`/`--prefix`/`--suffix` arguments instead of
   reading the recording directory/prefix/suffix from KTL keywords. This
   path has been confirmed working end-to-end against a real archived
-  exposure sequence, without `ktl` installed.
+  exposure sequence, without `ktl` installed. It also now has a live
+  `FocusPlot` (three panels: latest frame with the measured source boxed
+  and flagged if its centroid is an outlier, a grid of per-exposure source
+  stamps, and the evolving FWHM-vs-focus curve with the best-fit quadratic
+  overlaid) updated inside `FocusSequence.execute()`'s loop; disable with
+  `--no-plot`. Confirmed working on a real archived sequence.
 - **`photometry.py`** (513 lines) — Image-quality measurement used by
   `focus.py`. Iteratively detects sources and estimates background
   (`find_sources`, using `photutils.segmentation` + sigma-clipping),
@@ -159,12 +164,12 @@ bugs, but they mark where the codebase is unfinished or where the two
   `NotImplementedError`, and the code after it (reading a saved ECSV,
   honoring `--omit`) is unreachable dead code left in place for when it's
   implemented.
-- **`focus.py`'s TODOs**: writing the output data file and plotting
-  results at the end of `main()` are marked but not implemented; a
-  `# TODO` also flags uncertainty about how to correctly check the
-  `EXPREC` keyword state, and another about the exact keyword name for
-  starting an exposure (`'StartX'`, pending confirmation with Will
-  Deich).
+- **`focus.py`'s TODOs**: writing the output data file at the end of
+  `main()` is marked but not implemented (live plotting during the
+  sequence is now handled by `FocusPlot`, see above); a `# TODO` also
+  flags uncertainty about how to correctly check the `EXPREC` keyword
+  state, and another about the exact keyword name for starting an
+  exposure (`'StartX'`, pending confirmation with Will Deich).
 - **Hardcoded assumptions**: `automate.py`'s `detect_outliers` hardcodes a
   1024-pixel image size for cutout bounds (flagged in-line as
   "USING HARDCODED 1024 FOR NOW").
@@ -182,8 +187,8 @@ bugs, but they mark where the codebase is unfinished or where the two
 - Decide whether `scripts/automate.py` should be retired/archived now that
   `focus.py` covers its functionality with a cleaner design, to avoid the
   stale-import trap above.
-- Finish the TODOs in `focus.py` (`--refit`, output-file writing, results
-  plotting) so it reaches parity with what `automate.py` could already do.
+- Finish the remaining TODOs in `focus.py` (`--refit`, output-file writing)
+  so it reaches parity with what `automate.py` could already do.
 - Add `scipy` to `requirements.txt`, and pin `photutils>=2.0` given the
   API-name dependency noted above.
 - Consider whether `practice/` and `practice-ktl/` should be archived out

@@ -6,19 +6,20 @@ from IPython import embed
 
 from pathlib import Path
 import logging
-import sys
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-import quadratic
+from matplotlib import pyplot, patches
 
 from astropy.table import Table
 
 from photometry import image_quality
-from photometry import Grid
+import quadratic
 
-import ktl
+try:
+    import ktl
+except ModuleNotFoundError:
+    warnings.warn('Unable to import ktl package.  Functionality will be limited.')
+    ktl = None
 
 
 #def setup_logging(log_level='INFO', log_file=None):
@@ -58,17 +59,25 @@ import ktl
 
 
 class Focus:
+    """
+    KTL object used to manipulate the telescope focus.
+    """
     def __init__(self):
+        # Controls overall movement of mechanisms
         self.pocstop = ktl.cache('nickelpoco', 'POCSTOP')
+        # Actual secondary position
         self.secpa = ktl.cache('nickelpoco', 'POCSECPA')
+        # Desired secondary position
         self.secpd = ktl.cache('nickelpoco', 'POCSECPD')
+        # Controls the secondary locking mechanism
         self.seclk = ktl.cache('nickelpoco', 'POCSECLK')
+        # Provides the state of the exposures
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
 
     @property
     def current(self):
         """
-        Return the current focus position
+        The current focus position (floating-point)
         """
         return float(self.secpa.read())
 
@@ -80,7 +89,7 @@ class Focus:
 
         Parameters
         ----------
-        focus_value : :obj:`int`
+        focus_value : :obj:`int`, :obj:`float`
             The requested focus value.  Must be between 165 and 500, inclusive.
             If the requested position is already within 0.1 of the current
             value, no change is made.
@@ -95,7 +104,7 @@ class Focus:
 
         # Check that the requested focus value is valid
         if focus_value < 165 or focus_value > 500:
-            raise ValueError(f'Focus value {focus_value} is out of range (165-500).')
+            raise ValueError(f'Requested focus ({focus_value}) is out of range (165-500).')
         
         # Make sure movement is enabled.  Do NOT enable movement via this
         # script!
@@ -195,11 +204,9 @@ class Exposure:
         # SCICAM exposure keywords
         self.expstate = ktl.cache('nscicam', 'EXPSTATE')
         self.expstate.monitor()
-        self.expstate_value = None
 
         self.expstart = ktl.cache('nscicam', 'EXPOSE')
         self.expstart.monitor()
-        self.filepath = None
 
     def expose(self, record=None, speed=None, binning=None, exptime=None):
 

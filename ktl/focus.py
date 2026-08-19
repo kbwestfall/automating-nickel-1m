@@ -187,10 +187,6 @@ class ExposureConfig:
 
     def configure(self, record=None, speed=None, binning=None, exptime=None):
         if record is not None:
-            if record.lower() not in ['no', 'yes']:
-                raise ValueError(
-                    f'{record} is not a valid record option.   Must be yes or no.'
-                )
             self.exprec.write(record)
         if speed is not None:
             if speed not in self.expspeed_options:

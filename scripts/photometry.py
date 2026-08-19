@@ -204,11 +204,11 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01, verbose=Fa
         # Subtract the background
         _data = data - bkg
         # Get the threshold image     
-        threshold = segmentation.detect_threshold(_data, nsigma=5.0, sigma_clip=sigma_clip)
+        threshold = segmentation.detect_threshold(_data, n_sigma=5.0, sigma_clip=sigma_clip)
         # Detect sources above the threshold
-        sources = segmentation.detect_sources(_data, threshold, npixels=10)
+        sources = segmentation.detect_sources(_data, threshold, n_pixels=10)
         # Grow the mask
-        grown_source_mask = binary_dilation(sources.data_ma, structure=structure)
+        grown_source_mask = binary_dilation(sources.data_masked, structure=structure)
         # Get the background and add it to the total
         bkg += sigma_clipped_stats(_data, sigma=3.0, mask=grown_source_mask)[1]
         if verbose:
@@ -399,15 +399,15 @@ def evaluate_sources(data, sources, verbose=False):
             - SIGY : dispersion along Y (row)
     """
     if verbose:
-        print(f"Number of sources detected: {sources.nlabels}\n")
-    if sources.nlabels == 0:
+        print(f"Number of sources detected: {sources.n_labels}\n")
+    if sources.n_labels == 0:
         raise ValueError('No sources found.')
 
     # Construct the coordinate images
     img_x, img_y = np.meshgrid(np.arange(data.shape[1]), np.arange(data.shape[0]))
 
     # For each source, get the total flux, and the 1st and 2nd moments along each axis.
-    src_data = empty_source_table(sources.nlabels)
+    src_data = empty_source_table(sources.n_labels)
     for i, source in enumerate(sources.segments):
         if verbose:
             print(f"Evaluating source with label {source.label}")

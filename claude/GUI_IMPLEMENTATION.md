@@ -261,6 +261,59 @@ exposes the expected names; simulating `PySide6` being absent via
 (1 test, Qt-free). All 20 tests pass with PySide6 installed; 17 pass (3
 cleanly skipped) with it simulated as absent.
 
+### Sub-phase 3 results: `SequenceWorker`
+
+Added `gui/model/__init__.py` and `gui/model/sequence_worker.py`, a
+`QThread` subclass driving a `focus.FocusSequence`:
+
+- `SequenceWorker(sequence, method='brightest', mode='step')` —
+  `mode='step'` drives `sequence.step(method=...)` (a live/archive run);
+  `mode='reanalyze'` drives `sequence.reanalyze(method=...)` (re-measure
+  what's already been collected, no new exposures). Both modes share the
+  same signal contract, since a real workflow should be able to refresh
+  its best-focus result after a reanalysis the same way it does after a
+  normal run.
+- Signals: `stepComplete(object)` (one `StepResult` per yield),
+  `sequenceFinished(float, float)` (`best_focus, best_fwhm`, once),
+  `sequenceFailed(str)` (once, human-readable) — the latter two are
+  mutually exclusive per run.
+- `request_stop()` sets a plain flag checked only *after* a `StepResult`
+  is yielded, matching §4.3's "Stop only between steps, never
+  mid-exposure" decision.
+- Beyond what the design doc's pseudocode showed, wrapped the whole
+  step/reanalyze loop in a broad `except Exception` (not just the
+  narrower `fit_best_focus()` call) so a genuine mid-sequence failure
+  (e.g., photometry raising because a frame has no detectable source)
+  reports `sequenceFailed` instead of the thread dying silently, which
+  Qt would otherwise not surface as a crash -- just a `QThread` that
+  quietly stopped emitting anything, which would leave a Controller
+  waiting forever for a signal that's never coming. Kept the "too few
+  points for a fit" case as its own narrower `except ValueError` around
+  just `fit_best_focus()`, so that specific message stays as
+  clear/specific as the design doc intended.
+
+No deviations from the design doc's signal contract; the broader
+exception handling above is treated as a robustness addition, not a
+deviation, since it doesn't change any documented behavior in the
+success/early-stop paths.
+
+**Testing:** 4 tests in `tests/gui/test_sequence_worker.py`, using a
+small helper that starts the worker and pumps a local `QEventLoop` until
+`QThread.finished` fires (the built-in completion signal, independent of
+which of `sequenceFinished`/`sequenceFailed` was emitted), with all test
+signal connections made `DirectConnection` so callbacks run synchronously
+on the worker thread -- the simplest way to collect results
+deterministically without any real widgets involved. Covers: an invalid
+`mode` is rejected at construction; `mode='step'` runs the full synthetic
+sequence and recovers the known best focus; calling `request_stop()`
+from inside a `stepComplete` handler after 2 steps halts the worker at
+exactly 2 (not the full 5) and emits `sequenceFailed` (not
+`sequenceFinished`) with a message explaining why; `mode='reanalyze'`
+re-measures every exposure and updates `sequence.method`. All 24 tests
+pass (20 from Phases 1-2 sub-phases 1-2, + 4 new); reran the new tests
+several times back-to-back to check for threading-related flakiness --
+none observed.
+
 ### Next
 
-Phase 2, sub-phase 3: `SequenceWorker`.
+Phase 2, sub-phase 4: `ImagePanel`.

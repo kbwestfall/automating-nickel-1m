@@ -98,3 +98,46 @@ def test_reanalyze_mode_updates_measurements(focus_sweep, qapp):
     assert not failed, f'reanalysis should not fail: {failed}'
     assert len(finished) == 1, 'sequenceFinished should fire once after reanalysis'
     assert seq.method == 'weighted', 'reanalyze should update the sequence method'
+
+
+def test_exp_kwargs_defaults_to_an_empty_dict(focus_sweep):
+    seq = _make_sequence(focus_sweep)
+    worker = SequenceWorker(seq)
+    assert worker.exp_kwargs == {}, 'omitting exp_kwargs should default to an empty dict, not None'
+
+
+def test_exp_kwargs_is_a_noop_for_archive_mode(focus_sweep, qapp):
+    # ArchiveFocusSequence has no exposure hardware at all (_exposure is
+    # None); passing exp_kwargs must not try to call .cfg.configure() on
+    # it, which would be an AttributeError on None.
+    seq = _make_sequence(focus_sweep)
+    worker = SequenceWorker(seq, mode='step', exp_kwargs={'exptime': 12.5})
+
+    steps, finished, failed = _run_and_collect(worker)
+
+    assert not failed, f'exp_kwargs should be harmless when there is no exposure hardware: {failed}'
+    assert len(finished) == 1
+
+
+def test_exp_kwargs_configures_the_exposure_before_stepping(fake_hardware, qapp):
+    seq = focus.GridFocusSequence(340., 5., nstep=5)
+    worker = SequenceWorker(seq, mode='step', exp_kwargs={'exptime': 12.5, 'speed': 'Fast'})
+
+    steps, finished, failed = _run_and_collect(worker)
+
+    assert not failed, f'sequence should not fail: {failed}'
+    assert seq._exposure.cfg.exptime == 12.5, 'exposure time should be configured before stepping'
+    assert seq._exposure.cfg.speed == 'Fast', 'speed should be configured before stepping'
+
+
+def test_exp_kwargs_are_ignored_in_reanalyze_mode(fake_hardware, qapp):
+    seq = focus.GridFocusSequence(340., 5., nstep=5)
+    seq.execute(goto=False, plot=False, method='brightest')
+    assert seq._exposure.cfg.exptime is None, 'setup: nothing configured yet'
+
+    worker = SequenceWorker(seq, mode='reanalyze', exp_kwargs={'exptime': 12.5})
+    steps, finished, failed = _run_and_collect(worker)
+
+    assert not failed, f'reanalysis should not fail: {failed}'
+    assert seq._exposure.cfg.exptime is None, \
+        'reanalyze never takes new exposures, so exp_kwargs should be ignored'

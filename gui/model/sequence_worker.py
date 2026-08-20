@@ -38,6 +38,15 @@ class SequenceWorker(QtCore.QThread):
         ``'reanalyze'`` to re-run photometry on exposures already
         collected (:func:`~focus.FocusSequence.reanalyze`), without
         taking any new ones.
+    exp_kwargs : :obj:`dict`, optional
+        Exposure settings (``record``, ``speed``, ``binning``,
+        ``exptime``) applied via
+        :func:`~focus.ExposureConfig.configure` before stepping, matching
+        what the old CLI-only :func:`~focus.FocusSequence.execute` did.
+        Only meaningful for ``mode='step'`` against a sequence with real
+        (or fake) exposure hardware; ignored for ``mode='reanalyze'`` (no
+        new exposures are taken) and harmless for archive/replay
+        sequences (which have no exposure hardware to configure at all).
 
     Attributes
     ----------
@@ -59,13 +68,14 @@ class SequenceWorker(QtCore.QThread):
     sequenceFinished = QtCore.Signal(float, float)
     sequenceFailed = QtCore.Signal(str)
 
-    def __init__(self, sequence, method='brightest', mode='step', parent=None):
+    def __init__(self, sequence, method='brightest', mode='step', exp_kwargs=None, parent=None):
         super().__init__(parent)
         if mode not in ('step', 'reanalyze'):
             raise ValueError(f"mode must be 'step' or 'reanalyze', got {mode!r}")
         self.sequence = sequence
         self.method = method
         self.mode = mode
+        self.exp_kwargs = {} if exp_kwargs is None else exp_kwargs
         self.stop_requested = False
 
     def request_stop(self):
@@ -84,6 +94,8 @@ class SequenceWorker(QtCore.QThread):
         )
 
         try:
+            if self.mode == 'step' and self.sequence._exposure is not None:
+                self.sequence._exposure.cfg.configure(**self.exp_kwargs)
             for result in generator:
                 self.stepComplete.emit(result)
                 if self.stop_requested:

@@ -751,6 +751,37 @@ fake hardware now runs to completion and actually moves the telescope to
 the fitted best focus, instead of crashing. All 74 tests pass; Qt-free
 boundary reconfirmed (26 pass, `tests/gui/` still skips as one unit).
 
+### Sub-phase 3 results: exposure-settings plumbing for `SequenceWorker`
+
+`SequenceWorker.__init__` gained an `exp_kwargs` parameter (a `dict` of
+`record`/`speed`/`binning`/`exptime`, defaulting to `None` and stored as
+`{}` -- an explicit `is None` check, not `exp_kwargs or {}`, per your
+note). `run()` now applies it via
+`sequence._exposure.cfg.configure(**self.exp_kwargs)` before the
+step/reanalyze loop, but only when `mode == 'step'` and
+`sequence._exposure is not None` — mirroring exactly what the old
+CLI-only `execute()` did (`if self._exposure is not None:
+self._exposure.cfg.configure(**exp_kwargs)`), so archive sequences (no
+exposure hardware at all) and `mode='reanalyze'` (no new exposures)
+silently ignore it rather than erroring or doing something meaningless.
+Wrapped in the same `try/except` as the stepping loop, so a bad exposure
+setting (e.g. an invalid speed/binning value, which `ExposureConfig.configure()`
+already validates and raises on) reports `sequenceFailed` instead of
+crashing the thread silently.
+
+No deviations from the plan for this sub-phase.
+
+**Testing:** 4 new tests in `tests/gui/test_sequence_worker.py` (8
+total in that file now): `exp_kwargs` defaults to `{}`, not `None`;
+passing it against an `ArchiveFocusSequence` (no exposure hardware) is a
+harmless no-op rather than an `AttributeError` on `None.cfg`; against
+the `fake_hardware` fixture, a `GridFocusSequence` run actually applies
+the given exposure time/speed before stepping (checked via
+`seq._exposure.cfg.exptime`/`.speed` after the run); and `exp_kwargs` is
+correctly ignored in `mode='reanalyze'` (confirmed `cfg.exptime` stays
+`None` even when `exp_kwargs` is passed). All 78 tests pass; Qt-free
+boundary reconfirmed (26 pass, `tests/gui/` still skips as one unit).
+
 ### Next
 
-Phase 3, sub-phase 3: exposure-settings plumbing for `SequenceWorker`.
+Phase 3, sub-phase 4: enable Grid/Automated sequence types in the GUI.

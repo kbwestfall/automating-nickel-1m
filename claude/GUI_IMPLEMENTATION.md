@@ -377,6 +377,38 @@ opens up the scroll ranges and `recenter()` collapses them back to zero;
 `reset()` clears the dropdown and current result. All 30 tests pass (24
 from earlier sub-phases + 6 new).
 
+### Sub-phase 5 results: `FocusCurvePanel`
+
+Added `gui/views/focus_curve_panel.py` (`FocusCurvePanel(QWidget)`): an
+embedded-matplotlib scatter of FWHM vs. focus, redrawn on every
+`add_result()`. Normal points are blue circles labeled "Measured";
+outlier points (`StepResult.is_outlier`) are gold "x" markers labeled
+"Outlier" — distinguished by both color and marker shape, per §5.3's
+decision. Once 3+ points have been added, overlays the best-fit
+quadratic (red curve) and its vertex (a green point labeled
+`"Best focus: {value}"`), using the same `quadratic.fit_quadratic`/
+`vertex` Model functions the CLI's `FocusPlot` and `execute()` already
+use — this panel only owns the plotting, not the math. Wrapped the fit in
+a narrow `except (ValueError, ZeroDivisionError)` so a degenerate fit
+(e.g., collinear points) skips drawing the curve instead of crashing the
+panel; not explicitly called out in the design doc, treated as the same
+kind of defensive addition as `SequenceWorker`'s broad exception guard in
+sub-phase 3.
+
+Mirrors `ImagePanel`'s `add_result()`/`reset()` shape (no
+`show_result()` here, since every point stays on screen at once — there's
+no single "current" point the way there's a single current exposure).
+
+No deviations from the design doc for this sub-phase.
+
+**Testing:** 5 tests in `tests/gui/test_focus_curve_panel.py`: points
+accumulate and a scatter appears; the fitted curve only appears once 3+
+points exist; the plotted vertex's x-coordinate (found by its
+`"Best focus"`-prefixed label) matches the synthetic fixture's known best
+focus; outlier and normal points are drawn as separate, distinctly
+labeled series; `reset()` clears everything. All 35 tests pass (30 from
+earlier sub-phases + 5 new).
+
 ### Next
 
-Phase 2, sub-phase 5: `FocusCurvePanel`.
+Phase 2, sub-phase 6: `FocusControlPanel`.

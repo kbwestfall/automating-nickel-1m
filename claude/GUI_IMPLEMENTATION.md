@@ -409,6 +409,60 @@ focus; outlier and normal points are drawn as separate, distinctly
 labeled series; `reset()` clears everything. All 35 tests pass (30 from
 earlier sub-phases + 5 new).
 
+### Sub-phase 6 results: `FocusControlPanel`
+
+Added `gui/views/focus_control_panel.py` (`FocusControlPanel(QWidget)`).
+Purely a View: it exposes configuration and emits signals for requested
+actions (`startRequested`, `stopRequested`, `methodChanged`,
+`moveToBestFocusRequested`); it never constructs a `FocusSequence` or a
+`SequenceWorker` itself. Grouped into: Sequence Type (Archive checked and
+enabled, Grid/Automated present but disabled with a "requires live ktl —
+Phase 3" tooltip); Archive Configuration (datadir + Browse…, prefix,
+suffix, obsnum, start focus, step size, number of steps —
+`get_archive_config()` returns these as a `dict` with `datadir` as a
+`Path`, matching Phase 1's Path-everywhere decision); Exposure Settings
+(exposure time/speed/binning, all disabled — not applicable until Phase 3
+takes real exposures); Photometry Method (a Brightest/Weighted combo the
+user can pick from directly, `methodChanged`, plus a separate read-only
+`method_label` driven only by `set_method()`, which is how "selected
+source" ever gets displayed — only `ImagePanel`'s click, routed through
+the Controller, can put it in that state, matching §5.4's "read-only
+except via an image click"); Start/Stop; a Status group (a status line,
+a live step/focus/FWHM label, and a scrolling log); and a Result group
+(best-focus/FWHM display and the "Move to Best Focus" button).
+
+**Deviations from `GUI_DESIGN.md`:**
+
+- **"Move to Best Focus" is unconditionally disabled in this phase**,
+  not just "disabled until a result exists" as §5.4 describes for the
+  finished feature. There's no hardware to move yet, so enabling it once
+  a result exists would let the user click a button that does nothing
+  meaningful. The confirmation-dialog logic (`_on_move_to_best_focus_clicked`,
+  `moveToBestFocusRequested`) is fully implemented and tested now,
+  matching the same "build the shape now, flip it on in Phase 3" approach
+  already used for Grid/Automated and exposure settings — Phase 3 should
+  only need to remove this button's blanket disable, not add new logic.
+
+No other deviations for this sub-phase.
+
+**Testing:** 14 tests in `tests/gui/test_focus_control_panel.py`,
+covering: only Archive is selectable; exposure settings are disabled;
+`get_archive_config()` round-trips exactly what the form fields hold;
+the method combo/`methodChanged`/`get_selected_method()` agree with each
+other; `set_method()` renders both a plain method name and an `(x, y)`
+tuple correctly; Start/Stop signals fire (Stop needed `set_running(True)`
+first, since a disabled `QPushButton` doesn't emit `clicked()` at all —
+caught this from a real test failure, not anticipated in advance);
+`set_running()`/`set_stopping()` toggle the right widgets; `update_step()`,
+`show_best_focus()`, `show_failure()`, and `reset()` all update the
+right labels/log; the move-to-best-focus confirmation flow (using
+`monkeypatch` on `QMessageBox.question`, since it's normally a blocking
+modal dialog) correctly no-ops with no result yet, no-ops on "No", and
+emits on "Yes"; the Browse… button (`monkeypatch` on
+`QFileDialog.getExistingDirectory`) updates the directory field, and
+leaves it alone if the dialog is canceled (empty string). All 49 tests
+pass (35 from earlier sub-phases + 14 new).
+
 ### Next
 
-Phase 2, sub-phase 6: `FocusControlPanel`.
+Phase 2, sub-phase 7: `MainWindow` + `Controller` wiring.

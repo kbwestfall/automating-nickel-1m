@@ -2,7 +2,7 @@
 import dataclasses
 
 import pytest
-from matplotlib.backend_bases import MouseEvent
+from matplotlib.backend_bases import KeyEvent, MouseEvent
 from matplotlib.colors import to_rgba
 
 import focus
@@ -50,7 +50,7 @@ def test_manual_selection_is_not_disrupted_by_new_results(qapp, focus_sweep):
     assert results[3] in panel._results, 'the new result should still be listed in the dropdown'
 
 
-def test_click_emits_signal_only_when_selection_enabled(qapp, focus_sweep):
+def test_m_key_emits_signal_only_when_selection_enabled(qapp, focus_sweep):
     results = _step_results(focus_sweep)
     panel = ImagePanel()
     panel.add_result(results[0])
@@ -58,16 +58,58 @@ def test_click_emits_signal_only_when_selection_enabled(qapp, focus_sweep):
     received = []
     panel.sourceSelected.connect(lambda x, y: received.append((x, y)))
 
-    event = MouseEvent('button_press_event', panel.canvas, x=10, y=10, button=1)
+    event = KeyEvent('key_press_event', panel.canvas, 'm')
     event.inaxes = panel.ax
     event.xdata, event.ydata = 42.0, 17.0
 
-    panel._on_click(event)
-    assert received == [], 'click should be ignored while selection is disabled'
+    panel._on_key_press(event)
+    assert received == [], "'m' should be ignored while selection is disabled"
 
     panel.set_selection_enabled(True)
-    panel._on_click(event)
-    assert received == [(42.0, 17.0)], 'click should emit the clicked data coordinates once enabled'
+    panel._on_key_press(event)
+    assert received == [(42.0, 17.0)], \
+        "'m' should emit the data coordinates under the cursor once enabled"
+
+
+def test_other_keys_do_not_select_a_source(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    panel.add_result(results[0])
+    panel.set_selection_enabled(True)
+
+    received = []
+    panel.sourceSelected.connect(lambda x, y: received.append((x, y)))
+
+    other_key = KeyEvent('key_press_event', panel.canvas, 'a')
+    other_key.inaxes = panel.ax
+    other_key.xdata, other_key.ydata = 42.0, 17.0
+    panel._on_key_press(other_key)
+    assert received == [], "only the 'm' key should select a source"
+
+
+def test_plain_click_does_not_select_a_source(qapp, focus_sweep):
+    # A plain click must never select a source on its own -- on macOS,
+    # the click that refocuses an inactive window is delivered to
+    # whatever's underneath the cursor, so a click-to-select would
+    # trigger reanalysis just from bringing the window forward.
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    panel.add_result(results[0])
+    panel.set_selection_enabled(True)
+
+    received = []
+    panel.sourceSelected.connect(lambda x, y: received.append((x, y)))
+
+    # Dispatch through the canvas's own callback registry (matching how
+    # an actual click arrives), rather than calling a handler directly --
+    # this proves nothing is listening for clicks anymore, not just that
+    # some particular method is gone.
+    event = MouseEvent('button_press_event', panel.canvas, x=10, y=10, button=1)
+    event.inaxes = panel.ax
+    event.xdata, event.ydata = 42.0, 17.0
+    panel.canvas.callbacks.process('button_press_event', event)
+
+    assert received == [], 'a plain click should never select a source'
 
 
 def test_outlier_box_color_reflects_is_outlier(qapp, focus_sweep):

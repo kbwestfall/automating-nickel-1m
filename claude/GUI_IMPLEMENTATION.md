@@ -1197,3 +1197,33 @@ the original corner-anchored behavior. No test was added for the
 colormap/title/whitespace changes -- they're cosmetic rendering details
 with no behavior to regress. All 109 tests pass; Qt-free boundary
 reconfirmed.
+
+### Source selection: click → 'm' key
+
+**Problem:** on macOS, clicking an unfocused window both refocuses it
+*and* delivers that same click to whatever's underneath the cursor. A
+GUI window that had lost focus (e.g. after switching to another app)
+needed exactly the kind of click that, over `ImagePanel`, used to also
+mean "select this source" -- so simply refocusing the window could
+silently kick off a reanalysis nobody asked for.
+
+**Fix:** replaced the `button_press_event` connection with
+`key_press_event`, and `_on_click` with `_on_key_press`, which only acts
+on `event.key == 'm'` -- otherwise unchanged (same
+`_selection_enabled`/`inaxes`/`xdata`/`ydata` checks, same
+`sourceSelected` emission). The intended gesture is now "hover over the
+star, press 'm'" rather than "click the star." Also explicitly set
+`canvas.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)`, needed for
+the canvas to actually receive key events at all -- a plain click still
+naturally gives it keyboard focus as a side effect (standard Qt
+behavior for a `StrongFocus` widget), so no extra step is needed before
+pressing 'm' works.
+
+**Testing:** replaced `test_click_emits_signal_only_when_selection_enabled`
+with `test_m_key_emits_signal_only_when_selection_enabled`,
+`test_other_keys_do_not_select_a_source`, and
+`test_plain_click_does_not_select_a_source` -- the last one dispatches a
+real `button_press_event` through the canvas's own callback registry
+(not just checking a method no longer exists) to prove nothing is
+listening for clicks at all anymore. All 111 tests pass; Qt-free
+boundary reconfirmed.

@@ -29,11 +29,15 @@ class ImagePanel(QtWidgets.QWidget):
     an adaptive (`AutomatedFocusSequence`) run doesn't acquire focus
     values in order.
 
-    Clicking on a displayed source (§5.6) emits :attr:`sourceSelected`
-    with the clicked data coordinates, but only while
-    :func:`set_selection_enabled` has been called with ``True`` --
-    gating that on whether a sequence is currently running is the
-    Controller's job, not this panel's.
+    Hovering over a displayed source and pressing 'm' (§5.6) emits
+    :attr:`sourceSelected` with the data coordinates under the cursor,
+    but only while :func:`set_selection_enabled` has been called with
+    ``True`` -- gating that on whether a sequence is currently running is
+    the Controller's job, not this panel's. A key press rather than a
+    plain click is deliberate: on macOS, clicking an unfocused window
+    both refocuses it *and* is delivered to whatever's under the cursor,
+    so a stray click meant only to bring the window forward was enough
+    to kick off a reanalysis.
 
     Does not implement the design doc's optional "center on measured
     source" recenter variant; "Recenter" always fits the whole frame.
@@ -69,6 +73,8 @@ class ImagePanel(QtWidgets.QWidget):
         # whole figure instead of leaving matplotlib's default margins.
         self.figure.subplots_adjust(left=0, right=1, bottom=0, top=1)
         self.canvas = FigureCanvasQTAgg(self.figure)
+        # Needed to actually receive the 'm' key press below.
+        self.canvas.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         self.ax = self.figure.add_subplot(111)
         self.ax.set_xticks([])
         self.ax.set_yticks([])
@@ -103,7 +109,7 @@ class ImagePanel(QtWidgets.QWidget):
         self.h_scroll.valueChanged.connect(self._on_scroll)
         self.v_scroll.valueChanged.connect(self._on_scroll)
         self.canvas.mpl_connect('scroll_event', self._on_wheel_zoom)
-        self.canvas.mpl_connect('button_press_event', self._on_click)
+        self.canvas.mpl_connect('key_press_event', self._on_key_press)
 
     # -- public API used by the Controller -------------------------------
 
@@ -254,8 +260,8 @@ class ImagePanel(QtWidgets.QWidget):
         self._apply_view_limits()
         self.canvas.draw_idle()
 
-    def _on_click(self, event):
-        if not self._selection_enabled or event.inaxes != self.ax:
+    def _on_key_press(self, event):
+        if event.key != 'm' or not self._selection_enabled or event.inaxes != self.ax:
             return
         if event.xdata is None or event.ydata is None:
             return

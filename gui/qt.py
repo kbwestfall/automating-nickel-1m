@@ -9,6 +9,8 @@ never need to -- installing the base `requirements.txt` alone is enough
 to run the CLI with no Qt involved at all; `requirements-gui.txt` holds
 the additional dependency this module needs.
 """
+import os
+
 try:
     from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError as e:
@@ -17,5 +19,10 @@ except ImportError as e:
         'with, e.g., "pip install -r requirements-gui.txt" (see also requirements.txt for the '
         'base dependencies shared with the CLI, which do not include Qt).'
     ) from e
+
+# Pin matplotlib's Qt backend (matplotlib.backends.backend_qtagg) to PySide6,
+# so views that embed a matplotlib canvas (e.g. ImagePanel) don't depend on
+# whatever binding matplotlib's own auto-detection happens to prefer.
+os.environ.setdefault('QT_API', 'pyside6')
 
 __all__ = ['QtCore', 'QtGui', 'QtWidgets']

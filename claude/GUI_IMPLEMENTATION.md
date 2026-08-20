@@ -314,6 +314,69 @@ pass (20 from Phases 1-2 sub-phases 1-2, + 4 new); reran the new tests
 several times back-to-back to check for threading-related flakiness --
 none observed.
 
+### Sub-phase 4 results: `ImagePanel`
+
+Added `gui/views/__init__.py` and `gui/views/image_panel.py`
+(`ImagePanel(QWidget)`), plus pinned matplotlib's Qt backend to PySide6
+(`os.environ.setdefault('QT_API', 'pyside6')` in `gui/qt.py`, since
+`ImagePanel` is the first module to embed a `FigureCanvasQTAgg`, and
+matplotlib's own auto-detection shouldn't be left to guess which binding
+to use).
+
+Covers §5.2/§5.6's baseline: an embedded matplotlib canvas showing the
+current `StepResult`'s frame with the measured source boxed (red, or
+yellow + "Outlier centroid" when `is_outlier`); a stretch selector
+(`ZScale`/`Min-Max`, both via `astropy.visualization`); a "Recenter"
+button; a single exposure drop-down, always kept sorted by focus value
+(via `bisect.bisect_right`, independent of insertion/acquisition order)
+and showing both the exposure's filename stem and its focus value (e.g.
+`"n2165 — Focus 345.0"` — see Phase 1's `obsnum` deviation note for why
+it's the filename stem rather than a literal observation number); a
+`sourceSelected(float, float)` signal emitted on click, gated by
+`set_selection_enabled()`, which the Controller (sub-phase 7) will drive.
+
+**Deviations from `GUI_DESIGN.md`:**
+
+- **Pan via scroll bars, implemented differently than the literal phrase
+  suggests.** Rather than wrapping the canvas in a `QScrollArea` and
+  resizing the canvas widget itself to make native scrollbars appear
+  (fragile with a matplotlib-rendered canvas, since it means resizing the
+  `Figure` in physical inches/DPI terms to simulate a zoom), `ImagePanel`
+  uses two real `QScrollBar` widgets whose range/page-step are computed
+  from the current zoom level and whose `valueChanged` sets the
+  matplotlib axes' `xlim`/`ylim`. This satisfies the requirement (real
+  scroll bars drive panning) without the more brittle approach.
+- **The "center on measured source" recenter variant was not
+  implemented** — the design doc listed it as a "possibly," and
+  "Recenter" here only ever fits the whole frame. Worth adding later if
+  it turns out to matter in practice.
+- **Switching exposures (via the drop-down or a new result arriving)
+  always resets the zoom/pan to fit-to-view**, rather than preserving
+  whatever zoom/pan the user had. Not explicitly specified either way in
+  the design doc; chosen because leftover pan/zoom state from a
+  previously-viewed frame seemed more likely to confuse than help,
+  especially across frames of different sizes. Worth revisiting if it
+  turns out to be annoying in practice (e.g., wanting to stay zoomed in
+  on the same region while stepping through several exposures).
+
+**Testing:** 6 tests in `tests/gui/test_image_panel.py`: the drop-down
+stays sorted by focus value regardless of the order results are added in,
+and "latest" tracks *acquisition* order rather than sorted position (used
+a deliberately scrambled, non-monotonic add order to exercise this, the
+same scenario `AutomatedFocusSequence` would produce live); manually
+selecting an older entry survives a subsequent `add_result()`; clicking
+is a no-op until `set_selection_enabled(True)`, then emits the clicked
+data coordinates (simulated by constructing a `matplotlib.backend_bases.MouseEvent`
+directly and calling `panel._on_click(event)`, rather than driving a real
+Qt mouse event through pixel-to-data coordinate translation, which would
+test matplotlib's own event system more than this panel's logic); the
+outlier box color follows `StepResult.is_outlier` (checked via
+`dataclasses.replace()` on a real fixture result, comparing
+`patch.get_edgecolor()` against `matplotlib.colors.to_rgba(...)`); zooming
+opens up the scroll ranges and `recenter()` collapses them back to zero;
+`reset()` clears the dropdown and current result. All 30 tests pass (24
+from earlier sub-phases + 6 new).
+
 ### Next
 
-Phase 2, sub-phase 4: `ImagePanel`.
+Phase 2, sub-phase 5: `FocusCurvePanel`.

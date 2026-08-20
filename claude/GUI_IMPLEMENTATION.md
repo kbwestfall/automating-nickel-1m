@@ -1019,11 +1019,95 @@ sequence discards a pending exposure only on success, not on a failed
 config. All 106 tests pass; Qt-free boundary reconfirmed (26 pass,
 `tests/gui/` still skips as one unit).
 
-### Next
+### Sub-phase 7 results: end-to-end fake-hardware smoke test + Phase 3 close-out
 
-Phase 3, sub-phase 7: end-to-end fake-hardware smoke test tying
-together every live-mode action built across sub-phases 1-6 (Grid and
-Automated sequences, Move to Best Focus, the standalone single-exposure
-workflow with both Add-to-Sequence and discard-on-new-Start, and
-interactive source selection against both a loaded sequence and a
-standalone exposure) in one coherent run, closing out Phase 3.
+Added `tests/gui/test_phase3_smoke.py` with one test,
+`test_phase3_full_live_workflow`, that drives a single `Controller`
+through every live-mode action built across sub-phases 1-6 back to back,
+in the order GUI_DESIGN.md §5.5's own "typical use" narrative describes
+it: confirm the field with a standalone exposure, mark a star on it via
+a click (reanalyzing that one exposure since nothing else is loaded
+yet), start a Grid sequence that measures the marked star, move to its
+best focus, take another standalone exposure, mark a *different* source
+(now reanalyzing the *loaded sequence* instead, since it takes priority
+once one exists), commit the pending exposure into the sequence, and
+finally discard one last pending exposure by starting a fresh Automated
+sequence. Every prior sub-phase's tests exercise these actions
+individually or in pairs; nothing before this checked that all of them
+compose correctly in one continuous session.
+
+**This actually caught a real bug in the test itself, not the
+implementation:** the first draft of this test assumed clicking a
+source while *both* a loaded sequence and a pending standalone exposure
+exist would reanalyze the standalone one (matching §5.6's "no sequence
+loaded" wording taken too literally). Running it immediately failed an
+identity check -- `pending_result` hadn't changed -- which is actually
+`Controller.reanalyze()` working exactly as implemented and tested in
+sub-phase 6: it always prefers `self.sequence` over `_standalone_sequence`
+when both exist. The design doc's §5.6 sentence describes only the
+literally-nothing-loaded case; it doesn't say what happens when both
+exist simultaneously, which sub-phase 6 resolved by giving the loaded
+sequence priority. Fixed the test to assert the actual (already
+deliberate, already covered by unit tests) priority rule instead of
+rewriting the Controller to match a misreading -- a good example of a
+smoke test needing correcting against already-settled behavior, not the
+other way around.
+
+No deviations from the plan otherwise. Reran the full suite with
+`PySide6` simulated absent (`-p no:pytest-qt`, matching a real Qt-free
+environment) -- 26 pass, the entire `tests/gui/` subtree (now 9 files)
+skips as one unit (`conftest.py`'s `pytest.importorskip('PySide6')`
+fails at collection, so pytest reports it as a single skip rather than
+one per test), confirming the optional-Qt boundary holds with the
+complete Phase 3 feature set in place.
+
+**Testing:** 1 new end-to-end test. All 107 tests pass with PySide6
+installed; 26 pass (`tests/gui/` skipped as one unit) with it simulated
+as absent.
+
+### Phase 3 summary
+
+All 7 sub-phases complete. What exists now, on top of Phase 2:
+
+- `tests/fake_hardware.py` + the `fake_hardware` fixture in
+  `tests/conftest.py` -- the test double standing in for real
+  telescope/camera hardware on a development machine with no access to
+  either, used throughout Phase 3.
+- `focus.FocusSequence.take_single_exposure()` -- the shared primitive
+  behind both "Move to Best Focus" and the standalone single-exposure
+  workflow, per the reassessment that a confirmation move is just one
+  step of a sequence taken in isolation.
+- `SequenceWorker`'s `mode='single'` and `singleExposureFinished` signal.
+- `FocusControlPanel`: Grid/Automated are now fully selectable and
+  configured (exposure settings, `maxsteps`); "Move to Best Focus" is
+  live, gated on the finished sequence actually having hardware to move;
+  a new "Single Exposure" group drives the standalone workflow.
+- `Controller`: `start_sequence()` branches over all three sequence
+  types against real (or fake) hardware; `move_to_best_focus()`,
+  `take_single_exposure()`, and `add_pending_to_sequence()` round out
+  the live-mode action set; `reanalyze()` transparently targets whatever
+  is actually loaded -- a real sequence, or a standalone pending
+  exposure if nothing else is.
+
+Functionally, the GUI can now do everything GUI_DESIGN.md scoped for
+v1 except real telescope/camera I/O, which is untestable on this
+machine by construction -- every action has been proven against
+`fake_hardware` instead, which validates the software logic (stepping,
+exclusivity, bookkeeping, worker threading) but not the real KTL
+keyword protocol itself; that can only be checked at the telescope.
+
+Two real gaps were caught only because tests were written alongside
+each piece rather than assumed correct: `set_running(False)` silently
+erasing a just-shown failure/confirmation message (sub-phase 5), and
+the missing Grid/Automated-through-Controller integration test
+(sub-phase 4). This sub-phase's own smoke test additionally caught a
+mistaken assumption in *its own first draft*, corrected against
+already-settled, already-tested Controller behavior rather than the
+other way around -- see above.
+
+Remaining before GUI development as a whole is considered finished:
+reconciling `GUI_DESIGN.md` with the as-built implementation (explicitly
+deferred until now, per earlier discussion) -- most notably §5.5's
+"Start New Sequence" button, which sub-phase 6 deliberately never built
+as a separate action since the existing "Start" button already does the
+same thing.

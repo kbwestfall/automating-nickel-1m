@@ -33,6 +33,17 @@ class MainWindow(QtWidgets.QMainWindow):
         control_scroll = QtWidgets.QScrollArea()
         control_scroll.setWidget(self.control_panel)
         control_scroll.setWidgetResizable(True)
+        # `setWidgetResizable(True)` has a real bug: if the splitter ever
+        # squeezes the viewport narrower than the panel's own minimum
+        # width, the panel doesn't get a horizontal scrollbar as you'd
+        # expect -- it snaps to some unrelated, much larger width (seen
+        # in practice: a ~340px-minimum panel jumping to ~640px) and gets
+        # stuck there. An explicit minimum width on the scroll area itself
+        # (a hard floor, unlike a sizeHint) keeps the splitter from ever
+        # asking for less than the panel can actually provide, so that
+        # code path never triggers. The small buffer accounts for the
+        # vertical scrollbar's own width once one appears.
+        control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width() + 20)
 
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         right.addWidget(self.curve_panel)

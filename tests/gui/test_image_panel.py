@@ -125,6 +125,29 @@ def test_outlier_box_color_reflects_is_outlier(qapp, focus_sweep):
     assert to_rgba('yellow') in colors, 'an outlier result should be boxed in yellow'
 
 
+def test_dropdown_selection_preserves_zoom_and_center(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    for r in results:
+        panel.add_result(r)
+
+    panel.set_zoom(2.0)
+    panel.h_scroll.setValue(10)
+    panel.v_scroll.setValue(15)
+    zoom_before = panel._zoom
+    xlim_before, ylim_before = panel.ax.get_xlim(), panel.ax.get_ylim()
+
+    panel.exposure_combo.setCurrentIndex(0)
+
+    assert panel._current is results[0], 'setup: the drop-down selection should have changed'
+    assert panel._zoom == zoom_before, \
+        'switching frames via the drop-down should not change the zoom factor'
+    assert panel.ax.get_xlim() == pytest.approx(xlim_before), \
+        'switching frames via the drop-down should keep the same view center'
+    assert panel.ax.get_ylim() == pytest.approx(ylim_before), \
+        'switching frames via the drop-down should keep the same view center'
+
+
 def test_zoom_and_recenter_affect_scroll_range(qapp, focus_sweep):
     results = _step_results(focus_sweep)
     panel = ImagePanel()

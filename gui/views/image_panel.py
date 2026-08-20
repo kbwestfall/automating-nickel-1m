@@ -183,6 +183,34 @@ class ImagePanel(QtWidgets.QWidget):
         self._zoom = 1.0
         self._render(reset_view=True)
 
+    def _show_result_preserving_view(self, result):
+        """
+        Display ``result`` keeping the current zoom and view center fixed
+        -- used when the user picks a different exposure from the
+        drop-down, so browsing between already-collected frames doesn't
+        keep resetting back to a fit-to-view zoom.
+        """
+        if self._current is None or self._data_shape is None:
+            self.show_result(result)
+            return
+
+        old_view_w, old_view_h = self._view_extent()
+        center_x = self.h_scroll.value() + old_view_w / 2
+        center_y = self.v_scroll.value() + old_view_h / 2
+
+        self._current = result
+        self._data_shape = result.frame.shape
+        self._update_scrollbar_ranges()
+
+        new_view_w, new_view_h = self._view_extent()
+        new_x0 = round(center_x - new_view_w / 2)
+        new_y0 = round(center_y - new_view_h / 2)
+        for bar, value in ((self.h_scroll, new_x0), (self.v_scroll, new_y0)):
+            bar.blockSignals(True)
+            bar.setValue(max(0, min(value, bar.maximum())))
+            bar.blockSignals(False)
+        self._render(reset_view=False)
+
     def reset(self):
         """Clear the panel: no exposures, nothing displayed."""
         self._results = []
@@ -211,7 +239,7 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _on_combo_changed(self, index):
         if 0 <= index < len(self._results):
-            self.show_result(self._results[index])
+            self._show_result_preserving_view(self._results[index])
 
     def _on_stretch_changed(self, name):
         self._stretch_name = name

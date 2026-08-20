@@ -1227,3 +1227,80 @@ real `button_press_event` through the canvas's own callback registry
 (not just checking a method no longer exists) to prove nothing is
 listening for clicks at all anymore. All 111 tests pass; Qt-free
 boundary reconfirmed.
+
+### Control panel width balloons and Archive/Replay stops responding
+
+**Reported symptom:** on this machine's real display, hitting "Start"
+for an Archive/Replay sequence made the bottom-right control panel's
+*contents* dramatically expand in width (a horizontal scrollbar
+appeared; buttons got much wider), while the window and splitter
+positions stayed the same size, and the sequence did not appear to run.
+No error appeared anywhere -- not the terminal, not the Status label.
+
+**Investigation:** confirmed via a headless (`QT_QPA_PLATFORM=offscreen`)
+script that `Controller.start_sequence()` and `ArchiveFocusSequence`
+itself work fine in isolation (5/5 steps complete, no exception) even
+with a deliberately small window, which rules out a functional
+regression in the archive-loading/stepping code -- nothing about the
+recent 'm'-key or window-sizing changes touches that path. Separately,
+confirmed a genuine `QScrollArea.setWidgetResizable(True)` bug in
+isolation: if its viewport is squeezed narrower than the scrolled
+widget's own minimum width, the widget doesn't get a horizontal
+scrollbar as you'd expect -- it snaps to some unrelated, much larger
+width (a ~340px-minimum panel jumped to ~640px in testing) and gets
+stuck there, matching the reported symptom closely. This is a plausible
+consequence of the sub-phase-adjacent "window too large" fix, which
+introduced the `QScrollArea` wrapping `FocusControlPanel` in the first
+place -- a bare `QSplitter` child (the previous arrangement) can be
+compressed below its minimum size hint via handle-dragging without this
+failure mode; a resizable `QScrollArea` apparently cannot.
+
+**Caveat -- this is a mitigation, not a confirmed root-cause fix:**
+despite reproducing the underlying `QScrollArea` bug in isolation, it
+could not be reproduced through the actual embedded `MainWindow`
+splitter hierarchy in the headless test environment -- `QMainWindow`
+enforces the aggregate minimum size of its central widget on ordinary
+resize, so `window.resize()` alone never actually squeezed the scroll
+area's viewport below the panel's minimum in testing, even deliberately
+far below (splitter `setSizes()` calls that did force it narrow also
+didn't trigger the bug there). It's possible the real trigger on a
+physical display involves something offscreen mode doesn't reproduce
+faithfully (e.g. manually dragging a splitter handle, real font
+metrics/DPI, or a timing/event-order difference). Applied the fix
+regardless, since it's a correct, low-risk hardening either way: giving
+the `QScrollArea` an explicit `setMinimumWidth()` -- a hard floor,
+unlike a sizeHint -- equal to the panel's own `minimumSizeHint().width()`
+plus a small buffer for the vertical scrollbar, so the splitter can
+never ask the scroll area to go narrower than the panel can actually
+provide, which is exactly the precondition the bug needs to trigger.
+
+**Testing:** added `test_control_scroll_area_has_a_floor_at_the_panels_minimum_width`,
+which checks the configured floor directly rather than trying to
+reproduce the elusive rendering bug end-to-end. All 112 tests pass;
+Qt-free boundary reconfirmed. **Flagged for the user to confirm** this
+actually resolves what they saw on their real display, since it
+couldn't be independently verified end-to-end here.
+
+Confirmed by the user: reproducing the exact same steps that triggered
+this no longer shows the problem.
+
+### Drop-down selection preserves zoom/center
+
+Picking a different exposure from `ImagePanel`'s drop-down used to
+always reset to a fit-to-view zoom via `show_result()`. Per request,
+`_on_combo_changed` now calls a new `_show_result_preserving_view()`
+instead: it captures the current view's center in data coordinates
+(from the scrollbar values and `_view_extent()`), swaps in the new
+result's frame and shape, recomputes scrollbar ranges for that frame,
+then re-centers the view on the same data point at the same zoom
+(clamped to the new frame's valid scroll range). Falls back to the
+existing `show_result()` (fit-to-view) if nothing was displayed yet.
+`add_result()`'s own call to `show_result()` for a newly-collected
+exposure is unchanged -- resetting to fit-to-view still makes sense
+there; this only applies to manually browsing already-collected frames.
+
+No deviations. **Testing:** added
+`test_dropdown_selection_preserves_zoom_and_center`, which zooms in and
+pans, switches to a different drop-down entry, and confirms both the
+zoom factor and the rendered view limits (center) are unchanged. All
+113 tests pass; Qt-free boundary reconfirmed.

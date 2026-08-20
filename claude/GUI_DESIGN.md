@@ -431,7 +431,52 @@ gui/
 (This would sit alongside `scripts/`, importing from it rather than
 duplicating any hardware or photometry logic.)
 
-## 8. Phased plan
+## 8. Testing strategy
+
+Tests get added throughout, not as a separate late-stage task — each
+phase in §9 should come with tests for what it introduces.
+
+- **No `ktl` dependency.** Tests never run against real hardware, and must
+  pass with `ktl` uninstalled — the same constraint already built into
+  `scripts/focus.py` (`Focus`/`Exposure` only get constructed if `ktl is
+  not None`). This means tests exercise `ArchiveFocusSequence`-style
+  inputs, the single-exposure/`reanalyze()` operations, photometry, and
+  quadratic fitting — anything that touches `Focus`/`Exposure` directly is
+  out of scope for automated tests by construction.
+- **Cover both the CLI and GUI paths.** The whole point of the `step()`
+  generator refactor (§2) is that `scripts/focus.py`'s CLI and the GUI's
+  Model consume the same underlying sequence-stepping/photometry code —
+  tests should confirm that shared behavior once, rather than duplicating
+  coverage of the same logic from both the CLI's and the GUI's side. GUI
+  Model/Controller-specific behavior (worker-thread signal emission,
+  drop-down ordering, hardware-exclusivity gating, etc.) needs its own
+  tests on top of that, but exercised without actually starting a Qt
+  event loop where avoidable.
+- **Small, synthetic datasets.** Prefer tiny synthetic FITS images with a
+  known source (position, FWHM) — in the spirit of `practice/simulation.py`'s
+  Moffat-PSF generator — over real archived Nickel frames, so tests are
+  fast, deterministic, and don't depend on files outside the repo. Real
+  archived sequences (like the `n2165`-`n2168` one used for manual
+  end-to-end testing) remain useful for manual/exploratory verification,
+  not as required fixtures for automated tests.
+- **Location:** `tests/`, top-level, alongside `scripts/` and `gui/` —
+  not nested under either, since it needs to cover both:
+
+  ```
+  automating-nickel-1m/
+      scripts/
+      gui/
+      tests/
+  ```
+
+  This is an interim layout matching the current flat repo structure.
+  You've flagged that the codebase will eventually move to a proper
+  installable Python package structure (e.g., `src/`-layout,
+  `pyproject.toml`), at which point `tests/` would likely move/adjust
+  accordingly — that restructuring is a separate, future effort and out
+  of scope for the GUI work described in this document.
+
+## 9. Phased plan
 
 1. **Model refactor**: turn `FocusSequence.execute()`'s loop into a
    `step()` generator (§2), with `execute()` becoming a thin wrapper so
@@ -455,7 +500,10 @@ duplicating any hardware or photometry logic.)
    script), richer stretch options.
 6. **Pointing workflow** (§6), once the above is stable.
 
-## 9. Summary of decisions
+Each of these phases adds its own tests (§8) as it lands, rather than
+deferring testing to the end.
+
+## 10. Summary of decisions
 
 No open questions remain from this design pass. Decisions made so far:
 
@@ -496,6 +544,9 @@ No open questions remain from this design pass. Decisions made so far:
   result exists — both because it's a computed (not user-typed) value, and
   because clicking it is the observer's explicit sign-off that the
   sequence succeeded (§5.4).
+- **Testing:** added incrementally per phase, `ktl`-free, covering both
+  CLI and GUI paths against small synthetic datasets, living in a
+  top-level `tests/` alongside `scripts/` and `gui/` for now (§8).
 
 Anything not covered above should still be treated as undecided and raised
 before being implemented.

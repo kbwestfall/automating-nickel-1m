@@ -713,6 +713,44 @@ branches of `step_focus()` for the first time). All 70 tests pass;
 reconfirmed the Qt-free boundary holds with the new fixture in place (22
 pass, `tests/gui/` still skips as one unit).
 
+### Sub-phase 2 results: `take_single_exposure()` Model primitive
+
+Added `FocusSequence.take_single_exposure(focus_value, method='brightest',
+**exp_kwargs)`: moves to `focus_value`, exposes, measures via
+`image_quality()`, and returns a `StepResult` with `index=0` — one
+iteration of `step()`'s body, but without touching `step_iter`,
+`observed_focus`, `exposures`, or any other sequence bookkeeping, since
+it isn't part of a larger sequence. Raises the same
+"ktl not connected"-style `ValueError` as `execute(goto=True)` used to if
+`self._focus`/`self._exposure` are `None`.
+
+`execute()`'s `goto=True` path is now just:
+
+```python
+if goto:
+    self.take_single_exposure(best_focus, method=method)
+```
+
+replacing the old three lines that called the nonexistent
+`measure_fwhm()` and separately never appended their own verification
+exposure to `self.exposures` before trying to read it back (the
+`self._focus is None` check moved into `take_single_exposure()` itself,
+so it isn't duplicated).
+
+No deviations from the plan for this sub-phase — this was scoped and
+agreed in the Phase 3 planning discussion itself (see the Phase 3
+introduction above), not discovered mid-implementation.
+
+**Testing:** 4 tests in `tests/test_take_single_exposure.py` (Qt-free):
+calling it on a sequence with no hardware (`ArchiveFocusSequence`) raises
+clearly; against the fake hardware fixture, it moves the focus, returns
+a correctly-populated `StepResult`, and leaves sequence bookkeeping
+untouched; an out-of-range focus value raises; and -- the regression test
+for the fix -- `GridFocusSequence(...).execute(goto=True, ...)` against
+fake hardware now runs to completion and actually moves the telescope to
+the fitted best focus, instead of crashing. All 74 tests pass; Qt-free
+boundary reconfirmed (26 pass, `tests/gui/` still skips as one unit).
+
 ### Next
 
-Phase 3, sub-phase 2: `take_single_exposure()` Model primitive.
+Phase 3, sub-phase 3: exposure-settings plumbing for `SequenceWorker`.

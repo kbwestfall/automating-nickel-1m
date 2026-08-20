@@ -553,6 +553,56 @@ class FocusSequence:
                 is_outlier=FocusPlot.is_outlier(self.centroids),
             )
 
+    def take_single_exposure(self, focus_value, method='brightest', **exp_kwargs):
+        """
+        Move to ``focus_value``, take one exposure, and measure its image
+        quality -- one iteration of :func:`step`'s body, without any
+        sequence bookkeeping (``step_iter``, ``observed_focus``,
+        ``img_quality``, etc. are left untouched).
+
+        This is the shared primitive behind both "move to best focus"
+        (moving to a fitted focus value and confirming it with one
+        exposure *is* taking a single exposure at that value) and the
+        standalone single-exposure workflow (GUI_DESIGN.md §5.5).
+
+        Parameters
+        ----------
+        focus_value : :obj:`int`, :obj:`float`
+            The focus value to move to before exposing.
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
+        **exp_kwargs
+            Passed to :func:`ExposureConfig.configure` before exposing
+            (``record``, ``speed``, ``binning``, ``exptime``).
+
+        Returns
+        -------
+        StepResult
+            The measurement from the single exposure. Its ``index`` is
+            always 0, since it's not part of any larger sequence.
+        """
+        if self._focus is None or self._exposure is None:
+            raise ValueError(
+                'No telescope focus/exposure control is available (ktl not connected); cannot '
+                'take a single exposure.'
+            )
+        self._focus.set_to(focus_value)
+        self._exposure.cfg.configure(**exp_kwargs)
+        exposure = self.take_exposure()
+        data, bkg, src_data, img_quality, source_stamp, coords \
+            = image_quality(exposure, method=method)
+        return StepResult(
+            index=0,
+            focus_value=self._focus.current,
+            exposure=exposure,
+            fwhm=img_quality,
+            frame=data - bkg,
+            stamp=source_stamp,
+            centroid=coords,
+            is_outlier=False,
+        )
+
     def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
 
         if self._exposure is not None:
@@ -573,14 +623,7 @@ class FocusSequence:
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
 
         if goto:
-            if self._focus is None:
-                raise ValueError(
-                    'No telescope focus control is available (ktl not connected); cannot move '
-                    'to the best-fit focus.'
-                )
-            self._focus.set_to(best_focus)
-            self.take_exposure()
-            sigma_at_best_focus = self.measure_fwhm(self.exposures[-1])
+            self.take_single_exposure(best_focus, method=method)
 
         return best_focus, best_img_quality
 

@@ -91,6 +91,26 @@ def test_update_result_falls_back_to_add_for_an_unknown_exposure(qapp, focus_swe
         'update_result() for an unplotted exposure should behave like add_result()'
 
 
+def test_xlabel_is_not_clipped_when_the_panel_is_short(qapp, focus_sweep):
+    # A fixed-margin figure can have its bottom label clipped once the
+    # panel is squeezed shorter than that margin needs -- constrained
+    # layout is what's supposed to prevent that.
+    results = _step_results(focus_sweep)
+    panel = FocusCurvePanel()
+    for r in results:
+        panel.add_result(r)
+    panel.resize(300, 150)  # deliberately shorter than a fixed margin would assume
+    panel.show()
+    qapp.processEvents()
+
+    panel.figure.canvas.draw()
+    renderer = panel.figure.canvas.get_renderer()
+    xlabel_bbox = panel.ax.xaxis.label.get_window_extent(renderer=renderer)
+
+    assert xlabel_bbox.y0 >= panel.figure.bbox.y0, \
+        "the x-axis label should stay within the figure's bounds, not get clipped off the bottom"
+
+
 def test_reset_clears_the_plot(qapp, focus_sweep):
     results = _step_results(focus_sweep)
     panel = FocusCurvePanel()

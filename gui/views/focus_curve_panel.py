@@ -25,7 +25,15 @@ class FocusCurvePanel(QtWidgets.QWidget):
         super().__init__(parent)
         self._results = []
 
-        self.figure = Figure(figsize=(5, 4))
+        # 'constrained' layout recomputes margins on every draw so the
+        # axis labels/title always have enough room, regardless of how
+        # small the splitter/window makes this panel -- unlike a fixed
+        # margin, which gets clipped once the panel shrinks below it.
+        # 'constrained' layout recomputes margins on every draw so the
+        # axis labels/title always have enough room, regardless of how
+        # small the splitter/window makes this panel -- unlike a fixed
+        # margin, which gets clipped once the panel shrinks below it.
+        self.figure = Figure(figsize=(5, 4), layout='constrained')
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
         self._reset_axis()

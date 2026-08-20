@@ -1304,3 +1304,24 @@ No deviations. **Testing:** added
 pans, switches to a different drop-down entry, and confirms both the
 zoom factor and the rendered view limits (center) are unchanged. All
 113 tests pass; Qt-free boundary reconfirmed.
+
+### Focus curve panel: clipped x-axis label
+
+`FocusCurvePanel`'s `Figure` used matplotlib's default fixed subplot
+margins, sized for a "normal" standalone plot window -- too little
+bottom margin once the panel is squeezed short by the splitter, which
+clipped the "Focus Value" x-axis label. Fixed by constructing the
+`Figure` with `layout='constrained'`, which recomputes margins on every
+draw based on the actual rendered size and label text, rather than a
+one-time fixed fraction -- so the label always has room regardless of
+how small the panel gets. `ImagePanel` didn't need the equivalent
+treatment: it draws no ticks/labels/title at all (removed in an earlier
+revision), so it has nothing that constrained layout would need to make
+room for.
+
+**Testing:** added `test_xlabel_is_not_clipped_when_the_panel_is_short`,
+which resizes the panel to a deliberately short 300x150 and checks the
+rendered x-axis label's bounding box stays within the figure's bounds.
+Confirmed this fails without the fix (label bbox extends ~29px below
+the figure) and passes with it. All 114 tests pass; Qt-free boundary
+reconfirmed.

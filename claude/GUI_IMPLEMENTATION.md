@@ -95,7 +95,111 @@ code (CLI or future GUI) can drive it:
 - `test_focus_cli.py`: `focus.main()`'s archive-mode CLI path runs
   end-to-end against the synthetic fixture.
 
+## Phase 2: GUI skeleton + archive mode
+
+**Design doc reference:** §9 Phased plan, item 2.
+
+**Status:** In progress — sub-phase 1 complete. Broken into sub-phases
+below before implementation starts, both because it's a large chunk of
+work and because of a
+constraint not fully spelled out in `GUI_DESIGN.md`: Qt must stay an
+*optional* dependency, exactly like `ktl`. `scripts/focus.py` (the CLI)
+must keep working with no Qt installed at all — nothing in `scripts/`
+should ever import PySide6, directly or indirectly. That's naturally true
+as long as `gui/` only ever imports *from* `scripts/` and never the other
+way around, but it also means: `gui/`'s own modules should fail with one
+clear, friendly message if PySide6 isn't installed (mirroring the
+`ktl is None` pattern) rather than a confusing traceback; the GUI's Qt
+dependency belongs in its own requirements file, not the base
+`requirements.txt`; and the test suite must keep collecting and passing
+on a Qt-free environment, with GUI-specific tests skipped (not erroring)
+when PySide6 is absent.
+
+### Sub-phases
+
+1. **`FocusSequence.reanalyze()`** (Qt-free, lives in `scripts/focus.py`).
+   Re-runs `photometry.image_quality()` over a sequence's already-collected
+   `exposures`/`observed_focus`, in place, with a new `method` — the
+   Model-layer piece §5.6's interactive source selection needs, and the
+   one piece of Phase 2 with no Qt involvement at all. Testable
+   immediately with the existing `tests/` setup.
+2. **GUI scaffolding and the optional-Qt boundary.** `gui/__init__.py`;
+   a single shim module (e.g. `gui/qt.py`) that imports PySide6 once,
+   raising a clear `ImportError` if it's missing, so every other `gui/`
+   module gets its Qt classes from that shim rather than importing
+   PySide6 directly; the same `scripts/`-on-`sys.path` setup `tests/conftest.py`
+   already does; a new `requirements-gui.txt` holding `PySide6` (kept out
+   of `requirements.txt`); a `tests/gui/` subtree with its own
+   `conftest.py` that calls `pytest.importorskip('PySide6')` so the rest
+   of the suite is unaffected if it's not installed. Deliverable: a
+   `gui/main.py` that opens an empty window, proving the scaffolding and
+   the optional-import boundary both work, before any real panel exists.
+3. **`SequenceWorker`** (Qt-dependent). The `QThread` engine from §4.3:
+   drives `FocusSequence.step()`/`reanalyze()` off the GUI thread, emits
+   `stepComplete`/`sequenceFinished`/`sequenceFailed`, honors "Stop only
+   between steps," and handles the early-stop-with-<3-points case. Tested
+   against the synthetic `ArchiveFocusSequence` fixture with no real
+   widgets involved.
+4. **`ImagePanel`.** Embedded-matplotlib view (§3 phase 1 choice): pan via
+   scroll bars, wheel zoom, recenter, a small stretch selector, the
+   outlier-highlight box, the focus-value-sorted exposure drop-down
+   (§5.2), and the click-to-select-source signal (§5.6) — gating on
+   whether a sequence is running is the Controller's job, but the panel
+   needs an enable/disable hook for it.
+5. **`FocusCurvePanel`.** Embedded-matplotlib FWHM-vs-focus scatter with
+   the best-fit quadratic/vertex and distinctly-styled outlier points
+   (§5.3).
+6. **`FocusControlPanel`.** Archive-mode sequence configuration
+   (datadir/prefix/suffix/obsnum/start/step/nstep), the current photometry
+   method (brightest/weighted/selected-source, read-only in this phase
+   except via an image click), Start/Stop, live status/log, and the
+   best-focus result display (§5.4). Grid/Automated sequence-type options
+   are present in the layout but disabled with a "requires live ktl —
+   Phase 3" note, so the widget shape doesn't need to change later.
+7. **`MainWindow` + `Controller` wiring.** Lay out the three panels per
+   §5.1; the Controller owns the current sequence, wires
+   `SequenceWorker`'s signals to the panels, implements the
+   hardware-exclusivity state machine from §4.3 (even though there's no
+   real hardware yet, so Phase 3 doesn't need to re-architect it), and
+   wires image clicks through to `reanalyze()`.
+8. **End-to-end smoke test + log update.** A `tests/gui/` test that opens
+   `MainWindow` offscreen, runs an archive-mode sequence against the
+   synthetic fixture, and confirms the curve/best-focus populate; a
+   source-selection → reanalysis smoke test. Update this document with
+   what shipped, deviations, and issues, same as Phase 1.
+
+### Sub-phase 1 results: `FocusSequence.reanalyze()`
+
+Added `reanalyze(method='brightest')` to `FocusSequence` (right after
+`step()`/before `execute()`), sharing `step()`'s general shape (a
+generator yielding `StepResult`s) but iterating over the sequence's
+already-collected `observed_focus`/`exposures` directly instead of
+calling `continue_sequence()`/`step_focus()`/`take_exposure()` — so it
+works unmodified on any subclass (`Archive`, `Grid`, `Automated`) since it
+never touches hardware, and degrades cleanly to an empty generator when
+nothing's been collected yet. Also had `step()` and `reanalyze()` both set
+`self.method`, giving the sequence a live record of "the method currently
+in effect" — previously declared in `__init__` but never actually set or
+read anywhere; needed for the GUI to know what to show for the current
+photometry method and for §5.6's "the newly-selected source persists for
+future exposures" behavior.
+
+No deviations from the design doc for this sub-phase.
+
+**Testing:** 4 tests added to `test_focus_sequence.py`: `reanalyze()`
+updates `img_quality`/`source_stamps`/`centroids` in place without
+touching `observed_focus`/`exposures`/`step_iter`; it's a no-op on a
+sequence with nothing collected yet; it updates `self.method`; and
+reanalyzing with a coordinate-based `method` pointing at the fixture's
+single source recovers the same measurement as `'brightest'` (the
+synthetic fixture only has one source per frame, so this doesn't exercise
+actually picking a *different* source among several — worth keeping in
+mind if a future test wants to check that specifically, e.g. with a
+multi-source synthetic frame). All 16 tests pass (12 from Phase 1 + 4
+new).
+
 ### Next
 
-Phase 2 (§9): GUI skeleton + archive mode, plus interactive source
-selection and `reanalyze()` (§5.6), all `ktl`-free.
+Phase 2, sub-phase 2: GUI scaffolding and the optional-Qt boundary.
+
+Phase 2, sub-phase 1: `FocusSequence.reanalyze()`.

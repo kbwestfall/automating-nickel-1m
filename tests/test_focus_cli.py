@@ -24,5 +24,5 @@ def test_cli_archive_mode_runs_end_to_end(focus_sweep, capsys, monkeypatch):
     focus.main()
 
     captured = capsys.readouterr()
-    assert 'Best focus:' in captured.out
-    assert 'Expected sigma:' in captured.out
+    assert 'Best focus:' in captured.out, 'CLI should print the fitted best focus'
+    assert 'Expected sigma:' in captured.out, 'CLI should print the expected sigma'

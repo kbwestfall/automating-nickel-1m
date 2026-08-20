@@ -476,6 +476,7 @@ class FocusSequence:
         StepResult
             The result of the most recently completed step.
         """
+        self.method = method
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
@@ -497,6 +498,60 @@ class FocusSequence:
             )
             self.step_iter += 1
             yield result
+
+    def reanalyze(self, method='brightest'):
+        """
+        Re-run photometry on every exposure this sequence has already
+        collected, using a new ``method``, without taking any new
+        exposures.
+
+        This replaces the stored ``img_quality``/``source_stamps``/
+        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and
+        thus which exposures exist and what focus values they were taken
+        at) are left untouched. It's meant for interactively changing
+        which source is used for the FWHM measurement (e.g., after a user
+        clicks a different star in the displayed image) and seeing the
+        effect on every exposure already taken, live or archived, without
+        re-observing. If nothing has been collected yet (``exposures`` is
+        empty), this yields nothing.
+
+        Parameters
+        ----------
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
+
+        Yields
+        ------
+        StepResult
+            The updated result for each already-collected exposure, in
+            the order they were originally taken.
+        """
+        self.method = method
+        focus_values = list(self.observed_focus)
+        exposures = list(self.exposures)
+
+        self.img_quality = []
+        self.source_stamps = []
+        self.centroids = []
+
+        for i, (focus_value, exposure) in enumerate(zip(focus_values, exposures)):
+            data, bkg, src_data, img_quality, source_stamp, coords \
+                = image_quality(exposure, method=method)
+            self.source_stamps += [source_stamp]
+            self.img_quality += [img_quality]
+            self.centroids += [coords]
+
+            yield StepResult(
+                index=i,
+                focus_value=focus_value,
+                exposure=exposure,
+                fwhm=img_quality,
+                frame=data - bkg,
+                stamp=source_stamp,
+                centroid=coords,
+                is_outlier=FocusPlot.is_outlier(self.centroids),
+            )
 
     def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
 

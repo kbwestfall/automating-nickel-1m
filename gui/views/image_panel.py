@@ -64,6 +64,10 @@ class ImagePanel(QtWidgets.QWidget):
         self._selection_enabled = False
 
         self.figure = Figure(figsize=(5, 5))
+        # No ticks/labels/title are ever drawn (the exposure/focus value
+        # is already in the drop-down above), so the image can fill the
+        # whole figure instead of leaving matplotlib's default margins.
+        self.figure.subplots_adjust(left=0, right=1, bottom=0, top=1)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
         self.ax.set_xticks([])
@@ -217,9 +221,38 @@ class ImagePanel(QtWidgets.QWidget):
         if event.inaxes != self.ax or self._current is None:
             return
         if event.button == 'up':
-            self.set_zoom(self._zoom * 1.2)
+            factor = 1.2
         elif event.button == 'down':
-            self.set_zoom(self._zoom / 1.2)
+            factor = 1 / 1.2
+        else:
+            return
+        self._zoom_at(event.xdata, event.ydata, self._zoom * factor)
+
+    def _zoom_at(self, xdata, ydata, new_zoom):
+        """
+        Like :func:`set_zoom`, but keeps the data point ``(xdata, ydata)``
+        fixed under the cursor rather than anchored at the view's
+        top-left corner -- otherwise every scroll/trackpad zoom event
+        visibly drifts the image out from under the cursor.
+        """
+        new_zoom = max(1.0, float(new_zoom))
+        if new_zoom == self._zoom:
+            return
+        old_view_w, old_view_h = self._view_extent()
+        frac_x = (xdata - self.h_scroll.value()) / old_view_w
+        frac_y = (ydata - self.v_scroll.value()) / old_view_h
+
+        self._zoom = new_zoom
+        self._update_scrollbar_ranges()
+        new_view_w, new_view_h = self._view_extent()
+        new_x0 = round(xdata - frac_x * new_view_w)
+        new_y0 = round(ydata - frac_y * new_view_h)
+        for bar, value in ((self.h_scroll, new_x0), (self.v_scroll, new_y0)):
+            bar.blockSignals(True)
+            bar.setValue(max(0, min(value, bar.maximum())))
+            bar.blockSignals(False)
+        self._apply_view_limits()
+        self.canvas.draw_idle()
 
     def _on_click(self, event):
         if not self._selection_enabled or event.inaxes != self.ax:
@@ -240,8 +273,7 @@ class ImagePanel(QtWidgets.QWidget):
 
         data = result.frame
         normalize = self.STRETCHES[self._stretch_name](data)
-        self.ax.imshow(data, cmap='viridis', origin='lower', norm=normalize)
-        self.ax.set_title(f'{result.exposure.stem}  Focus: {result.focus_value:.1f}')
+        self.ax.imshow(data, cmap='gray', origin='lower', norm=normalize)
 
         stamp_size = int(result.fwhm * 10)
         half = stamp_size / 2

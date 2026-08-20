@@ -45,7 +45,7 @@ class MainWindow(QtWidgets.QMainWindow):
         central.setStretchFactor(1, 1)
 
         self.setCentralWidget(central)
-        self._size_to_screen(1200, 800)
+        self._size_to_screen(1200, 600)
 
     def _size_to_screen(self, preferred_width, preferred_height):
         """

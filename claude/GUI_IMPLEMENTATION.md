@@ -1151,3 +1151,49 @@ shown window's size never exceeds `screen().availableGeometry()`. This
 test is what caught the layout-minimum-size issue above -- the naive
 resize-based fix alone still failed it. All 108 tests pass; Qt-free
 boundary reconfirmed.
+
+### Default window size
+
+Changed the preferred size passed to `_size_to_screen()` from 1200x800
+to 1200x600 (2:1), per explicit request -- no functional change beyond
+the aspect ratio.
+
+### `ImagePanel` usability fixes
+
+Four fixes from actually using the GUI on a real display:
+
+- **Excess whitespace around the image:** matplotlib reserves default
+  margins around an `Axes` for ticks/labels/title -- all of which
+  `ImagePanel` already suppresses -- so those margins were pure wasted
+  space. Added `figure.subplots_adjust(left=0, right=1, bottom=0,
+  top=1)` once in `__init__` (a `Figure`-level setting, unaffected by
+  `ax.clear()` in `_render`, so it doesn't need repeating there) to let
+  the image fill the whole canvas.
+- **Zoom didn't track the cursor:** `_on_wheel_zoom` called the public
+  `set_zoom()`, which recomputes scrollbar *ranges* for the new zoom
+  level but leaves their *value* (the view's top-left corner) alone --
+  so the view always zoomed toward that fixed corner, not wherever the
+  cursor was. Noticeable with any scroll input, but especially with a
+  trackpad's many small high-frequency scroll events, where the drift
+  compounds visibly. Added `_zoom_at(xdata, ydata, new_zoom)`, used only
+  by the wheel handler: it captures the cursor's data point as a
+  fraction of the *current* view before changing `_zoom`, then
+  recomputes the scrollbar values so that same fraction -- and thus the
+  same data point -- lands back under the cursor at the new zoom level.
+  `set_zoom()` itself is unchanged (still used by `recenter()`, where
+  there's no cursor position to anchor to anyway).
+- **Redundant title:** removed `ax.set_title(...)` from `_render` -- the
+  exposure/focus value it showed is already in the drop-down above the
+  image, per the request.
+- **Default colormap:** changed `imshow`'s hardcoded `cmap` from
+  `'viridis'` to `'gray'`, matching the conventional grayscale display
+  for astronomical images.
+
+**Testing:** added `test_wheel_zoom_keeps_the_cursor_point_fixed` to
+`tests/gui/test_image_panel.py`, which scrolls in on a point away from
+the image center and confirms its fractional position within the view
+is essentially unchanged before/after -- this is what would have caught
+the original corner-anchored behavior. No test was added for the
+colormap/title/whitespace changes -- they're cosmetic rendering details
+with no behavior to regress. All 109 tests pass; Qt-free boundary
+reconfirmed.

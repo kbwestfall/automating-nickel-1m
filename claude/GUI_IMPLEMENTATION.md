@@ -198,8 +198,69 @@ mind if a future test wants to check that specifically, e.g. with a
 multi-source synthetic frame). All 16 tests pass (12 from Phase 1 + 4
 new).
 
+### Sub-phase 2 results: GUI scaffolding and the optional-Qt boundary
+
+Added the `gui/` package and its supporting test infrastructure:
+
+- `gui/qt.py` — the single place PySide6 gets imported. Every other
+  `gui` module is expected to get `QtCore`/`QtGui`/`QtWidgets` from here
+  (`from gui.qt import QtWidgets`) rather than importing PySide6 directly.
+  Catches the broad `ImportError` (not the narrower `ModuleNotFoundError`)
+  so the clear, custom message is guaranteed regardless of exactly how the
+  import fails.
+- `gui/__init__.py` — only adds `scripts/` to `sys.path` (mirroring
+  `tests/conftest.py`). Deliberately does *not* import `gui.qt`, so
+  `import gui` alone never requires Qt to be installed; only importing a
+  submodule that actually needs it does.
+- `gui/main.py` — the sub-phase's deliverable: `build_app()`/
+  `build_window()`/`main()`, opening an empty, titled `QMainWindow`. Split
+  into separate functions (rather than one `main()`) specifically so
+  tests can construct and inspect the window without calling the
+  blocking `app.exec()`.
+- `requirements-gui.txt` — holds `PySide6`, kept separate from
+  `requirements.txt` so installing the base file never pulls in Qt.
+- `tests/gui/conftest.py` — calls `pytest.importorskip('PySide6')` so the
+  whole `tests/gui/` subtree skips as a unit if Qt isn't installed; also
+  sets `QT_QPA_PLATFORM=offscreen` (so GUI tests never need a real
+  display) and provides a session-scoped `qapp` fixture.
+- `tests/test_optional_qt_boundary.py` — a cheap, Qt-free regression
+  guard that scans `scripts/*.py` for any reference to a Qt binding name
+  and fails if it finds one. Runs unconditionally, as part of the base
+  suite.
+
+### Issues encountered
+
+- The `nickel` environment already has `pytest-qt` installed (unrelated
+  to this project's requirements files). `pytest-qt` registers a plugin
+  that unconditionally imports Qt in `pytest_configure`, *before* any
+  test or conftest-level `importorskip` runs — so simulating a Qt-free
+  environment by hiding `PySide6` (via `sys.modules['PySide6'] = None`)
+  while `pytest-qt` is active makes pytest itself crash with an
+  `INTERNALERROR`, not a clean skip. This isn't a bug in this repo's
+  code: a genuinely Qt-free environment (only `requirements.txt`
+  installed, no `requirements-gui.txt`) would never have `pytest-qt`
+  installed either, so its plugin would never load and this can't happen.
+  Confirmed by re-running the same simulation with `-p no:pytest-qt`
+  (i.e., modeling the actual target environment): 17 passed, and the
+  entire `tests/gui/` subtree (3 tests) skipped as one unit, exactly as
+  intended. **Caveat for later:** if `pytest-qt` ends up genuinely useful
+  for a future sub-phase (e.g., `qtbot` for simulating clicks or waiting
+  on signals), it must be added to `requirements-gui.txt`, specifically
+  so it's never present without Qt itself, and any dedicated Qt-free CI
+  leg must be provisioned from `requirements.txt` alone. Not adopted yet
+  — this sub-phase's own tests use a small hand-written `qapp` fixture
+  instead, since nothing here needed more than that.
+
+No other deviations from the design doc for this sub-phase.
+
+**Testing:** 4 tests added: `tests/gui/test_main.py` (the empty window
+opens and its title is set) and `tests/gui/test_qt_shim.py` (`gui.qt`
+exposes the expected names; simulating `PySide6` being absent via
+`sys.modules['PySide6'] = None` makes `import gui.qt` raise a clear
+`ImportError` mentioning PySide6), plus `tests/test_optional_qt_boundary.py`
+(1 test, Qt-free). All 20 tests pass with PySide6 installed; 17 pass (3
+cleanly skipped) with it simulated as absent.
+
 ### Next
 
-Phase 2, sub-phase 2: GUI scaffolding and the optional-Qt boundary.
-
-Phase 2, sub-phase 1: `FocusSequence.reanalyze()`.
+Phase 2, sub-phase 3: `SequenceWorker`.

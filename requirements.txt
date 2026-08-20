@@ -5,3 +5,5 @@ numpy
 photutils
 pytest
 scipy
+
+# OPTIONAL: ktl, PySide6, pytest_qt

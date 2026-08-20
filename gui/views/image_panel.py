@@ -136,7 +136,7 @@ class ImagePanel(QtWidgets.QWidget):
         self._results.insert(insert_at, result)
         self._latest_result = result
 
-        label = f'{result.exposure.stem} — Focus {result.focus_value:.1f}'
+        label = f'{result.exposure.stem} — Focus {result.focus_value:.0f}'
         self.exposure_combo.blockSignals(True)
         self.exposure_combo.insertItem(insert_at, label)
         if tracking_latest:
@@ -169,7 +169,7 @@ class ImagePanel(QtWidgets.QWidget):
         if was_latest:
             self._latest_result = result
 
-        label = f'{result.exposure.stem} — Focus {result.focus_value:.1f}'
+        label = f'{result.exposure.stem} — Focus {result.focus_value:.0f}'
         self.exposure_combo.blockSignals(True)
         self.exposure_combo.setItemText(existing_index, label)
         self.exposure_combo.blockSignals(False)

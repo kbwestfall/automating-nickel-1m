@@ -219,7 +219,7 @@ def test_move_to_best_focus_runs_against_fake_hardware(qapp, fake_hardware):
         'the fake Focus should have been commanded to the best-focus value'
     assert len(window.image_panel._results) == n_before + 1, \
         'the confirmation exposure should be added to the image panel'
-    assert f'{best_focus:.1f}' in window.control_panel.status_label.text(), \
+    assert f'{best_focus:.0f}' in window.control_panel.status_label.text(), \
         'the confirmation should be reported in the status'
 
 

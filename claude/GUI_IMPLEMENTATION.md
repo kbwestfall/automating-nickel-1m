@@ -1359,3 +1359,34 @@ would give 356), and `test_move_to_best_focus_dialog_shows_the_rounded_value`.
 Updated `test_move_to_best_focus_confirmation_flow` and
 `test_take_single_exposure_signal`, whose old expectations assumed
 float values. All 118 tests pass; Qt-free boundary reconfirmed.
+
+Follow-up: `step_spin` ("Step size") changed from `QDoubleSpinBox` to
+`QSpinBox` (range 1-100) too, per request -- it's expressed in the same
+focus-position units as `start_spin`/`single_focus_spin`, so the same
+"whole units" reasoning applies. Updated
+`test_get_sequence_config_reflects_form_fields` (now asserts an int
+`step`) and `test_focus_value_entries_are_integers` (now also covers
+`step_spin`). All 118 tests still pass.
+
+While this was in progress, the user made their own matching edit to
+`ImagePanel.add_result()`/`update_result()`, changing the drop-down
+label's focus-value format from `.1f` to `.0f`. Asked whether other
+spots needed the same treatment: found every other place
+`FocusControlPanel` displays a `StepResult.focus_value` readout
+(`update_step`'s step label/log, `show_confirmation`, and
+`show_pending_exposure`'s label/log) still used `.1f`, and updated all
+of them to `.0f` for consistency -- these are all the same kind of
+per-exposure focus readout as the drop-down label. Deliberately left
+`show_best_focus`'s `best_focus`/`best_fwhm` display as `.1f`: that's
+the fitted quadratic's continuous optimum, not an entry or readout of
+an actual commanded/measured position, and showing its sub-integer
+precision is informative (the rounded integer *target* is what's
+already shown separately, in the move-to-best-focus confirmation
+dialog). Updated three tests
+(`test_update_step_updates_label_and_log`,
+`test_show_confirmation_updates_status_and_log`,
+`test_show_pending_exposure_updates_label_and_gates_add_button`) plus
+the two integration tests checking the confirmation status text
+(`test_move_to_best_focus_runs_against_fake_hardware`,
+`test_phase3_full_live_workflow`) that asserted the old `.1f` text. All
+118 tests still pass; Qt-free boundary reconfirmed.

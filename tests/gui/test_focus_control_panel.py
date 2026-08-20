@@ -21,12 +21,13 @@ def test_number_entry_boxes_have_no_increment_buttons(qapp):
 
 
 def test_focus_value_entries_are_integers(qapp):
-    # A focus value is a whole-unit telescope position, even though a
-    # best-fit focus can land on a fractional value (that gets rounded
-    # before it's ever offered as a target -- see the move-to-best-focus
-    # tests below).
+    # Focus values and step sizes are whole-unit telescope positions,
+    # even though a best-fit focus can land on a fractional value (that
+    # gets rounded before it's ever offered as a target -- see the
+    # move-to-best-focus tests below).
     panel = FocusControlPanel()
     assert isinstance(panel.start_spin, QtWidgets.QSpinBox), 'start focus should be an integer entry'
+    assert isinstance(panel.step_spin, QtWidgets.QSpinBox), 'step size should be an integer entry'
     assert isinstance(panel.single_focus_spin, QtWidgets.QSpinBox), \
         'single-exposure focus should be an integer entry'
 
@@ -78,8 +79,8 @@ def test_get_sequence_config_reflects_form_fields(qapp):
     panel.prefix_edit.setText('x')
     panel.suffix_edit.setText('.fit')
     panel.obsnum_spin.setValue(1234)
-    panel.start_spin.setValue(300.)
-    panel.step_spin.setValue(2.5)
+    panel.start_spin.setValue(300)
+    panel.step_spin.setValue(2)
     panel.nstep_spin.setValue(7)
     panel.maxsteps_spin.setValue(9)
 
@@ -90,8 +91,8 @@ def test_get_sequence_config_reflects_form_fields(qapp):
         'prefix': 'x',
         'suffix': '.fit',
         'obsnum': 1234,
-        'start': 300.,
-        'step': 2.5,
+        'start': 300,
+        'step': 2,
         'nstep': 7,
         'maxsteps': 9,
     }, 'get_sequence_config() should reflect exactly what the form fields hold'
@@ -199,7 +200,7 @@ def test_update_step_updates_label_and_log(qapp, focus_sweep):
     panel.update_step(result, total_expected=5)
 
     assert 'Step 2/5' in panel.step_label.text(), 'step label should show 1-based step/total'
-    assert f'{result.focus_value:.1f}' in panel.step_label.text(), 'step label should show focus'
+    assert f'{result.focus_value:.0f}' in panel.step_label.text(), 'step label should show focus'
     assert panel.log_widget.toPlainText().strip(), 'the step should also be appended to the log'
 
 
@@ -223,7 +224,7 @@ def test_show_confirmation_updates_status_and_log(qapp, focus_sweep):
 
     panel.show_confirmation(result)
 
-    assert f'{result.focus_value:.1f}' in panel.status_label.text(), \
+    assert f'{result.focus_value:.0f}' in panel.status_label.text(), \
         'status should report the confirmed focus value'
     assert f'{result.fwhm:.2f}' in panel.status_label.text(), \
         'status should report the measured FWHM'
@@ -326,7 +327,7 @@ def test_show_pending_exposure_updates_label_and_gates_add_button(qapp, focus_sw
     panel = FocusControlPanel()
 
     panel.show_pending_exposure(result, can_add=False)
-    assert f'{result.focus_value:.1f}' in panel.pending_label.text(), \
+    assert f'{result.focus_value:.0f}' in panel.pending_label.text(), \
         'pending label should show the focus value'
     assert f'{result.fwhm:.2f}' in panel.pending_label.text(), \
         'pending label should show the measured FWHM'

@@ -112,17 +112,18 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.obsnum_spin = QtWidgets.QSpinBox()
         self.obsnum_spin.setRange(0, 999999)
         self.obsnum_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        # A focus value is a physical telescope position (whole units),
-        # even though a best-fit focus (§ move-to-best-focus) can land on
-        # a fractional value -- that gets rounded before it's ever
-        # offered here, so the entry field itself is always an integer.
+        # Focus values and step sizes are both expressed in the same
+        # physical telescope-position units (whole units), even though a
+        # best-fit focus (§ move-to-best-focus) can land on a fractional
+        # value -- that gets rounded before it's ever offered here, so
+        # these entry fields are always integers.
         self.start_spin = QtWidgets.QSpinBox()
         self.start_spin.setRange(165, 500)
         self.start_spin.setValue(340)
         self.start_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.step_spin = QtWidgets.QDoubleSpinBox()
-        self.step_spin.setRange(0.1, 100.)
-        self.step_spin.setValue(5.)
+        self.step_spin = QtWidgets.QSpinBox()
+        self.step_spin.setRange(1, 100)
+        self.step_spin.setValue(5)
         self.step_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.nstep_spin = QtWidgets.QSpinBox()
         self.nstep_spin.setRange(3, 100)
@@ -251,10 +252,10 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         Keys: ``datadir`` (:class:`pathlib.Path`), ``prefix``, ``suffix``
         (:obj:`str`, Archive only), ``obsnum`` (:obj:`int`, Archive
-        only), ``start`` (:obj:`int`, a focus value, all types), ``step``
-        (:obj:`float`, all types), ``nstep`` (:obj:`int`, Archive/Grid),
-        and ``maxsteps`` (:obj:`int`, Automated only) -- matching
-        `focus.py`'s own CLI arguments.
+        only), ``start``, ``step`` (:obj:`int`, focus values, all
+        types), ``nstep`` (:obj:`int`, Archive/Grid), and ``maxsteps``
+        (:obj:`int`, Automated only) -- matching `focus.py`'s own CLI
+        arguments.
         """
         return {
             'datadir': Path(self.datadir_edit.text()),
@@ -344,7 +345,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         text = f'Step {result.index + 1}'
         if total_expected:
             text += f'/{total_expected}'
-        text += f' — Focus {result.focus_value:.1f}, FWHM {result.fwhm:.2f}'
+        text += f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}'
         if result.is_outlier:
             text += '  [outlier]'
         self.step_label.setText(text)
@@ -366,7 +367,7 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def show_confirmation(self, result):
         """Report the confirmation exposure taken by "Move to Best Focus"."""
-        text = f'Moved to focus {result.focus_value:.1f}: measured FWHM {result.fwhm:.2f}'
+        text = f'Moved to focus {result.focus_value:.0f}: measured FWHM {result.fwhm:.2f}'
         self.status_label.setText(text)
         self.log_widget.appendPlainText(text)
 
@@ -383,9 +384,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         it to.
         """
         self.pending_label.setText(
-            f'Pending: Focus {result.focus_value:.1f}, FWHM {result.fwhm:.2f}')
+            f'Pending: Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}')
         self.log_widget.appendPlainText(
-            f'Took single exposure at focus {result.focus_value:.1f}: FWHM {result.fwhm:.2f}')
+            f'Took single exposure at focus {result.focus_value:.0f}: FWHM {result.fwhm:.2f}')
         self.add_to_sequence_button.setEnabled(can_add)
         self.add_to_sequence_button.setToolTip('' if can_add else _NO_PENDING_TOOLTIP)
 

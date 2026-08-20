@@ -93,7 +93,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
         'the fake Focus should have been commanded to the fitted best focus'
     assert len(window.image_panel._results) == 6, 'the confirmation exposure should be displayed'
     assert len(window.curve_panel._results) == 5, 'a confirmation exposure is not sequence data'
-    assert f'{best_focus:.1f}' in panel.status_label.text(), \
+    assert f'{best_focus:.0f}' in panel.status_label.text(), \
         'the confirmation should be reported in the status'
 
     # 5. Take another standalone single exposure -- e.g. a post-hoc

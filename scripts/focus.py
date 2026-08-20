@@ -639,7 +639,11 @@ class AutomatedFocusSequence(FocusSequence):
         super().__init__()
 
         self.start = start
-        self.step = step
+        # NOTE: Named `step_size`, not `step`, because `step` is the name
+        # of the generator method inherited from FocusSequence -- an
+        # instance attribute of the same name would shadow it entirely
+        # (seq.step(...) would try to call a float).
+        self.step_size = step
         self.direction = None
         self.last = None
         self.maxsteps = maxsteps
@@ -656,32 +660,32 @@ class AutomatedFocusSequence(FocusSequence):
     def continue_sequence(self):
         return (
             self.step_iter < self.maxsteps
-            and (self.step_iter < 2 
+            and (self.step_iter < 2
                  or self.last is None
                  or (self.last is not None and self.step_iter < self.last)
             )
         )
-    
+
     def step_focus(self):
         if self.step_iter == 0:
             next_focus = self.start
         elif self.step_iter == 1:
-            next_focus = self.start + self.step
+            next_focus = self.start + self.step_size
         elif self.step_iter == 2 and self.img_quality[0] > self.img_quality[1]:
             self.direction = 1
-            next_focus = self.observed_focus[1] + self.step
+            next_focus = self.observed_focus[1] + self.step_size
         elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
             self.direction = -1
-            next_focus = self.observed_focus[0] - self.step
+            next_focus = self.observed_focus[0] - self.step_size
         elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
                 warnings.warn(
                     f'Number of steps to fulfill sequence ({self.last}) is more than the '
                     f'maximum number of steps requested ({self.maxsteps}).')
-            next_focus = self.observed_focus[-1] + self.direction * self.step
+            next_focus = self.observed_focus[-1] + self.direction * self.step_size
         else:
-            next_focus = self.observed_focus[-1] + self.direction * self.step
+            next_focus = self.observed_focus[-1] + self.direction * self.step_size
         self._focus.set_to(next_focus)
         return self._focus.current
 

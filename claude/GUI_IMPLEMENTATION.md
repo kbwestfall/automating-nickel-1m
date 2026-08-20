@@ -583,9 +583,136 @@ interaction (sub-phase 2) and the append-vs-replace bug in
 duplicated every point through (sub-phase 7). Both are documented above
 in their sub-phases as issues/gaps, not just as fixes.
 
+## Phase 3: Live mode
+
+**Design doc reference:** §9 Phased plan, item 3.
+
+**Status:** Planning — broken into sub-phases below before implementation
+starts, for the same reason as Phase 2 (large chunk of work with natural
+component boundaries), plus one constraint that changes the shape of the
+plan itself: **this development machine has no real telescope/camera
+hardware access.**
+
+That's more than a testing inconvenience. `GridFocusSequence`/
+`AutomatedFocusSequence` already construct fine without `ktl` (Phase 1's
+design), but the moment `step_focus()` calls `self._focus.set_to(...)`,
+that's `None.set_to(...)` — an `AttributeError` — since `self._focus` is
+`None` without `ktl`. So without hardware, none of Phase 3's live-mode
+code can be run at all here, not even manually, let alone tested.
+
+The plan's answer to that: a lightweight `FakeFocus`/`FakeExposure` test
+double matching the real classes' public interface, injected via
+`monkeypatch.setattr(focus, 'Focus', FakeFocus)` — not via new
+constructor parameters on `FocusSequence`, honoring the earlier decision
+that it shouldn't need injection hooks. That unlocks real, meaningful
+automated coverage of `GridFocusSequence`/`AutomatedFocusSequence`'s
+stepping logic for the first time (they've had zero coverage since Phase
+1 — only `ArchiveFocusSequence` was testable before, since it never
+touches hardware). It's a genuine benefit beyond working around the
+hardware gap: it's the first real exercise of `AutomatedFocusSequence`'s
+adaptive curve-following branches.
+
+What the fake-hardware tests *can't* do: validate against the real KTL
+keyword protocol (naming, timing, actual hardware quirks). That already
+has open uncertainty flagged in the existing code (the `EXPREC`
+state-check TODO, the `'StartX'` exposure-start name pending confirmation
+with Will Deich) and can only be resolved at the telescope. Phase 3's
+fake-hardware testing validates the *software logic* — stepping,
+stopping, exposure configuration, error handling, UI wiring — and that
+distinction should stay explicit in each sub-phase's results, not get
+blurred into "tested" without qualification.
+
+**A design simplification found while scoping this phase:** `execute()`'s
+`goto=True` path is broken -- it calls `self.measure_fwhm(...)`, a method
+that doesn't exist anywhere in the codebase, and separately never even
+appends its verification exposure to `self.exposures` before trying to
+read it back. Rather than just patching that bug in place, the fix is to
+build a proper `take_single_exposure(focus_value, method, **exp_kwargs)`
+primitive on `FocusSequence` -- move to a focus value, take one exposure,
+measure it via `image_quality()`, return a `StepResult` -- since
+"move to best focus" is exactly one such call at the fitted best-focus
+value, and the same primitive is what §5.5's single-exposure workflow
+needs too. Building it once, early, turns both "Move to Best Focus" and
+"Take Single Exposure" into thin GUI wiring on top of already-tested
+Model logic, rather than two separate pieces of Model work.
+
+### Sub-phases
+
+1. **Fake hardware test double** (`tests/` — Qt-free). `FakeFocus`/
+   `FakeExposure` matching `focus.Focus`/`focus.Exposure`'s public
+   interface, monkeypatched in for tests. Unlocks real coverage of
+   `GridFocusSequence`/`AutomatedFocusSequence`'s stepping logic.
+2. **`take_single_exposure()` Model primitive**, tested against sub-phase
+   1's fake hardware. `execute()`'s `goto=True` path is rewritten to call
+   it, fixing the `measure_fwhm()`/exposure-list bugs described above.
+3. **Exposure-settings plumbing.** `SequenceWorker` currently never calls
+   `sequence._exposure.cfg.configure(...)` the way the old `execute()`
+   did; live mode needs exposure time/speed/binning to actually take
+   effect before stepping, regardless of which feature triggers a real
+   exposure.
+4. **Enable Grid/Automated sequence types in the GUI.** Lift
+   `FocusControlPanel`'s blanket-disable on those radios and the exposure
+   settings group; add `AutomatedFocusSequence`'s max-steps field;
+   `Controller` gets a unified `start_sequence()` branching on the
+   selected type instead of `start_archive_sequence()` alone.
+5. **Enable "Move to Best Focus."** Lift its blanket-disable; wire
+   `moveToBestFocusRequested` to `sequence.take_single_exposure(best_focus,
+   method=...)` from sub-phase 2 — genuinely simple now that the hard
+   part is already built and tested.
+6. **Single-exposure workflow (§5.5).** The GUI action (focus-value
+   entry, hardware-exclusivity gating for a standalone action, built on
+   the same `take_single_exposure()` primitive) plus the "add to existing
+   sequence / start new sequence" choice specific to this workflow.
+7. **End-to-end fake-hardware smoke test + log update**, closing out
+   Phase 3.
+
+### Sub-phase 1 results: fake hardware test double
+
+Added `tests/fake_hardware.py` (`FakeFocus`, `FakeExposurePath`,
+`FakeExposureConfig`, `FakeExposure` — matching `focus.Focus`/
+`focus.Exposure`'s public interface, with `expose()` synthesizing a small
+Gaussian-source FITS frame instead of talking to a camera) and a
+`fake_hardware` fixture in `tests/conftest.py` that monkeypatches
+`focus.ktl` (to anything not `None`) and `focus.Focus`/`focus.Exposure`
+(to return the shared fakes), following the same
+`fwhm_min + curvature*(focus - best_focus)**2` relationship as the
+existing `focus_sweep` fixture. This is injected by monkeypatching the
+module-level names, not new constructor parameters on `FocusSequence`,
+per the earlier decision that it shouldn't need injection hooks.
+
+**A real, previously-undetectable bug was found immediately:**
+`AutomatedFocusSequence.__init__` set `self.step = step` (the step-size
+argument) — but `step` is also the name of the generator method
+`FocusSequence.step()` introduced in Phase 1. The instance attribute
+shadowed the inherited method entirely, so `seq.step(method=...)` tried
+to call a `float`. This has been broken since Phase 1 and could not have
+been caught before now: `AutomatedFocusSequence` was never testable
+without live hardware, and the CLI has never exercised it either (`main()`
+only ever calls `.execute()`, and even that path was never manually
+run against a real automated sequence during Phase 0/1 testing — only
+Grid/Archive paths were). Fixed by renaming the attribute to
+`step_size` throughout the class; confirmed nothing else in the
+codebase referenced the old name.
+
+This is exactly the kind of gap the design doc's testing strategy (§8)
+was meant to catch, and exactly why building this fixture came first in
+Phase 3 rather than being deferred: had the GUI wiring for Grid/Automated
+sequences (sub-phase 4) been built and "tested" only by inspection or
+against `ArchiveFocusSequence`, this bug would have shipped invisibly and
+only surfaced at the telescope.
+
+**Testing:** 5 tests in `tests/test_live_focus_sequence.py` (Qt-free,
+alongside the existing `test_focus_sequence.py`, not under `tests/gui/`,
+since none of this touches Qt): the injected fake hardware is really
+what `FocusSequence` uses; `GridFocusSequence` commands its exact target
+focus values in order and recovers the known best focus; a focus value
+below the valid range correctly raises; `AutomatedFocusSequence`'s
+adaptive search converges near the known best focus from both above and
+below it (exercising both the `direction = 1` and `direction = -1`
+branches of `step_focus()` for the first time). All 70 tests pass;
+reconfirmed the Qt-free boundary holds with the new fixture in place (22
+pass, `tests/gui/` still skips as one unit).
+
 ### Next
 
-Phase 3: live mode (§9) — wiring `SequenceWorker` to real
-`GridFocusSequence`/`AutomatedFocusSequence`, Start/Stop against real
-hardware, the safety-relevant confirmations from §5.4 (enabling "Move to
-Best Focus" for real), and the single-exposure workflow (§5.5).
+Phase 3, sub-phase 2: `take_single_exposure()` Model primitive.

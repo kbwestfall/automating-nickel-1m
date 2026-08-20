@@ -28,6 +28,9 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
+import focus
+from fake_hardware import FakeFocus, FakeExposure
+
 
 def gaussian_frame(fwhm, amplitude=8000., background=200., noise_sigma=5.,
                     shape=(101, 101), center=None, seed=0):
@@ -125,4 +128,53 @@ def focus_sweep(tmp_path):
         'prefix': prefix,
         'suffix': suffix,
         'obsnum': obsnum,
+    }
+
+
+@pytest.fixture
+def fake_hardware(tmp_path, monkeypatch):
+    """
+    Monkeypatch ``focus.ktl``, ``focus.Focus``, and ``focus.Exposure`` so
+    that live (:class:`focus.GridFocusSequence`/
+    :class:`focus.AutomatedFocusSequence`) sequences can be constructed
+    and stepped with no real ``ktl`` connection or hardware. Each
+    ``expose()`` synthesizes a small Gaussian-source FITS frame
+    appropriate for whatever focus value is current at the time,
+    following the same ``fwhm_min + curvature*(focus - best_focus)**2``
+    relationship as the :func:`focus_sweep` fixture, so sequences driven
+    against this fake hardware exercise a known, checkable focus curve.
+
+    See ``tests/fake_hardware.py`` for what this can and can't validate.
+
+    Returns
+    -------
+    :obj:`dict`
+        Keys: ``best_focus``, ``fwhm_min`` (:obj:`float`, the true values
+        used to generate frames), ``focus`` (the shared
+        :class:`fake_hardware.FakeFocus` instance -- e.g. to assert on
+        commanded focus values), and ``directory``
+        (:class:`pathlib.Path`, where synthesized exposures are written).
+    """
+    best_focus = 350.
+    fwhm_min = 3.0
+    curvature = 0.01
+
+    def fwhm_for(focus_value):
+        return fwhm_min + curvature * (focus_value - best_focus) ** 2
+
+    def make_frame(focus_value):
+        return gaussian_frame(fwhm_for(focus_value), seed=round(focus_value * 10))
+
+    fake_focus = FakeFocus()
+    fake_exposure = FakeExposure(fake_focus, make_frame=make_frame, directory=tmp_path)
+
+    monkeypatch.setattr(focus, 'ktl', object())  # anything not None
+    monkeypatch.setattr(focus, 'Focus', lambda: fake_focus)
+    monkeypatch.setattr(focus, 'Exposure', lambda: fake_exposure)
+
+    return {
+        'best_focus': best_focus,
+        'fwhm_min': fwhm_min,
+        'focus': fake_focus,
+        'directory': tmp_path,
     }

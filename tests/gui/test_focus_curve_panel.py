@@ -66,6 +66,31 @@ def test_outlier_points_are_drawn_as_a_distinct_series(qapp, focus_sweep):
     assert 'Outlier' in labels, 'outlier points should be drawn as a visually distinct series'
 
 
+def test_update_result_replaces_in_place(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = FocusCurvePanel()
+    for r in results:
+        panel.add_result(r)
+
+    updated = dataclasses.replace(results[2], fwhm=results[2].fwhm + 10.)
+    panel.update_result(updated)
+
+    assert len(panel._results) == len(results), \
+        'update_result() should not add a new point for an already-known exposure'
+    assert panel._results[2].fwhm == updated.fwhm, 'the stored measurement should be replaced'
+
+
+def test_update_result_falls_back_to_add_for_an_unknown_exposure(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = FocusCurvePanel()
+    panel.add_result(results[0])
+
+    panel.update_result(results[1])
+
+    assert len(panel._results) == 2, \
+        'update_result() for an unplotted exposure should behave like add_result()'
+
+
 def test_reset_clears_the_plot(qapp, focus_sweep):
     results = _step_results(focus_sweep)
     panel = FocusCurvePanel()

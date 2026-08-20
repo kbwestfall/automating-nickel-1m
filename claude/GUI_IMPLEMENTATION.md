@@ -463,6 +463,62 @@ emits on "Yes"; the Browse… button (`monkeypatch` on
 leaves it alone if the dialog is canceled (empty string). All 49 tests
 pass (35 from earlier sub-phases + 14 new).
 
+### Sub-phase 7 results: `MainWindow` + `Controller` wiring
+
+Added `gui/views/main_window.py` (lays out the three panels per §5.1 in
+nested `QSplitter`s — purely structural, no wiring) and
+`gui/controller.py` (`Controller(QObject)`), and updated `gui/main.py` to
+build the real `MainWindow` + `Controller` instead of sub-phase 2's empty
+placeholder window.
+
+`Controller` owns `self.sequence` (the current `focus.FocusSequence`, or
+`None`) and `self.worker` (the current `SequenceWorker`, or `None`), and
+implements §4.3's hardware-exclusivity state machine via `_set_running()`,
+which both `FocusControlPanel.set_running()` (Start/Stop/config-field
+states) and `ImagePanel.set_selection_enabled()` key off of — the same
+single flag drives both, so they can't drift out of sync.
+`start_archive_sequence()` builds the target-focus values the same way
+`focus.py`'s own CLI archive-mode path does: constructing a
+`GridFocusSequence` purely for its focus-value arithmetic (never touches
+hardware, since `ktl` isn't connected) to get the file list to hand to
+`ArchiveFocusSequence`. `reanalyze()` and `_on_source_selected()` wire
+`ImagePanel.sourceSelected` through to a `mode='reanalyze'`
+`SequenceWorker` run.
+
+**A real integration gap surfaced while wiring this up, not anticipated
+in the design doc or earlier sub-phases:** `ImagePanel.add_result()` and
+`FocusCurvePanel.add_result()` only ever *appended* — reanalyzing an
+already-collected exposure would have inserted a second, duplicate entry
+for the same file rather than updating the existing one. Added
+`update_result()` to both panels (matched by `StepResult.exposure`,
+falling back to `add_result()` if the exposure isn't already shown), and
+had `Controller._on_step_complete()` branch on `self.worker.mode` to call
+the right one. This is exactly the "replacing its stored
+FWHM/stamp/centroid" behavior §5.6 describes for reanalysis — it just
+hadn't been built into the panels yet, since sub-phases 4-5 only ever
+exercised the append path.
+
+No other deviations from the design doc for this sub-phase.
+
+**Testing:** 9 tests in `tests/gui/test_controller.py`, driving a real
+`MainWindow` + `Controller` pair (using the same `QEventLoop`-pumping
+pattern as sub-phase 3's `SequenceWorker` tests, waiting on
+`controller.worker.finished`): a full archive run populates both panels
+and the result display with the known best focus; `_set_running(True)`
+takes effect synchronously before the worker thread does any real work
+(no race to test around); hardware exclusivity blocks a second start
+(tested with a fake truthy `worker` sentinel, not real timing);
+misconfigured paths report a failure without ever starting a worker;
+`stop()`/`reanalyze()`'s no-op guards (nothing running, no sequence
+loaded); `set_method()` updates both the controller and the display; and
+-- the key regression test for the gap above -- clicking a source after a
+full run re-measures every exposure and leaves the panels at the *same*
+result count, not double. Also added 3 tests each to
+`test_image_panel.py`/`test_focus_curve_panel.py` directly for
+`update_result()`'s in-place-replace/redisplay-if-current/fall-back-to-add
+behavior. All 63 tests pass; reran the full GUI subtree twice more
+back-to-back with no flakiness observed.
+
 ### Next
 
-Phase 2, sub-phase 7: `MainWindow` + `Controller` wiring.
+Phase 2, sub-phase 8: end-to-end smoke test + log update (closing out Phase 2).

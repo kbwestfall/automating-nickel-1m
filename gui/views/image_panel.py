@@ -136,6 +136,37 @@ class ImagePanel(QtWidgets.QWidget):
         if tracking_latest:
             self.show_result(result)
 
+    def update_result(self, result):
+        """
+        Replace an existing entry -- matched by ``result.exposure`` -- with
+        an updated measurement, without changing its position in the
+        drop-down (its focus value, and thus sort position, doesn't
+        change during a reanalysis). Falls back to :func:`add_result` if
+        no entry for that exposure exists yet. Used when
+        :func:`focus.FocusSequence.reanalyze` re-measures exposures
+        already on display (§5.6).
+        """
+        existing_index = next(
+            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None)
+        if existing_index is None:
+            self.add_result(result)
+            return
+
+        was_current = self._current is self._results[existing_index]
+        was_latest = self._latest_result is self._results[existing_index]
+
+        self._results[existing_index] = result
+        if was_latest:
+            self._latest_result = result
+
+        label = f'{result.exposure.stem} — Focus {result.focus_value:.1f}'
+        self.exposure_combo.blockSignals(True)
+        self.exposure_combo.setItemText(existing_index, label)
+        self.exposure_combo.blockSignals(False)
+
+        if was_current:
+            self.show_result(result)
+
     def show_result(self, result):
         """Display ``result``, resetting to a fit-to-view zoom."""
         self._current = result

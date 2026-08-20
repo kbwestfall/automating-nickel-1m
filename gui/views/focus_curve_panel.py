@@ -38,6 +38,22 @@ class FocusCurvePanel(QtWidgets.QWidget):
         self._results.append(result)
         self._render()
 
+    def update_result(self, result):
+        """
+        Replace an existing entry -- matched by ``result.exposure`` --
+        with an updated measurement and redraw. Falls back to
+        :func:`add_result` if no entry for that exposure exists yet. Used
+        when :func:`focus.FocusSequence.reanalyze` re-measures exposures
+        already plotted (§5.6).
+        """
+        existing_index = next(
+            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None)
+        if existing_index is None:
+            self.add_result(result)
+            return
+        self._results[existing_index] = result
+        self._render()
+
     def reset(self):
         """Clear the plot: no points, no fitted curve."""
         self._results = []

@@ -99,6 +99,45 @@ def test_zoom_and_recenter_affect_scroll_range(qapp, focus_sweep):
     assert panel.h_scroll.maximum() == 0, 'recenter should return to a fit-to-view zoom'
 
 
+def test_update_result_replaces_in_place(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    for r in results:
+        panel.add_result(r)
+
+    updated = dataclasses.replace(results[2], fwhm=results[2].fwhm + 10., is_outlier=True)
+    panel.update_result(updated)
+
+    assert len(panel._results) == len(results), \
+        'update_result() should not add a new entry for an already-known exposure'
+    assert panel.exposure_combo.count() == len(results), \
+        'update_result() should not add a new dropdown entry either'
+    assert panel._results[2].fwhm == updated.fwhm, 'the stored measurement should be replaced'
+
+
+def test_update_result_redisplays_if_it_is_the_current_one(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    for r in results:
+        panel.add_result(r)  # panel is now showing results[-1] (the latest added)
+
+    updated = dataclasses.replace(results[-1], is_outlier=True)
+    panel.update_result(updated)
+
+    assert panel._current is updated, 'updating the currently-displayed result should redisplay it'
+
+
+def test_update_result_falls_back_to_add_for_an_unknown_exposure(qapp, focus_sweep):
+    results = _step_results(focus_sweep)
+    panel = ImagePanel()
+    panel.add_result(results[0])
+
+    panel.update_result(results[1])
+
+    assert len(panel._results) == 2, \
+        'update_result() for an exposure not yet shown should behave like add_result()'
+
+
 def test_reset_clears_everything(qapp, focus_sweep):
     results = _step_results(focus_sweep)
     panel = ImagePanel()

@@ -20,9 +20,10 @@ class Controller(QtCore.QObject):
     one operation can be active at a time, and interactive source
     selection (`ImagePanel.sourceSelected`) is only enabled while nothing
     is running. As of this sub-phase, all three sequence types (Archive,
-    Grid, Automated) and reanalysis are wired up; the single-exposure
-    workflow and "Move to Best Focus" are later Phase 3 sub-phases, but
-    the state machine (:func:`_set_running`) already accommodates them.
+    Grid, Automated), reanalysis, and "Move to Best Focus" are wired up;
+    the standalone single-exposure workflow (§5.5) is a later Phase 3
+    sub-phase, but the state machine (:func:`_set_running`) already
+    accommodates it.
     """
 
     def __init__(self, window, parent=None):
@@ -35,6 +36,7 @@ class Controller(QtCore.QObject):
         window.control_panel.startRequested.connect(self.start_sequence)
         window.control_panel.stopRequested.connect(self.stop)
         window.control_panel.methodChanged.connect(self.set_method)
+        window.control_panel.moveToBestFocusRequested.connect(self.move_to_best_focus)
         window.image_panel.sourceSelected.connect(self._on_source_selected)
 
         self._set_running(False)
@@ -99,6 +101,20 @@ class Controller(QtCore.QObject):
             return
         self._start_worker(mode='reanalyze')
 
+    def move_to_best_focus(self, focus_value):
+        """
+        Move to ``focus_value`` and take one confirmation exposure
+        (:func:`focus.FocusSequence.take_single_exposure`) -- the action
+        behind the "Move to Best Focus" button, which only emits
+        `~gui.views.focus_control_panel.FocusControlPanel.moveToBestFocusRequested`
+        once the user has confirmed a dialog and only when the finished
+        sequence had a hardware connection to move.
+        """
+        if self.worker is not None or self.sequence is None:
+            return  # hardware exclusivity: something is already running
+        exp_kwargs = self.window.control_panel.get_exposure_config()
+        self._start_worker(mode='single', exp_kwargs=exp_kwargs, focus_value=focus_value)
+
     def stop(self):
         """Request that the running sequence stop between steps (§4.3)."""
         if self.worker is None:
@@ -117,12 +133,13 @@ class Controller(QtCore.QObject):
 
     # -- internals ------------------------------------------------------------
 
-    def _start_worker(self, mode, exp_kwargs=None):
+    def _start_worker(self, mode, exp_kwargs=None, focus_value=None):
         self.worker = SequenceWorker(self.sequence, method=self.method, mode=mode,
-                                      exp_kwargs=exp_kwargs)
+                                      exp_kwargs=exp_kwargs, focus_value=focus_value)
         self.worker.stepComplete.connect(self._on_step_complete)
         self.worker.sequenceFinished.connect(self._on_sequence_finished)
         self.worker.sequenceFailed.connect(self._on_sequence_failed)
+        self.worker.singleExposureFinished.connect(self._on_single_exposure_finished)
         self.worker.finished.connect(self._on_worker_finished)
         self._set_running(True)
         self.worker.start()
@@ -139,10 +156,16 @@ class Controller(QtCore.QObject):
         self.window.control_panel.update_step(result, total_expected=total)
 
     def _on_sequence_finished(self, best_focus, best_fwhm):
-        self.window.control_panel.show_best_focus(best_focus, best_fwhm)
+        can_move = (self.sequence is not None and self.sequence._focus is not None
+                    and self.sequence._exposure is not None)
+        self.window.control_panel.show_best_focus(best_focus, best_fwhm, can_move=can_move)
 
     def _on_sequence_failed(self, message):
         self.window.control_panel.show_failure(message)
+
+    def _on_single_exposure_finished(self, result):
+        self.window.image_panel.add_result(result)
+        self.window.control_panel.show_confirmation(result)
 
     def _on_worker_finished(self):
         if self.worker is not None:

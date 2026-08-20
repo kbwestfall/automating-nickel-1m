@@ -843,6 +843,94 @@ new upfront check fires with no worker ever starting, using the real
 All 84 tests pass; Qt-free boundary reconfirmed (26 pass, `tests/gui/`
 still skips as one unit).
 
+### Sub-phase 5 results: enable "Move to Best Focus"
+
+`SequenceWorker` gained a third mode, `'single'`, alongside `'step'`/
+`'reanalyze'`: it calls `sequence.take_single_exposure(focus_value,
+method=method, **exp_kwargs)` once and emits a new
+`singleExposureFinished(object)` signal with the resulting `StepResult`,
+instead of driving a generator. It never emits `stepComplete`/
+`sequenceFinished` for this mode -- there's no sequence of steps to
+report and no curve to fit, matching the earlier design insight that a
+confirmation exposure is a single measurement, not sequence data.
+Failures (e.g. no hardware, out-of-range focus) go through the existing
+`sequenceFailed` signal rather than a new one, since "report this
+human-readable failure message" behaves identically regardless of mode.
+`mode='single'` requires a `focus_value` constructor argument; omitting
+it raises `ValueError` immediately, the same fail-fast style as the
+existing mode-string validation.
+
+`FocusControlPanel.show_best_focus()` gained a `can_move` argument
+(default `False`) that enables/disables `move_to_best_focus_button`
+accordingly and updates its tooltip; `reset()` now explicitly disables
+the button again (it should never carry over between runs). Added
+`show_confirmation(result)`, which reports a completed "Move to Best
+Focus" in the status label and log, mirroring `update_step`/
+`show_failure`'s style. The button is also added to `set_running(True)`'s
+force-disable list -- hardware exclusivity applies to it exactly like
+every other action.
+
+`Controller` gained `move_to_best_focus(focus_value)`, connected to
+`moveToBestFocusRequested`: a no-op if something is already running or
+no sequence has ever run, otherwise starts a `mode='single'` worker with
+the current exposure settings. `_on_sequence_finished` now computes
+`can_move` from whether the just-finished sequence actually has hardware
+(`sequence._focus`/`._exposure` not `None`) -- the same check already
+used to reject starting a live sequence type without `ktl` -- and passes
+it to `show_best_focus()`. New `_on_single_exposure_finished` adds the
+confirmation result to `ImagePanel` (so the confirmation frame is what's
+displayed) and calls `show_confirmation()`; it is *not* added to
+`FocusCurvePanel`, since re-fitting the quadratic around a confirmation
+point taken at (approximately) the already-fitted vertex would only
+muddy which points were actual sequence data.
+
+**One real, pre-existing bug surfaced by the new integration test, not
+by inspection:** `set_running(False)` unconditionally cleared
+`status_label` (to erase a stale "Stopping — waiting..." message once a
+stop actually completes). That happens to run in response to the
+worker's `finished` signal, which is queued *after* `sequenceFailed`/
+`singleExposureFinished` for the same run -- so any status message set
+by those (a failure, or now a move-to-best-focus confirmation) was
+being wiped out a moment after being shown. No earlier test caught this
+because none exercised a real worker failure or the new confirmation
+message through to completion; `test_missing_files_reports_failure`
+only exercises the synchronous config-validation failure path, which
+never starts a worker at all. Fixed by only clearing `status_label` when
+it currently holds the stale "Stopping..." text, leaving a genuine
+failure or confirmation message alone.
+
+No deviations from the plan otherwise.
+
+**Testing:** `tests/gui/test_sequence_worker.py` gained
+`test_single_mode_requires_a_focus_value`,
+`test_single_mode_moves_and_exposes` (against `fake_hardware`, checks
+the fake focus was moved, `exp_kwargs` applied, and
+`singleExposureFinished` fired with no `stepComplete`/`sequenceFinished`),
+and `test_single_mode_reports_failure_without_hardware` (an
+`ArchiveFocusSequence` has no hardware, so `take_single_exposure` raises
+and `sequenceFailed` fires instead of crashing the worker thread).
+`tests/gui/test_focus_control_panel.py`: replaced the old
+"stays disabled regardless" test with
+`test_show_best_focus_updates_result_and_gates_move_button` (checks both
+`can_move` states) and added `test_show_confirmation_updates_status_and_log`;
+updated `test_set_running_toggles_widget_states`/
+`test_reset_clears_status_log_and_result` to also check the move button.
+`tests/gui/test_controller.py` gained
+`test_move_to_best_focus_is_a_noop_without_a_sequence`,
+`test_move_to_best_focus_blocks_while_something_is_running`, and
+`test_move_to_best_focus_runs_against_fake_hardware` (runs a real Grid
+sequence to completion against `fake_hardware`, then emits
+`moveToBestFocusRequested` with the fitted best focus and confirms the
+fake hardware was actually commanded to it, the image panel gained the
+confirmation exposure, and the status message survived). This last test
+is what caught the `status_label`-clearing bug above. All 91 tests pass;
+Qt-free boundary reconfirmed (26 pass, `tests/gui/` still skips as one
+unit).
+
 ### Next
 
-Phase 3, sub-phase 5: enable "Move to Best Focus."
+Phase 3, sub-phase 6: the standalone single-exposure workflow (§5.5) --
+a GUI action to take one exposure at a user-chosen focus value
+(reusing `take_single_exposure()` and the `mode='single'` worker path
+built in this sub-phase), plus a choice to add it to the currently
+displayed sequence or start a new one.

@@ -180,6 +180,49 @@ def test_start_sequence_runs_automated_against_fake_hardware(qapp, fake_hardware
         'the adaptive search should converge near the known best focus'
 
 
+def test_move_to_best_focus_is_a_noop_without_a_sequence(qapp):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.move_to_best_focus(356.)
+    assert controller.worker is None, 'no sequence has run yet, so there is nothing to move'
+
+
+def test_move_to_best_focus_blocks_while_something_is_running(qapp, focus_sweep):
+    window, controller = _make_controller(focus_sweep)
+    controller.sequence = object()
+    controller.worker = types.SimpleNamespace()  # pretend something is already running
+
+    controller.move_to_best_focus(356.)
+
+    assert isinstance(controller.worker, types.SimpleNamespace), \
+        'a move-to-best-focus request should be ignored while a sequence is running'
+
+
+def test_move_to_best_focus_runs_against_fake_hardware(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.grid_radio.setChecked(True)
+    window.control_panel.start_spin.setValue(340.)
+    window.control_panel.step_spin.setValue(5.)
+    window.control_panel.nstep_spin.setValue(5)
+    window.control_panel.exptime_spin.setValue(7.5)
+    controller.start_sequence()
+    _wait_for_worker(controller)
+    n_before = len(window.image_panel._results)
+    best_focus = window.control_panel._best_focus
+
+    window.control_panel.moveToBestFocusRequested.emit(best_focus)
+    _wait_for_worker(controller)
+
+    assert controller.worker is None, 'worker should be cleared once the confirmation finishes'
+    assert fake_hardware['focus'].current == best_focus, \
+        'the fake Focus should have been commanded to the best-focus value'
+    assert len(window.image_panel._results) == n_before + 1, \
+        'the confirmation exposure should be added to the image panel'
+    assert f'{best_focus:.1f}' in window.control_panel.status_label.text(), \
+        'the confirmation should be reported in the status'
+
+
 def test_start_sequence_without_ktl_reports_clear_failure(qapp):
     # No fake_hardware fixture here: this dev machine has no ktl, so a
     # live sequence type should fail immediately and clearly, without

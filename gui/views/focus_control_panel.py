@@ -10,7 +10,7 @@ from pathlib import Path
 
 from gui.qt import QtCore, QtWidgets
 
-_PHASE_3_TOOLTIP = 'Requires a live ktl connection (Phase 3)'
+_NO_MOVE_TOOLTIP = 'Only available after a live (Grid/Automated) sequence finishes'
 
 
 class FocusControlPanel(QtWidgets.QWidget):
@@ -39,10 +39,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         one from the method combo box.
     moveToBestFocusRequested : :class:`~PySide6.QtCore.Signal`
         Emitted with the target focus value once the user confirms the
-        "Move to best focus" dialog. The button that triggers this is
-        still disabled unconditionally as of this sub-phase -- enabling
-        it is a later Phase 3 sub-phase -- but the confirmation logic is
-        already wired up.
+        "Move to best focus" dialog. Only enabled after a sequence
+        finishes with a hardware connection to move (see
+        :func:`show_best_focus`'s ``can_move`` argument) -- archive/replay
+        sequences have no hardware to move.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
@@ -183,7 +183,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.result_label = QtWidgets.QLabel('Best focus: —')
         self.move_to_best_focus_button = QtWidgets.QPushButton('Move to Best Focus')
         self.move_to_best_focus_button.setEnabled(False)
-        self.move_to_best_focus_button.setToolTip(_PHASE_3_TOOLTIP)
+        self.move_to_best_focus_button.setToolTip(_NO_MOVE_TOOLTIP)
         self.move_to_best_focus_button.clicked.connect(self._on_move_to_best_focus_clicked)
 
         col = QtWidgets.QVBoxLayout(group)
@@ -269,12 +269,17 @@ class FocusControlPanel(QtWidgets.QWidget):
             for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
                            self.suffix_edit, self.obsnum_spin, self.nstep_spin,
                            self.maxsteps_spin, self.exptime_spin, self.speed_combo,
-                           self.binning_combo):
+                           self.binning_combo, self.move_to_best_focus_button):
                 widget.setEnabled(False)
         else:
             # Restore the correct per-type enabled state, not just "all on".
             self._on_sequence_type_changed()
-            self.status_label.setText('')
+            # Only clear a stale "Stopping..." message -- not a
+            # confirmation/failure the worker's finishing signal may have
+            # just set moments before this (e.g. show_confirmation() from
+            # a completed "Move to Best Focus").
+            if self.status_label.text().startswith('Stopping'):
+                self.status_label.setText('')
 
     def set_stopping(self):
         """Reflect a Stop request that hasn't taken effect yet (§4.3)."""
@@ -292,12 +297,25 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.step_label.setText(text)
         self.log_widget.appendPlainText(text)
 
-    def show_best_focus(self, best_focus, best_fwhm):
-        """Display a completed sequence's fitted result."""
+    def show_best_focus(self, best_focus, best_fwhm, can_move=False):
+        """
+        Display a completed sequence's fitted result. ``can_move`` enables
+        "Move to Best Focus" -- the Controller sets it based on whether
+        the sequence that produced this result has a hardware connection
+        to move (archive/replay sequences never do).
+        """
         self._best_focus = best_focus
         self.result_label.setText(f'Best focus: {best_focus:.1f}   Expected FWHM: {best_fwhm:.2f}')
         self.log_widget.appendPlainText(
             f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
+        self.move_to_best_focus_button.setEnabled(can_move)
+        self.move_to_best_focus_button.setToolTip('' if can_move else _NO_MOVE_TOOLTIP)
+
+    def show_confirmation(self, result):
+        """Report the confirmation exposure taken by "Move to Best Focus"."""
+        text = f'Moved to focus {result.focus_value:.1f}: measured FWHM {result.fwhm:.2f}'
+        self.status_label.setText(text)
+        self.log_widget.appendPlainText(text)
 
     def show_failure(self, message):
         """Display a sequence failure (e.g., from `SequenceWorker.sequenceFailed`)."""
@@ -311,6 +329,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.result_label.setText('Best focus: —')
         self.status_label.setText('')
         self.log_widget.clear()
+        self.move_to_best_focus_button.setEnabled(False)
+        self.move_to_best_focus_button.setToolTip(_NO_MOVE_TOOLTIP)
 
     # -- internals ----------------------------------------------------------
 

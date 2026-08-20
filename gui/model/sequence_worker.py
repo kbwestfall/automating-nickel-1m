@@ -34,48 +34,65 @@ class SequenceWorker(QtCore.QThread):
         :func:`photometry.image_quality`.
     mode : :obj:`str`, optional
         ``'step'`` to advance the sequence (:func:`~focus.FocusSequence.step`,
-        taking new exposures or replaying archived ones), or
-        ``'reanalyze'`` to re-run photometry on exposures already
-        collected (:func:`~focus.FocusSequence.reanalyze`), without
-        taking any new ones.
+        taking new exposures or replaying archived ones), ``'reanalyze'``
+        to re-run photometry on exposures already collected
+        (:func:`~focus.FocusSequence.reanalyze`), without taking any new
+        ones, or ``'single'`` to take one confirmation exposure at
+        ``focus_value`` (:func:`~focus.FocusSequence.take_single_exposure`)
+        -- used for "Move to Best Focus" (GUI_DESIGN.md §5.4) and the
+        standalone single-exposure workflow (§5.5).
     exp_kwargs : :obj:`dict`, optional
         Exposure settings (``record``, ``speed``, ``binning``,
         ``exptime``) applied via
         :func:`~focus.ExposureConfig.configure` before stepping, matching
         what the old CLI-only :func:`~focus.FocusSequence.execute` did.
-        Only meaningful for ``mode='step'`` against a sequence with real
-        (or fake) exposure hardware; ignored for ``mode='reanalyze'`` (no
-        new exposures are taken) and harmless for archive/replay
-        sequences (which have no exposure hardware to configure at all).
+        Meaningful for ``mode='step'``/``'single'`` against a sequence
+        with real (or fake) exposure hardware; ignored for
+        ``mode='reanalyze'`` (no new exposures are taken) and harmless
+        for archive/replay sequences (which have no exposure hardware to
+        configure at all).
+    focus_value : :obj:`int`, :obj:`float`, optional
+        The focus value to move to before exposing. Required for
+        ``mode='single'``; ignored otherwise.
 
     Attributes
     ----------
     stepComplete : :class:`~PySide6.QtCore.Signal`
         Emitted with one :class:`focus.StepResult` each time the driven
-        generator yields.
+        generator yields. Not emitted for ``mode='single'``, which has no
+        generator to drive -- see ``singleExposureFinished``.
     sequenceFinished : :class:`~PySide6.QtCore.Signal`
         Emitted once, with ``(best_focus, best_fwhm)``, after the driven
         generator is exhausted (or stopped) and a quadratic fit to the
-        results collected so far succeeds.
+        results collected so far succeeds. Not emitted for ``mode='single'``.
     sequenceFailed : :class:`~PySide6.QtCore.Signal`
         Emitted once, with a human-readable message, if the sequence
-        raises while stepping/reanalyzing, or if too few points remain
-        for :func:`~focus.FocusSequence.fit_best_focus` to fit (e.g.,
-        after an early :func:`request_stop`). Mutually exclusive with
-        ``sequenceFinished``: exactly one of the two fires per run.
+        raises while stepping/reanalyzing/exposing, or if too few points
+        remain for :func:`~focus.FocusSequence.fit_best_focus` to fit
+        (e.g., after an early :func:`request_stop`). Mutually exclusive
+        with ``sequenceFinished``/``singleExposureFinished``: exactly one
+        of the three fires per run.
+    singleExposureFinished : :class:`~PySide6.QtCore.Signal`
+        Emitted once, with the resulting :class:`focus.StepResult`, when
+        ``mode='single'`` completes successfully.
     """
     stepComplete = QtCore.Signal(object)
     sequenceFinished = QtCore.Signal(float, float)
     sequenceFailed = QtCore.Signal(str)
+    singleExposureFinished = QtCore.Signal(object)
 
-    def __init__(self, sequence, method='brightest', mode='step', exp_kwargs=None, parent=None):
+    def __init__(self, sequence, method='brightest', mode='step', exp_kwargs=None,
+                 focus_value=None, parent=None):
         super().__init__(parent)
-        if mode not in ('step', 'reanalyze'):
-            raise ValueError(f"mode must be 'step' or 'reanalyze', got {mode!r}")
+        if mode not in ('step', 'reanalyze', 'single'):
+            raise ValueError(f"mode must be 'step', 'reanalyze', or 'single', got {mode!r}")
+        if mode == 'single' and focus_value is None:
+            raise ValueError("focus_value is required for mode='single'")
         self.sequence = sequence
         self.method = method
         self.mode = mode
         self.exp_kwargs = {} if exp_kwargs is None else exp_kwargs
+        self.focus_value = focus_value
         self.stop_requested = False
 
     def request_stop(self):
@@ -88,6 +105,17 @@ class SequenceWorker(QtCore.QThread):
 
     def run(self):
         self.stop_requested = False
+
+        if self.mode == 'single':
+            try:
+                result = self.sequence.take_single_exposure(
+                    self.focus_value, method=self.method, **self.exp_kwargs)
+            except Exception as e:
+                self.sequenceFailed.emit(f'Could not move to best focus: {e}')
+                return
+            self.singleExposureFinished.emit(result)
+            return
+
         generator = (
             self.sequence.step(method=self.method) if self.mode == 'step'
             else self.sequence.reanalyze(method=self.method)

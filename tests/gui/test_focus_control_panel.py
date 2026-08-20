@@ -128,16 +128,21 @@ def test_start_and_stop_signals(qapp):
 
 def test_set_running_toggles_widget_states(qapp):
     panel = FocusControlPanel()
+    panel.show_best_focus(350., 3.0, can_move=True)
 
     panel.set_running(True)
     assert not panel.start_button.isEnabled(), 'Start should be disabled while running'
     assert panel.stop_button.isEnabled(), 'Stop should be enabled while running'
     assert not panel.datadir_edit.isEnabled(), 'config fields should be locked while running'
+    assert not panel.move_to_best_focus_button.isEnabled(), \
+        'move-to-best-focus should be locked out while anything else is running'
 
     panel.set_running(False)
     assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped'
     assert not panel.stop_button.isEnabled(), 'Stop should be disabled once stopped'
     assert panel.datadir_edit.isEnabled(), 'config fields should unlock once stopped'
+    assert not panel.move_to_best_focus_button.isEnabled(), \
+        'move-to-best-focus should stay disabled until the next result explicitly re-enables it'
 
 
 def test_set_running_restores_the_correct_per_type_state(qapp):
@@ -178,17 +183,31 @@ def test_update_step_updates_label_and_log(qapp, focus_sweep):
     assert panel.log_widget.toPlainText().strip(), 'the step should also be appended to the log'
 
 
-def test_show_best_focus_updates_result_but_not_move_button(qapp):
-    # Per this phase's scope, "Move to Best Focus" stays disabled
-    # regardless of whether a result exists -- there's no hardware to
-    # move yet. Only Phase 3 should change that.
+def test_show_best_focus_updates_result_and_gates_move_button(qapp):
     panel = FocusControlPanel()
-    panel.show_best_focus(356.1, 3.3)
 
+    panel.show_best_focus(356.1, 3.3, can_move=False)
     assert '356.1' in panel.result_label.text(), 'result label should show the best focus'
     assert '3.3' in panel.result_label.text(), 'result label should show the expected FWHM'
     assert not panel.move_to_best_focus_button.isEnabled(), \
-        'move-to-best-focus stays disabled in this phase regardless of a result existing'
+        'move-to-best-focus should stay disabled when the sequence has no hardware to move'
+
+    panel.show_best_focus(356.1, 3.3, can_move=True)
+    assert panel.move_to_best_focus_button.isEnabled(), \
+        'move-to-best-focus should enable once a live sequence finishes'
+
+
+def test_show_confirmation_updates_status_and_log(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+
+    panel.show_confirmation(result)
+
+    assert f'{result.focus_value:.1f}' in panel.status_label.text(), \
+        'status should report the confirmed focus value'
+    assert f'{result.fwhm:.2f}' in panel.status_label.text(), \
+        'status should report the measured FWHM'
+    assert panel.log_widget.toPlainText().strip(), 'the confirmation should also be logged'
 
 
 def test_show_failure_updates_status_and_log(qapp):
@@ -203,7 +222,7 @@ def test_reset_clears_status_log_and_result(qapp, focus_sweep):
     result = _step_result(focus_sweep)
     panel = FocusControlPanel()
     panel.update_step(result)
-    panel.show_best_focus(350., 3.0)
+    panel.show_best_focus(350., 3.0, can_move=True)
     panel.show_failure('oops')
 
     panel.reset()
@@ -212,6 +231,8 @@ def test_reset_clears_status_log_and_result(qapp, focus_sweep):
     assert panel.result_label.text() == 'Best focus: —'
     assert panel.status_label.text() == ''
     assert panel.log_widget.toPlainText() == ''
+    assert not panel.move_to_best_focus_button.isEnabled(), \
+        'reset should disable move-to-best-focus until the next result arrives'
 
 
 def test_move_to_best_focus_confirmation_flow(qapp, monkeypatch):
@@ -223,7 +244,7 @@ def test_move_to_best_focus_confirmation_flow(qapp, monkeypatch):
     panel._on_move_to_best_focus_clicked()
     assert received == [], 'should be a no-op with no best-focus result yet'
 
-    panel.show_best_focus(356.1, 3.3)
+    panel.show_best_focus(356.1, 3.3, can_move=True)
 
     monkeypatch.setattr(
         QtWidgets.QMessageBox, 'question',

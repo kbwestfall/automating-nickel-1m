@@ -5,6 +5,7 @@ import warnings
 from IPython import embed
 
 from pathlib import Path
+from dataclasses import dataclass
 import logging
 
 import numpy as np
@@ -164,7 +165,7 @@ class ExposurePath:
 
     @property
     def previous(self):
-        return self.expresult.read()
+        return Path(self.expresult.read())
 
     @property
     def next(self):
@@ -177,7 +178,7 @@ class ExposurePath:
             path = Path(self.recorddir.read()).absolute()
         else:
             path = Path(self.scratchdir.read()).absolute()
-        return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
+        return path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}'
     
 
 class ExposureConfig:
@@ -383,6 +384,41 @@ class FocusPlot:
         return distances[-1] > outlier_threshold
 
 
+@dataclass
+class StepResult:
+    """
+    The measurement produced by one step of a focus sequence.
+
+    Attributes
+    ----------
+    index : :obj:`int`
+        0-based position of this step within the sequence.
+    focus_value : :obj:`float`
+        The focus value used for this exposure.
+    exposure : :class:`pathlib.Path`
+        Path to the exposure's FITS file.
+    fwhm : :obj:`float`
+        Measured image quality (FWHM) of the selected source.
+    frame : :class:`numpy.ndarray`
+        Background-subtracted image data for the full exposure.
+    stamp : :class:`numpy.ndarray`
+        Cutout of ``frame`` around the selected source.
+    centroid : :obj:`tuple`
+        The (x,y) centroid of the selected source.
+    is_outlier : :obj:`bool`
+        Whether this step's centroid is an outlier relative to the rest of
+        the sequence collected so far; see :func:`FocusPlot.is_outlier`.
+    """
+    index: int
+    focus_value: float
+    exposure: Path
+    fwhm: float
+    frame: np.ndarray
+    stamp: np.ndarray
+    centroid: tuple
+    is_outlier: bool
+
+
 class FocusSequence:
     """
     Perform a focus sequence.
@@ -415,14 +451,31 @@ class FocusSequence:
             'the live plot.'
         )
 
-    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
+    def step(self, method='brightest'):
+        """
+        Advance the focus sequence one exposure at a time.
 
-        if self._exposure is not None:
-            self._exposure.cfg.configure(**exp_kwargs)
-        self.reset()
+        This is the engine shared by :func:`execute` (used by the CLI
+        script) and any other driver of the sequence (e.g., a GUI worker
+        thread): each iteration sets the focus, takes or retrieves an
+        exposure, measures its image quality, and yields the result. It
+        does not decide when the sequence should stop (see
+        :func:`continue_sequence`) or what to do once it has; callers are
+        responsible for calling :func:`reset` beforehand and for reacting
+        to each :class:`StepResult` as it's yielded (e.g., to update a
+        plot).
 
-        self.plot = FocusPlot(self.expected_steps) if plot else None
+        Parameters
+        ----------
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
 
+        Yields
+        ------
+        StepResult
+            The result of the most recently completed step.
+        """
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
@@ -432,16 +485,35 @@ class FocusSequence:
             self.img_quality += [img_quality]
             self.centroids += [coords]
 
-            if self.plot is not None:
-                outlier = FocusPlot.is_outlier(self.centroids)
-                self.plot.update_frame(data - bkg, coords, int(img_quality*10),
-                                        Path(self.exposures[-1]).stem, self.observed_focus[-1],
-                                        outlier)
-                self.plot.add_stamp(self.step_iter, source_stamp, self.observed_focus[-1],
-                                     img_quality, is_outlier=outlier)
-                self.plot.update_curve(self.observed_focus, self.img_quality)
-
+            result = StepResult(
+                index=self.step_iter,
+                focus_value=self.observed_focus[-1],
+                exposure=self.exposures[-1],
+                fwhm=img_quality,
+                frame=data - bkg,
+                stamp=source_stamp,
+                centroid=coords,
+                is_outlier=FocusPlot.is_outlier(self.centroids),
+            )
             self.step_iter += 1
+            yield result
+
+    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
+
+        if self._exposure is not None:
+            self._exposure.cfg.configure(**exp_kwargs)
+        self.reset()
+
+        self.plot = FocusPlot(self.expected_steps) if plot else None
+
+        for result in self.step(method=method):
+            if self.plot is not None:
+                self.plot.update_frame(result.frame, result.centroid, int(result.fwhm*10),
+                                        result.exposure.stem, result.focus_value,
+                                        result.is_outlier)
+                self.plot.add_stamp(result.index, result.stamp, result.focus_value,
+                                     result.fwhm, is_outlier=result.is_outlier)
+                self.plot.update_curve(self.observed_focus, self.img_quality)
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
 
@@ -692,14 +764,14 @@ def main():
             # archived sequences can be re-analyzed without a ktl connection.
             datadir = Path(args.datadir).absolute()
             expected_files = np.array([
-                str(datadir / f'{args.prefix}{args.obsnum + i}{args.suffix}')
+                datadir / f'{args.prefix}{args.obsnum + i}{args.suffix}'
                 for i in range(seq.nstep)
             ])
-            indx = np.array([Path(f).is_file() for f in expected_files])
+            indx = np.array([f.is_file() for f in expected_files])
             if not np.all(indx):
                 missing = expected_files[np.logical_not(indx)]
                 raise FileNotFoundError('Expected to find the following files, but they are not '
-                                        f'available: {", ".join(missing.tolist())}')
+                                        f'available: {", ".join(str(f) for f in missing)}')
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)

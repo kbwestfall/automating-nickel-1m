@@ -3,3 +3,5 @@ IPython
 matplotlib
 numpy
 photutils
+pytest
+scipy

@@ -111,18 +111,27 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.suffix_edit = QtWidgets.QLineEdit('.fits')
         self.obsnum_spin = QtWidgets.QSpinBox()
         self.obsnum_spin.setRange(0, 999999)
-        self.start_spin = QtWidgets.QDoubleSpinBox()
-        self.start_spin.setRange(165., 500.)
-        self.start_spin.setValue(340.)
+        self.obsnum_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        # A focus value is a physical telescope position (whole units),
+        # even though a best-fit focus (§ move-to-best-focus) can land on
+        # a fractional value -- that gets rounded before it's ever
+        # offered here, so the entry field itself is always an integer.
+        self.start_spin = QtWidgets.QSpinBox()
+        self.start_spin.setRange(165, 500)
+        self.start_spin.setValue(340)
+        self.start_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.step_spin = QtWidgets.QDoubleSpinBox()
         self.step_spin.setRange(0.1, 100.)
         self.step_spin.setValue(5.)
+        self.step_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.nstep_spin = QtWidgets.QSpinBox()
         self.nstep_spin.setRange(3, 100)
         self.nstep_spin.setValue(5)
+        self.nstep_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.maxsteps_spin = QtWidgets.QSpinBox()
         self.maxsteps_spin.setRange(2, 100)
         self.maxsteps_spin.setValue(12)
+        self.maxsteps_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
 
         form = QtWidgets.QFormLayout(group)
         datadir_row = QtWidgets.QHBoxLayout()
@@ -143,6 +152,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.exptime_spin = QtWidgets.QDoubleSpinBox()
         self.exptime_spin.setRange(0.1, 600.)
         self.exptime_spin.setValue(5.)
+        self.exptime_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.speed_combo = QtWidgets.QComboBox()
         self.speed_combo.addItems(['Slow', 'Fast'])
         self.binning_combo = QtWidgets.QComboBox()
@@ -181,9 +191,10 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _build_single_exposure_group(self):
         group = QtWidgets.QGroupBox('Single Exposure')
-        self.single_focus_spin = QtWidgets.QDoubleSpinBox()
-        self.single_focus_spin.setRange(165., 500.)
-        self.single_focus_spin.setValue(340.)
+        self.single_focus_spin = QtWidgets.QSpinBox()
+        self.single_focus_spin.setRange(165, 500)
+        self.single_focus_spin.setValue(340)
+        self.single_focus_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.take_single_exposure_button = QtWidgets.QPushButton('Take Single Exposure')
         self.take_single_exposure_button.clicked.connect(
             lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
@@ -240,9 +251,10 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         Keys: ``datadir`` (:class:`pathlib.Path`), ``prefix``, ``suffix``
         (:obj:`str`, Archive only), ``obsnum`` (:obj:`int`, Archive
-        only), ``start``, ``step`` (:obj:`float`, all types), ``nstep``
-        (:obj:`int`, Archive/Grid), and ``maxsteps`` (:obj:`int`,
-        Automated only) -- matching `focus.py`'s own CLI arguments.
+        only), ``start`` (:obj:`int`, a focus value, all types), ``step``
+        (:obj:`float`, all types), ``nstep`` (:obj:`int`, Archive/Grid),
+        and ``maxsteps`` (:obj:`int`, Automated only) -- matching
+        `focus.py`'s own CLI arguments.
         """
         return {
             'datadir': Path(self.datadir_edit.text()),
@@ -420,11 +432,16 @@ class FocusControlPanel(QtWidgets.QWidget):
     def _on_move_to_best_focus_clicked(self):
         if self._best_focus is None:
             return
+        # The fit can land on a fractional focus value, but a focus
+        # target is a whole-unit telescope position -- round once here,
+        # so the confirmation dialog shows the observer exactly the
+        # value that will actually be commanded.
+        target = round(self._best_focus)
         reply = QtWidgets.QMessageBox.question(
             self, 'Move to best focus',
-            f'Move the telescope focus to {self._best_focus:.1f}?',
+            f'Move the telescope focus to {target}?',
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No,
         )
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.moveToBestFocusRequested.emit(self._best_focus)
+            self.moveToBestFocusRequested.emit(target)

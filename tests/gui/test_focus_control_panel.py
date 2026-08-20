@@ -11,6 +11,26 @@ def _step_result(focus_sweep, index=0):
     return list(seq.step(method='brightest'))[index]
 
 
+def test_number_entry_boxes_have_no_increment_buttons(qapp):
+    panel = FocusControlPanel()
+    spin_boxes = (panel.obsnum_spin, panel.start_spin, panel.step_spin, panel.nstep_spin,
+                  panel.maxsteps_spin, panel.exptime_spin, panel.single_focus_spin)
+    for spin_box in spin_boxes:
+        assert spin_box.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons, \
+            f'{spin_box.objectName() or spin_box} should not show increment/decrement buttons'
+
+
+def test_focus_value_entries_are_integers(qapp):
+    # A focus value is a whole-unit telescope position, even though a
+    # best-fit focus can land on a fractional value (that gets rounded
+    # before it's ever offered as a target -- see the move-to-best-focus
+    # tests below).
+    panel = FocusControlPanel()
+    assert isinstance(panel.start_spin, QtWidgets.QSpinBox), 'start focus should be an integer entry'
+    assert isinstance(panel.single_focus_spin, QtWidgets.QSpinBox), \
+        'single-exposure focus should be an integer entry'
+
+
 def test_all_sequence_types_are_selectable(qapp):
     panel = FocusControlPanel()
     assert panel.archive_radio.isChecked(), 'Archive should be the default sequence type'
@@ -256,7 +276,38 @@ def test_move_to_best_focus_confirmation_flow(qapp, monkeypatch):
         QtWidgets.QMessageBox, 'question',
         lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
     panel._on_move_to_best_focus_clicked()
-    assert received == [356.1], 'confirming should emit the target focus value'
+    assert received == [356], \
+        'confirming should emit the target focus value rounded to the nearest integer'
+
+
+def test_move_to_best_focus_rounds_up_not_just_truncates(qapp, monkeypatch):
+    # 356.6 rounds to 357; a naive int() truncation would give 356 --
+    # this is what distinguishes the two.
+    panel = FocusControlPanel()
+    received = []
+    panel.moveToBestFocusRequested.connect(received.append)
+    panel.show_best_focus(356.6, 3.3, can_move=True)
+
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox, 'question',
+        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
+    panel._on_move_to_best_focus_clicked()
+
+    assert received == [357], 'the target focus value should be rounded, not truncated'
+
+
+def test_move_to_best_focus_dialog_shows_the_rounded_value(qapp, monkeypatch):
+    panel = FocusControlPanel()
+    panel.show_best_focus(356.6, 3.3, can_move=True)
+
+    seen_text = []
+    def fake_question(self, title, text, *a, **k):
+        seen_text.append(text)
+        return QtWidgets.QMessageBox.StandardButton.Yes
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'question', fake_question)
+    panel._on_move_to_best_focus_clicked()
+
+    assert '357' in seen_text[0], 'the confirmation dialog should show the rounded target, not 356.6'
 
 
 def test_take_single_exposure_signal(qapp):
@@ -264,10 +315,10 @@ def test_take_single_exposure_signal(qapp):
     received = []
     panel.takeSingleExposureRequested.connect(received.append)
 
-    panel.single_focus_spin.setValue(356.2)
+    panel.single_focus_spin.setValue(356)
     panel.take_single_exposure_button.click()
 
-    assert received == [356.2], 'clicking should emit the configured focus value'
+    assert received == [356], 'clicking should emit the configured focus value'
 
 
 def test_show_pending_exposure_updates_label_and_gates_add_button(qapp, focus_sweep):

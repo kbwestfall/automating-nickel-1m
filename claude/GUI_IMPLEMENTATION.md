@@ -1325,3 +1325,37 @@ rendered x-axis label's bounding box stays within the figure's bounds.
 Confirmed this fails without the fix (label bbox extends ~29px below
 the figure) and passes with it. All 114 tests pass; Qt-free boundary
 reconfirmed.
+
+### Focus control panel: no spinner buttons, integer focus values
+
+Two changes to `FocusControlPanel`, per request:
+
+- Every spin box (`obsnum_spin`, `start_spin`, `step_spin`, `nstep_spin`,
+  `maxsteps_spin`, `exptime_spin`, `single_focus_spin`) now has
+  `setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)`, removing
+  the increment/decrement arrows -- typing/pasting a value still works
+  identically.
+- `start_spin` ("Start focus") and `single_focus_spin` ("Focus value",
+  single-exposure workflow) changed from `QDoubleSpinBox` to `QSpinBox`
+  (range unchanged, 165-500): a focus value is a whole-unit telescope
+  position, even though a best-fit focus (from `fit_best_focus`'s
+  quadratic vertex) can land on a fractional value. `step_spin` (a step
+  *size*, not a target position) and `exptime_spin` (exposure time, not
+  a focus value at all) are unaffected -- the request was specifically
+  about focus *value* entries, not every numeric field.
+- `_on_move_to_best_focus_clicked` now rounds `self._best_focus` via
+  Python's `round()` (not truncation) *before* both building the
+  confirmation dialog's text and emitting `moveToBestFocusRequested` --
+  so the dialog shows the observer exactly the integer value that will
+  actually be commanded, and a fractional fit result (e.g. 356.6) never
+  reaches `Focus.set_to()`.
+
+No deviations. **Testing:** added
+`test_number_entry_boxes_have_no_increment_buttons`,
+`test_focus_value_entries_are_integers`,
+`test_move_to_best_focus_rounds_up_not_just_truncates` (356.6 -> 357,
+chosen specifically to distinguish rounding from truncation, which
+would give 356), and `test_move_to_best_focus_dialog_shows_the_rounded_value`.
+Updated `test_move_to_best_focus_confirmation_flow` and
+`test_take_single_exposure_signal`, whose old expectations assumed
+float values. All 118 tests pass; Qt-free boundary reconfirmed.

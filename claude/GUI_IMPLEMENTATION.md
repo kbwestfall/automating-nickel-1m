@@ -927,10 +927,103 @@ is what caught the `status_label`-clearing bug above. All 91 tests pass;
 Qt-free boundary reconfirmed (26 pass, `tests/gui/` still skips as one
 unit).
 
+### Sub-phase 6 results: the standalone single-exposure workflow (§5.5)
+
+New "Single Exposure" group in `FocusControlPanel`: a focus-value spin
+box, a "Take Single Exposure" button, a label reporting the pending
+result (or "No pending exposure"), and an "Add to Existing Sequence"
+button (disabled until there's both a pending result and a loaded
+sequence to add it to -- mirroring `move_to_best_focus_button`'s
+`can_move`-gating pattern from sub-phase 5). Deliberately did **not**
+add a separate "Start New Sequence" button/signal: per §5.5, starting a
+new sequence while a single exposure is pending should simply discard
+it, and that's exactly what the *existing* "Start" button already does
+once `Controller.start_sequence()` is taught to clear pending state --
+introducing a second action that does the same thing as "Start" would
+just be two names for one behavior.
+
+`SequenceWorker`'s `mode='single'` (built in sub-phase 5) is reused
+as-is -- no changes needed there, since "take a single exposure" is
+identical hardware-wise whether it's a best-focus confirmation or a
+standalone confirmation shot; only what the Controller does with the
+result differs.
+
+`Controller` gained:
+- `pending_result` / `_standalone_sequence` state: a not-yet-committed
+  `StepResult` and the throwaway `focus.FocusSequence()` used to take
+  it. A *throwaway* sequence, not `self.sequence`, deliberately -- a
+  standalone exposure has no relationship to whatever sequence (if any)
+  is currently loaded, and using a fresh `focus.FocusSequence()` just
+  for its auto-detected `_focus`/`_exposure` handles (never subclassed,
+  since `take_single_exposure()`/`reanalyze()` don't touch
+  `continue_sequence()`/`step_focus()`) means it's never confused with a
+  real Grid/Automated/Archive sequence.
+- `take_single_exposure(focus_value)`: hardware-exclusivity- and
+  `ktl`-connection-gated (identical style to `start_sequence()`'s
+  upfront check), starts a `mode='single'` worker against the throwaway
+  sequence.
+- `add_pending_to_sequence()`: manually appends `pending_result`'s data
+  into `self.sequence`'s bookkeeping arrays (the same fields
+  `step()`/`reanalyze()` populate), recomputes `is_outlier` against the
+  now-larger `centroids` list via `focus.FocusPlot.is_outlier` (it's
+  always `False` fresh out of `take_single_exposure()`, since that has
+  no sequence context to compare against), and adds the result to
+  `FocusCurvePanel` (refitting the curve) -- `ImagePanel` already has it
+  from when the exposure was taken, so only `update_result()` to reflect
+  the corrected outlier styling.
+- `_on_single_exposure_finished` now distinguishes "Move to Best Focus"
+  from a standalone exposure by checking `worker.sequence is
+  self.sequence` (true only for the sub-phase 5 case, which reuses the
+  loaded sequence's hardware handles) rather than adding a redundant
+  purpose flag -- a standalone exposure's worker always runs against
+  the throwaway sequence, which is never `self.sequence`.
+- `reanalyze()` now targets `self.sequence` if loaded, else
+  `_standalone_sequence` -- implementing §5.6's "reanalyze() runs
+  against that one exposure" requirement for a standalone exposure with
+  no sequence loaded, via the *same* `mode='reanalyze'` worker path
+  already used for real sequences, with no new Model code.
+- `_on_step_complete` distinguishes reanalyzing the standalone target
+  (via the same `worker.sequence is` identity check) to update
+  `pending_result` and `ImagePanel` in place, but -- consistent with a
+  standalone exposure never appearing on the curve until committed --
+  does *not* touch `FocusCurvePanel` for it.
+- `start_sequence()` now calls a new `_clear_pending()` after a sequence
+  successfully starts (not on a failed attempt -- a bad config shouldn't
+  silently discard a pending exposure the user hasn't decided about
+  yet), matching §5.5's "not automatically counted... discarded when a
+  new sequence starts."
+
+No deviations from the plan otherwise, though the "Start New Sequence"
+simplification above is a deliberate divergence from the design doc's
+literal wording of two separate buttons -- worth folding back into
+`GUI_DESIGN.md` during the end-of-development reconciliation pass.
+
+**Testing:** `tests/gui/test_focus_control_panel.py` gained tests for
+the new widgets: signal emission for both new buttons,
+`show_pending_exposure`/`clear_pending_exposure`, `reset()` clearing
+pending state, and `set_running()` locking out/restoring the new
+widgets (mirroring the `move_to_best_focus_button` pattern -- re-enables
+on stop except `add_to_sequence_button`, which stays gated).
+`tests/gui/test_controller.py` gained hardware-exclusivity and
+no-`ktl` tests for `take_single_exposure()`, an integration test against
+`fake_hardware` confirming a standalone exposure is taken, displayed,
+held pending, and does *not* touch `sequence`/the curve panel; tests for
+`add_pending_to_sequence()` being a no-op without a pending result or a
+loaded sequence and, positively, actually committing into a loaded
+Grid sequence's data (checked against real fake-hardware-driven
+exposure counts and curve-panel point counts); a test confirming
+interactive source selection reanalyzes a standalone pending exposure
+in place (fresh measurement, no duplicate in `ImagePanel`, still absent
+from the curve); and two tests distinguishing that starting a new
+sequence discards a pending exposure only on success, not on a failed
+config. All 106 tests pass; Qt-free boundary reconfirmed (26 pass,
+`tests/gui/` still skips as one unit).
+
 ### Next
 
-Phase 3, sub-phase 6: the standalone single-exposure workflow (§5.5) --
-a GUI action to take one exposure at a user-chosen focus value
-(reusing `take_single_exposure()` and the `mode='single'` worker path
-built in this sub-phase), plus a choice to add it to the currently
-displayed sequence or start a new one.
+Phase 3, sub-phase 7: end-to-end fake-hardware smoke test tying
+together every live-mode action built across sub-phases 1-6 (Grid and
+Automated sequences, Move to Best Focus, the standalone single-exposure
+workflow with both Add-to-Sequence and discard-on-new-Start, and
+interactive source selection against both a loaded sequence and a
+standalone exposure) in one coherent run, closing out Phase 3.

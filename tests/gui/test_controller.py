@@ -223,6 +223,151 @@ def test_move_to_best_focus_runs_against_fake_hardware(qapp, fake_hardware):
         'the confirmation should be reported in the status'
 
 
+def test_take_single_exposure_is_a_noop_while_something_is_running(qapp):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.worker = types.SimpleNamespace()  # pretend something is already running
+
+    controller.take_single_exposure(340.)
+
+    assert controller.pending_result is None, \
+        'a take-single-exposure request should be ignored while something is running'
+
+
+def test_take_single_exposure_without_ktl_reports_clear_failure(qapp):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.take_single_exposure(340.)
+
+    assert controller.worker is None, 'no worker should start without a ktl connection'
+    assert 'no ktl connection' in window.control_panel.status_label.text().lower()
+
+
+def test_take_single_exposure_runs_against_fake_hardware(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.exptime_spin.setValue(6.0)
+
+    window.control_panel.takeSingleExposureRequested.emit(345.)
+    _wait_for_worker(controller)
+
+    assert controller.worker is None, 'worker should be cleared once the exposure finishes'
+    assert fake_hardware['focus'].current == 345., 'the fake Focus should have been commanded'
+    assert controller.pending_result is not None, 'the result should be held as pending'
+    assert controller.pending_result.focus_value == 345.
+    assert controller.sequence is None, \
+        'a standalone single exposure should not create/replace a loaded sequence'
+    assert len(window.image_panel._results) == 1, \
+        'the exposure should be displayed in the image panel'
+    assert window.curve_panel._results == [], \
+        'a pending, uncommitted exposure should not appear on the focus curve'
+    assert not window.control_panel.add_to_sequence_button.isEnabled(), \
+        'add-to-sequence should stay disabled with no sequence loaded to add to'
+
+
+def test_add_pending_to_sequence_is_a_noop_without_a_pending_result(qapp, focus_sweep):
+    window, controller = _make_controller(focus_sweep)
+    controller.start_sequence()
+    _wait_for_worker(controller)
+
+    controller.add_pending_to_sequence()
+
+    assert len(window.curve_panel._results) == len(focus_sweep['files']), \
+        'nothing should be added without a pending result'
+
+
+def test_add_pending_to_sequence_is_a_noop_without_a_loaded_sequence(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.take_single_exposure(345.)
+    _wait_for_worker(controller)
+
+    controller.add_pending_to_sequence()
+
+    assert controller.pending_result is not None, \
+        'the pending result should survive since there is no sequence to add it to'
+
+
+def test_add_pending_to_sequence_commits_into_the_loaded_sequence(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.grid_radio.setChecked(True)
+    window.control_panel.start_spin.setValue(340.)
+    window.control_panel.step_spin.setValue(5.)
+    window.control_panel.nstep_spin.setValue(5)
+    controller.start_sequence()
+    _wait_for_worker(controller)
+    n_before = len(window.curve_panel._results)
+
+    window.control_panel.takeSingleExposureRequested.emit(362.)
+    _wait_for_worker(controller)
+    assert controller.pending_result is not None, 'setup: a pending result should exist'
+
+    window.control_panel.addToSequenceRequested.emit()
+
+    assert controller.pending_result is None, 'the pending result should be cleared once committed'
+    assert len(controller.sequence.exposures) == 6, \
+        'the confirmed exposure should be appended to the loaded sequence'
+    assert len(window.curve_panel._results) == n_before + 1, \
+        'the curve panel should gain the newly committed point'
+    assert window.control_panel.pending_label.text() == 'No pending exposure'
+
+
+def test_source_selection_reanalyzes_a_standalone_pending_exposure(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.take_single_exposure(345.)
+    _wait_for_worker(controller)
+    original = controller.pending_result
+
+    controller._on_source_selected(50., 50.)
+    _wait_for_worker(controller)
+
+    assert controller.method == (50., 50.), 'clicking a source should update the active method'
+    assert controller.pending_result is not None, 'reanalysis should still leave a pending result'
+    assert controller.pending_result is not original, \
+        'reanalysis should produce a fresh measurement, not just reuse the old one'
+    assert len(window.image_panel._results) == 1, \
+        'reanalysis should update the exposure in place, not add a duplicate'
+    assert window.curve_panel._results == [], \
+        'a standalone reanalyzed exposure still should not appear on the focus curve'
+
+
+def test_start_sequence_discards_a_pending_exposure(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.take_single_exposure(345.)
+    _wait_for_worker(controller)
+    assert controller.pending_result is not None, 'setup: a pending result should exist'
+
+    window.control_panel.grid_radio.setChecked(True)
+    window.control_panel.start_spin.setValue(340.)
+    window.control_panel.step_spin.setValue(5.)
+    window.control_panel.nstep_spin.setValue(5)
+    controller.start_sequence()
+
+    assert controller.pending_result is None, \
+        'starting a new sequence should discard any pending standalone exposure'
+    assert window.control_panel.pending_label.text() == 'No pending exposure'
+    _wait_for_worker(controller)
+
+
+def test_failed_start_sequence_does_not_discard_a_pending_exposure(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.take_single_exposure(345.)
+    _wait_for_worker(controller)
+    assert controller.pending_result is not None, 'setup: a pending result should exist'
+
+    window.control_panel.archive_radio.setChecked(True)
+    window.control_panel.datadir_edit.setText('does-not-exist')
+    controller.start_sequence()  # fails fast (bad datadir) -- nothing new actually started
+
+    assert controller.pending_result is not None, \
+        'a failed start attempt should not discard an existing pending exposure'
+
+
 def test_start_sequence_without_ktl_reports_clear_failure(qapp):
     # No fake_hardware fixture here: this dev machine has no ktl, so a
     # live sequence type should fail immediately and clearly, without

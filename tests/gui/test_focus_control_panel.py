@@ -259,6 +259,87 @@ def test_move_to_best_focus_confirmation_flow(qapp, monkeypatch):
     assert received == [356.1], 'confirming should emit the target focus value'
 
 
+def test_take_single_exposure_signal(qapp):
+    panel = FocusControlPanel()
+    received = []
+    panel.takeSingleExposureRequested.connect(received.append)
+
+    panel.single_focus_spin.setValue(356.2)
+    panel.take_single_exposure_button.click()
+
+    assert received == [356.2], 'clicking should emit the configured focus value'
+
+
+def test_show_pending_exposure_updates_label_and_gates_add_button(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+
+    panel.show_pending_exposure(result, can_add=False)
+    assert f'{result.focus_value:.1f}' in panel.pending_label.text(), \
+        'pending label should show the focus value'
+    assert f'{result.fwhm:.2f}' in panel.pending_label.text(), \
+        'pending label should show the measured FWHM'
+    assert not panel.add_to_sequence_button.isEnabled(), \
+        'add-to-sequence should stay disabled with no sequence loaded to add to'
+
+    panel.show_pending_exposure(result, can_add=True)
+    assert panel.add_to_sequence_button.isEnabled(), \
+        'add-to-sequence should enable once a sequence is loaded'
+
+
+def test_add_to_sequence_signal(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+    panel.show_pending_exposure(result, can_add=True)
+    received = []
+    panel.addToSequenceRequested.connect(lambda: received.append(True))
+
+    panel.add_to_sequence_button.click()
+
+    assert received == [True], 'clicking should emit addToSequenceRequested'
+
+
+def test_clear_pending_exposure_resets_label_and_button(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+    panel.show_pending_exposure(result, can_add=True)
+
+    panel.clear_pending_exposure()
+
+    assert panel.pending_label.text() == 'No pending exposure'
+    assert not panel.add_to_sequence_button.isEnabled(), \
+        'add-to-sequence should disable once the pending exposure is cleared'
+
+
+def test_reset_clears_pending_exposure(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+    panel.show_pending_exposure(result, can_add=True)
+
+    panel.reset()
+
+    assert panel.pending_label.text() == 'No pending exposure'
+    assert not panel.add_to_sequence_button.isEnabled()
+
+
+def test_set_running_locks_out_single_exposure_widgets(qapp, focus_sweep):
+    result = _step_result(focus_sweep)
+    panel = FocusControlPanel()
+    panel.show_pending_exposure(result, can_add=True)
+
+    panel.set_running(True)
+    assert not panel.single_focus_spin.isEnabled()
+    assert not panel.take_single_exposure_button.isEnabled()
+    assert not panel.add_to_sequence_button.isEnabled()
+
+    panel.set_running(False)
+    assert panel.single_focus_spin.isEnabled(), 'single-exposure focus entry should re-enable'
+    assert panel.take_single_exposure_button.isEnabled(), \
+        'Take Single Exposure should re-enable'
+    assert not panel.add_to_sequence_button.isEnabled(), \
+        'add-to-sequence should stay disabled until the next pending exposure re-enables it'
+
+
 def test_browse_button_updates_datadir(qapp, monkeypatch):
     panel = FocusControlPanel()
 

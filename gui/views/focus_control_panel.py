@@ -11,6 +11,7 @@ from pathlib import Path
 from gui.qt import QtCore, QtWidgets
 
 _NO_MOVE_TOOLTIP = 'Only available after a live (Grid/Automated) sequence finishes'
+_NO_PENDING_TOOLTIP = 'Take a single exposure first, with a sequence already loaded'
 
 
 class FocusControlPanel(QtWidgets.QWidget):
@@ -43,11 +44,24 @@ class FocusControlPanel(QtWidgets.QWidget):
         finishes with a hardware connection to move (see
         :func:`show_best_focus`'s ``can_move`` argument) -- archive/replay
         sequences have no hardware to move.
+    takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted with a focus value when "Take Single Exposure" is
+        clicked (§5.5) -- a standalone exposure with no sequence
+        bookkeeping, e.g. to confirm the field or mark a source before a
+        real sequence starts.
+    addToSequenceRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted when "Add to Existing Sequence" is clicked, to commit the
+        pending single exposure (see :func:`show_pending_exposure`) into
+        the currently loaded sequence's data. Starting a new sequence
+        instead (§5.5) needs no separate signal -- it's just
+        ``startRequested`` -- the pending exposure is simply discarded.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
     methodChanged = QtCore.Signal(str)
     moveToBestFocusRequested = QtCore.Signal(float)
+    takeSingleExposureRequested = QtCore.Signal(float)
+    addToSequenceRequested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,6 +73,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         layout.addWidget(self._build_exposure_settings_group())
         layout.addWidget(self._build_method_group())
         layout.addLayout(self._build_start_stop_row())
+        layout.addWidget(self._build_single_exposure_group())
         layout.addWidget(self._build_status_group())
         layout.addWidget(self._build_result_group())
         layout.addStretch(1)
@@ -164,6 +179,30 @@ class FocusControlPanel(QtWidgets.QWidget):
         row.addWidget(self.stop_button)
         return row
 
+    def _build_single_exposure_group(self):
+        group = QtWidgets.QGroupBox('Single Exposure')
+        self.single_focus_spin = QtWidgets.QDoubleSpinBox()
+        self.single_focus_spin.setRange(165., 500.)
+        self.single_focus_spin.setValue(340.)
+        self.take_single_exposure_button = QtWidgets.QPushButton('Take Single Exposure')
+        self.take_single_exposure_button.clicked.connect(
+            lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
+
+        self.pending_label = QtWidgets.QLabel('No pending exposure')
+        self.add_to_sequence_button = QtWidgets.QPushButton('Add to Existing Sequence')
+        self.add_to_sequence_button.setEnabled(False)
+        self.add_to_sequence_button.setToolTip(_NO_PENDING_TOOLTIP)
+        self.add_to_sequence_button.clicked.connect(self.addToSequenceRequested.emit)
+
+        form = QtWidgets.QFormLayout()
+        form.addRow('Focus value:', self.single_focus_spin)
+        col = QtWidgets.QVBoxLayout(group)
+        col.addLayout(form)
+        col.addWidget(self.take_single_exposure_button)
+        col.addWidget(self.pending_label)
+        col.addWidget(self.add_to_sequence_button)
+        return group
+
     def _build_status_group(self):
         group = QtWidgets.QGroupBox('Status')
         self.status_label = QtWidgets.QLabel('')
@@ -259,7 +298,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.stop_button.setEnabled(running)
         for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
             radio.setEnabled(not running)
-        for widget in (self.start_spin, self.step_spin, self.method_combo):
+        for widget in (self.start_spin, self.step_spin, self.method_combo,
+                       self.single_focus_spin, self.take_single_exposure_button):
             widget.setEnabled(not running)
 
         if running:
@@ -269,7 +309,8 @@ class FocusControlPanel(QtWidgets.QWidget):
             for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
                            self.suffix_edit, self.obsnum_spin, self.nstep_spin,
                            self.maxsteps_spin, self.exptime_spin, self.speed_combo,
-                           self.binning_combo, self.move_to_best_focus_button):
+                           self.binning_combo, self.move_to_best_focus_button,
+                           self.add_to_sequence_button):
                 widget.setEnabled(False)
         else:
             # Restore the correct per-type enabled state, not just "all on".
@@ -322,6 +363,26 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.status_label.setText(message)
         self.log_widget.appendPlainText(f'ERROR: {message}')
 
+    def show_pending_exposure(self, result, can_add):
+        """
+        Report a standalone single exposure (§5.5) awaiting a decision --
+        "Add to Existing Sequence" or discard by starting a new one.
+        ``can_add`` reflects whether a sequence is actually loaded to add
+        it to.
+        """
+        self.pending_label.setText(
+            f'Pending: Focus {result.focus_value:.1f}, FWHM {result.fwhm:.2f}')
+        self.log_widget.appendPlainText(
+            f'Took single exposure at focus {result.focus_value:.1f}: FWHM {result.fwhm:.2f}')
+        self.add_to_sequence_button.setEnabled(can_add)
+        self.add_to_sequence_button.setToolTip('' if can_add else _NO_PENDING_TOOLTIP)
+
+    def clear_pending_exposure(self):
+        """Clear the pending single-exposure display, e.g. once committed or discarded."""
+        self.pending_label.setText('No pending exposure')
+        self.add_to_sequence_button.setEnabled(False)
+        self.add_to_sequence_button.setToolTip(_NO_PENDING_TOOLTIP)
+
     def reset(self):
         """Clear live status, log, and result display for a new run."""
         self._best_focus = None
@@ -331,6 +392,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.log_widget.clear()
         self.move_to_best_focus_button.setEnabled(False)
         self.move_to_best_focus_button.setToolTip(_NO_MOVE_TOOLTIP)
+        self.clear_pending_exposure()
 
     # -- internals ----------------------------------------------------------
 

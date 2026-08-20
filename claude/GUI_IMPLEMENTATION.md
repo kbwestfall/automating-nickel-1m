@@ -782,6 +782,67 @@ correctly ignored in `mode='reanalyze'` (confirmed `cfg.exptime` stays
 `None` even when `exp_kwargs` is passed). All 78 tests pass; Qt-free
 boundary reconfirmed (26 pass, `tests/gui/` still skips as one unit).
 
+### Sub-phase 4 results: enable Grid/Automated sequence types in the GUI
+
+`FocusControlPanel`: lifted the blanket-disable on `grid_radio`/
+`automated_radio` and the exposure-settings group; added a
+`maxsteps_spin` field; added `_on_sequence_type_changed()`, wired to all
+three radios' `toggled` signals (and called once at the end of `__init__`
+for the correct initial state), which enables/disables fields per
+selected type -- Archive gets the datadir/prefix/suffix/obsnum fields and
+`nstep`, no exposure settings; Grid gets `nstep` and exposure settings,
+no archive fields; Automated gets `maxsteps` (not `nstep`) and exposure
+settings, no archive fields. `set_running(False)` now calls
+`_on_sequence_type_changed()` to restore the *correct* per-type state
+rather than just re-enabling everything uniformly. Renamed
+`get_archive_config()` to `get_sequence_config()` (now returns every
+field regardless of type -- the Controller reads what's relevant) and
+added `get_sequence_type()` and `get_exposure_config()`.
+
+`Controller`: renamed `start_archive_sequence()` to `start_sequence()`,
+which now branches on `get_sequence_type()` to build an
+`ArchiveFocusSequence` (unchanged logic, extracted into
+`_build_archive_sequence()`), a `GridFocusSequence`, or an
+`AutomatedFocusSequence`, and passes `get_exposure_config()` through to
+`SequenceWorker` as `exp_kwargs` for the two live types.
+`SequenceWorker`/`_start_worker` gained the `exp_kwargs` pass-through.
+Added one explicit check after constructing a live sequence: if
+`sequence._focus`/`._exposure` are `None` (no `ktl` connection), report a
+clear "no ktl connection is available for a live sequence" failure
+*before* ever starting a worker thread, rather than letting the worker
+fail later with a cryptic `AttributeError` on `None.set_to(...)` (still
+caught by `SequenceWorker`'s existing broad exception guard from
+sub-phase 3, but with a much less useful message).
+
+**A real test gap was caught while reviewing this sub-phase, not by a
+failure:** the first pass of new tests only exercised the *widget
+enabling/disabling* logic in `FocusControlPanel` and `Controller`'s
+config-branching in isolation -- nothing actually drove a Grid or
+Automated sequence through the full `Controller` against the
+`fake_hardware` fixture end-to-end. Added
+`test_start_sequence_runs_grid_against_fake_hardware` and
+`test_start_sequence_runs_automated_against_fake_hardware` to close
+that gap; both passed immediately, but the absence would have meant
+sub-phase 4's actual deliverable -- live sequences work through the
+GUI -- was never really proven, only its surrounding scaffolding.
+
+No deviations from the plan otherwise.
+
+**Testing:** updated `test_focus_control_panel.py` (renamed/replaced the
+old "only Archive is enabled" test with `test_all_sequence_types_are_selectable`,
+`test_get_sequence_type`, `test_archive_fields_enabled_only_for_archive`
+(checks all three types' field states), `test_get_sequence_config_reflects_form_fields`,
+`test_get_exposure_config_reflects_form_fields`, and
+`test_set_running_restores_the_correct_per_type_state`); renamed
+`Controller.start_archive_sequence()` call sites to `start_sequence()`
+throughout `test_controller.py`/`test_app_smoke.py`; added the two
+fake-hardware integration tests above plus
+`test_start_sequence_without_ktl_reports_clear_failure` (confirms the
+new upfront check fires with no worker ever starting, using the real
+"no ktl" state of this dev machine -- no fixture needed for that one).
+All 84 tests pass; Qt-free boundary reconfirmed (26 pass, `tests/gui/`
+still skips as one unit).
+
 ### Next
 
-Phase 3, sub-phase 4: enable Grid/Automated sequence types in the GUI.
+Phase 3, sub-phase 5: enable "Move to Best Focus."

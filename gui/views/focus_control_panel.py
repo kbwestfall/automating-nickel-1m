@@ -11,25 +11,27 @@ from pathlib import Path
 from gui.qt import QtCore, QtWidgets
 
 _PHASE_3_TOOLTIP = 'Requires a live ktl connection (Phase 3)'
-_NOT_APPLICABLE_TOOLTIP = 'Not applicable in archive/replay mode'
 
 
 class FocusControlPanel(QtWidgets.QWidget):
     """
     Sequence configuration, Start/Stop, live status, and results.
 
-    Only "Archive / Replay" is enabled in this phase (`GUI_DESIGN.md` §9
-    phased plan, sub-phase 6): "Grid" and "Automated" are present but
-    disabled, so this widget's shape doesn't need to change once Phase 3
-    wires up live sequences. Likewise, exposure settings (exposure time,
-    speed, binning) are shown but disabled, since archive/replay mode
-    never takes new exposures.
+    All three sequence types -- Archive/Replay, Grid, and Automated -- are
+    selectable; which configuration fields are enabled follows the
+    selected type (:func:`_on_sequence_type_changed`): Archive needs the
+    data directory/prefix/suffix/obsnum fields and exposure settings are
+    irrelevant (no new exposures are taken); Grid/Automated need exposure
+    settings and have no archive fields to fill in; Grid uses "number of
+    steps," Automated uses "max steps" instead.
 
     Attributes
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when "Start" is clicked; the Controller should read
-        :func:`get_archive_config` to build the sequence.
+        :func:`get_sequence_type` and :func:`get_sequence_config` (and,
+        for a live sequence type, :func:`get_exposure_config`) to build
+        and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when "Stop" is clicked.
     methodChanged : :class:`~PySide6.QtCore.Signal`
@@ -38,9 +40,9 @@ class FocusControlPanel(QtWidgets.QWidget):
     moveToBestFocusRequested : :class:`~PySide6.QtCore.Signal`
         Emitted with the target focus value once the user confirms the
         "Move to best focus" dialog. The button that triggers this is
-        disabled unconditionally in this phase -- there's no hardware to
-        move yet -- but the confirmation logic is already wired up so
-        Phase 3 only needs to enable it.
+        still disabled unconditionally as of this sub-phase -- enabling
+        it is a later Phase 3 sub-phase -- but the confirmation logic is
+        already wired up.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
@@ -53,13 +55,17 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self._build_sequence_type_group())
-        layout.addWidget(self._build_archive_config_group())
+        layout.addWidget(self._build_sequence_config_group())
         layout.addWidget(self._build_exposure_settings_group())
         layout.addWidget(self._build_method_group())
         layout.addLayout(self._build_start_stop_row())
         layout.addWidget(self._build_status_group())
         layout.addWidget(self._build_result_group())
         layout.addStretch(1)
+
+        for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
+            radio.toggled.connect(lambda checked: self._on_sequence_type_changed())
+        self._on_sequence_type_changed()
 
     # -- widget construction ----------------------------------------------
 
@@ -69,9 +75,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.grid_radio = QtWidgets.QRadioButton('Grid')
         self.automated_radio = QtWidgets.QRadioButton('Automated')
         self.archive_radio.setChecked(True)
-        for radio in (self.grid_radio, self.automated_radio):
-            radio.setEnabled(False)
-            radio.setToolTip(_PHASE_3_TOOLTIP)
 
         self.sequence_type_buttons = QtWidgets.QButtonGroup(self)
         for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
@@ -83,8 +86,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         row.addWidget(self.automated_radio)
         return group
 
-    def _build_archive_config_group(self):
-        group = QtWidgets.QGroupBox('Archive Configuration')
+    def _build_sequence_config_group(self):
+        group = QtWidgets.QGroupBox('Sequence Configuration')
 
         self.datadir_edit = QtWidgets.QLineEdit('.')
         self.browse_button = QtWidgets.QPushButton('Browse…')
@@ -102,6 +105,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.nstep_spin = QtWidgets.QSpinBox()
         self.nstep_spin.setRange(3, 100)
         self.nstep_spin.setValue(5)
+        self.maxsteps_spin = QtWidgets.QSpinBox()
+        self.maxsteps_spin.setRange(2, 100)
+        self.maxsteps_spin.setValue(12)
 
         form = QtWidgets.QFormLayout(group)
         datadir_row = QtWidgets.QHBoxLayout()
@@ -113,7 +119,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         form.addRow('Obsnum:', self.obsnum_spin)
         form.addRow('Start focus:', self.start_spin)
         form.addRow('Step size:', self.step_spin)
-        form.addRow('Number of steps:', self.nstep_spin)
+        form.addRow('Number of steps (Archive/Grid):', self.nstep_spin)
+        form.addRow('Max steps (Automated):', self.maxsteps_spin)
         return group
 
     def _build_exposure_settings_group(self):
@@ -125,9 +132,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.speed_combo.addItems(['Slow', 'Fast'])
         self.binning_combo = QtWidgets.QComboBox()
         self.binning_combo.addItems(['1,1', '2,2', '4,4'])
-        for widget in (self.exptime_spin, self.speed_combo, self.binning_combo):
-            widget.setEnabled(False)
-            widget.setToolTip(_NOT_APPLICABLE_TOOLTIP)
 
         form = QtWidgets.QFormLayout(group)
         form.addRow('Exposure time (s):', self.exptime_spin)
@@ -189,14 +193,17 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     # -- public API used by the Controller ---------------------------------
 
-    def get_archive_config(self):
+    def get_sequence_config(self):
         """
-        Return the current archive-mode configuration as a :obj:`dict`
-        with keys ``datadir`` (:class:`pathlib.Path`), ``prefix``,
-        ``suffix`` (:obj:`str`), ``obsnum`` (:obj:`int`), and ``start``,
-        ``step`` (:obj:`float`), ``nstep`` (:obj:`int`) -- matching
-        `focus.py`'s own `--datadir`/`--prefix`/`--suffix`/`--obsnum`
-        and positional ``focus``/`--nstep` CLI arguments.
+        Return the current sequence configuration as a :obj:`dict`. Not
+        every key is relevant to every sequence type -- the Controller
+        picks out what it needs based on :func:`get_sequence_type`.
+
+        Keys: ``datadir`` (:class:`pathlib.Path`), ``prefix``, ``suffix``
+        (:obj:`str`, Archive only), ``obsnum`` (:obj:`int`, Archive
+        only), ``start``, ``step`` (:obj:`float`, all types), ``nstep``
+        (:obj:`int`, Archive/Grid), and ``maxsteps`` (:obj:`int`,
+        Automated only) -- matching `focus.py`'s own CLI arguments.
         """
         return {
             'datadir': Path(self.datadir_edit.text()),
@@ -206,6 +213,28 @@ class FocusControlPanel(QtWidgets.QWidget):
             'start': self.start_spin.value(),
             'step': self.step_spin.value(),
             'nstep': self.nstep_spin.value(),
+            'maxsteps': self.maxsteps_spin.value(),
+        }
+
+    def get_sequence_type(self):
+        """The selected sequence type, as ``'archive'``, ``'grid'``, or ``'automated'``."""
+        if self.grid_radio.isChecked():
+            return 'grid'
+        if self.automated_radio.isChecked():
+            return 'automated'
+        return 'archive'
+
+    def get_exposure_config(self):
+        """
+        Return the current exposure settings as a :obj:`dict` with keys
+        ``exptime`` (:obj:`float`), ``speed``, ``binning`` (:obj:`str`) --
+        passed to `ExposureConfig.configure` before a live sequence
+        steps. Not applicable in archive/replay mode.
+        """
+        return {
+            'exptime': self.exptime_spin.value(),
+            'speed': self.speed_combo.currentText(),
+            'binning': self.binning_combo.currentText(),
         }
 
     def get_selected_method(self):
@@ -228,12 +257,23 @@ class FocusControlPanel(QtWidgets.QWidget):
         """Toggle widget states for whether a sequence is currently running."""
         self.start_button.setEnabled(not running)
         self.stop_button.setEnabled(running)
-        self.archive_radio.setEnabled(not running)
-        for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
-                       self.suffix_edit, self.obsnum_spin, self.start_spin,
-                       self.step_spin, self.nstep_spin, self.method_combo):
+        for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
+            radio.setEnabled(not running)
+        for widget in (self.start_spin, self.step_spin, self.method_combo):
             widget.setEnabled(not running)
-        if not running:
+
+        if running:
+            # Force every type-specific field off; which ones matter
+            # depends on the sequence type, and none of them should be
+            # editable mid-run regardless.
+            for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
+                           self.suffix_edit, self.obsnum_spin, self.nstep_spin,
+                           self.maxsteps_spin, self.exptime_spin, self.speed_combo,
+                           self.binning_combo):
+                widget.setEnabled(False)
+        else:
+            # Restore the correct per-type enabled state, not just "all on".
+            self._on_sequence_type_changed()
             self.status_label.setText('')
 
     def set_stopping(self):
@@ -273,6 +313,21 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.log_widget.clear()
 
     # -- internals ----------------------------------------------------------
+
+    def _on_sequence_type_changed(self):
+        """Enable/disable configuration fields to match the selected sequence type."""
+        is_archive = self.archive_radio.isChecked()
+        is_automated = self.automated_radio.isChecked()
+
+        for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
+                       self.suffix_edit, self.obsnum_spin):
+            widget.setEnabled(is_archive)
+        self.nstep_spin.setEnabled(not is_automated)
+        self.maxsteps_spin.setEnabled(is_automated)
+
+        is_live = not is_archive
+        for widget in (self.exptime_spin, self.speed_combo, self.binning_combo):
+            widget.setEnabled(is_live)
 
     def _on_browse_clicked(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(

@@ -11,22 +11,48 @@ def _step_result(focus_sweep, index=0):
     return list(seq.step(method='brightest'))[index]
 
 
-def test_only_archive_sequence_type_is_enabled(qapp):
+def test_all_sequence_types_are_selectable(qapp):
     panel = FocusControlPanel()
     assert panel.archive_radio.isChecked(), 'Archive should be the default sequence type'
-    assert panel.archive_radio.isEnabled(), 'Archive should be selectable in this phase'
-    assert not panel.grid_radio.isEnabled(), 'Grid requires live ktl, not available yet'
-    assert not panel.automated_radio.isEnabled(), 'Automated requires live ktl, not available yet'
+    for radio in (panel.archive_radio, panel.grid_radio, panel.automated_radio):
+        assert radio.isEnabled(), 'all three sequence types should be selectable'
 
 
-def test_exposure_settings_are_disabled(qapp):
+def test_get_sequence_type(qapp):
     panel = FocusControlPanel()
-    assert not panel.exptime_spin.isEnabled(), 'exposure time is not applicable in archive mode'
-    assert not panel.speed_combo.isEnabled(), 'speed is not applicable in archive mode'
-    assert not panel.binning_combo.isEnabled(), 'binning is not applicable in archive mode'
+    assert panel.get_sequence_type() == 'archive'
+
+    panel.grid_radio.setChecked(True)
+    assert panel.get_sequence_type() == 'grid'
+
+    panel.automated_radio.setChecked(True)
+    assert panel.get_sequence_type() == 'automated'
 
 
-def test_get_archive_config_reflects_form_fields(qapp):
+def test_archive_fields_enabled_only_for_archive(qapp):
+    panel = FocusControlPanel()
+    archive_fields = (panel.datadir_edit, panel.browse_button, panel.prefix_edit,
+                      panel.suffix_edit, panel.obsnum_spin)
+
+    assert all(w.isEnabled() for w in archive_fields), 'Archive fields start enabled (default type)'
+    assert panel.nstep_spin.isEnabled(), 'Archive uses number-of-steps'
+    assert not panel.maxsteps_spin.isEnabled(), 'Archive does not use max-steps'
+    assert not panel.exptime_spin.isEnabled(), 'exposure settings are not applicable in archive mode'
+
+    panel.grid_radio.setChecked(True)
+    assert not any(w.isEnabled() for w in archive_fields), 'Grid has no archive fields to fill in'
+    assert panel.nstep_spin.isEnabled(), 'Grid uses number-of-steps'
+    assert not panel.maxsteps_spin.isEnabled(), 'Grid does not use max-steps'
+    assert panel.exptime_spin.isEnabled(), 'Grid takes real exposures, so settings apply'
+
+    panel.automated_radio.setChecked(True)
+    assert not any(w.isEnabled() for w in archive_fields), 'Automated has no archive fields either'
+    assert not panel.nstep_spin.isEnabled(), 'Automated does not use number-of-steps'
+    assert panel.maxsteps_spin.isEnabled(), 'Automated uses max-steps instead'
+    assert panel.exptime_spin.isEnabled(), 'Automated takes real exposures, so settings apply'
+
+
+def test_get_sequence_config_reflects_form_fields(qapp):
     panel = FocusControlPanel()
     panel.datadir_edit.setText('/tmp/some/dir')
     panel.prefix_edit.setText('x')
@@ -35,8 +61,9 @@ def test_get_archive_config_reflects_form_fields(qapp):
     panel.start_spin.setValue(300.)
     panel.step_spin.setValue(2.5)
     panel.nstep_spin.setValue(7)
+    panel.maxsteps_spin.setValue(9)
 
-    config = panel.get_archive_config()
+    config = panel.get_sequence_config()
 
     assert config == {
         'datadir': Path('/tmp/some/dir'),
@@ -46,7 +73,17 @@ def test_get_archive_config_reflects_form_fields(qapp):
         'start': 300.,
         'step': 2.5,
         'nstep': 7,
-    }, 'get_archive_config() should reflect exactly what the form fields hold'
+        'maxsteps': 9,
+    }, 'get_sequence_config() should reflect exactly what the form fields hold'
+
+
+def test_get_exposure_config_reflects_form_fields(qapp):
+    panel = FocusControlPanel()
+    panel.exptime_spin.setValue(12.5)
+    panel.speed_combo.setCurrentText('Fast')
+    panel.binning_combo.setCurrentText('2,2')
+
+    assert panel.get_exposure_config() == {'exptime': 12.5, 'speed': 'Fast', 'binning': '2,2'}
 
 
 def test_method_combo_and_signal(qapp):
@@ -101,6 +138,23 @@ def test_set_running_toggles_widget_states(qapp):
     assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped'
     assert not panel.stop_button.isEnabled(), 'Stop should be disabled once stopped'
     assert panel.datadir_edit.isEnabled(), 'config fields should unlock once stopped'
+
+
+def test_set_running_restores_the_correct_per_type_state(qapp):
+    # set_running(False) must not just re-enable everything -- it should
+    # restore whatever's correct for the currently-selected sequence
+    # type, e.g. Automated has no archive fields and no nstep, even after
+    # a run finishes.
+    panel = FocusControlPanel()
+    panel.automated_radio.setChecked(True)
+
+    panel.set_running(True)
+    panel.set_running(False)
+
+    assert not panel.datadir_edit.isEnabled(), 'Automated has no archive fields to restore'
+    assert not panel.nstep_spin.isEnabled(), 'Automated does not use number-of-steps'
+    assert panel.maxsteps_spin.isEnabled(), 'Automated should have max-steps re-enabled'
+    assert panel.exptime_spin.isEnabled(), 'Automated should have exposure settings re-enabled'
 
 
 def test_set_stopping_disables_stop_and_shows_status(qapp):

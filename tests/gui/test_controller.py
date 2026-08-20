@@ -3,6 +3,7 @@ import types
 
 import pytest
 
+import focus
 from gui.qt import QtCore
 from gui.views.main_window import MainWindow
 from gui.controller import Controller
@@ -35,10 +36,10 @@ def _make_controller(focus_sweep):
     return window, controller
 
 
-def test_start_archive_sequence_runs_to_completion(qapp, focus_sweep):
+def test_start_sequence_runs_to_completion_for_archive(qapp, focus_sweep):
     window, controller = _make_controller(focus_sweep)
 
-    controller.start_archive_sequence()
+    controller.start_sequence()
     _wait_for_worker(controller)
 
     assert controller.worker is None, 'worker should be cleared once finished'
@@ -53,7 +54,7 @@ def test_start_archive_sequence_runs_to_completion(qapp, focus_sweep):
 def test_running_state_is_set_synchronously_before_worker_runs(qapp, focus_sweep):
     window, controller = _make_controller(focus_sweep)
 
-    controller.start_archive_sequence()
+    controller.start_sequence()
 
     # _set_running(True) happens before worker.start(), so this should
     # already be true without needing to pump the event loop at all.
@@ -71,7 +72,7 @@ def test_hardware_exclusivity_blocks_second_start(qapp, focus_sweep):
     window, controller = _make_controller(focus_sweep)
     controller.worker = types.SimpleNamespace()  # pretend something is already running
 
-    controller.start_archive_sequence()
+    controller.start_sequence()
 
     assert controller.sequence is None, \
         'a second start should be a no-op while something is already running'
@@ -81,7 +82,7 @@ def test_missing_files_reports_failure(qapp, focus_sweep):
     window, controller = _make_controller(focus_sweep)
     window.control_panel.prefix_edit.setText('does-not-exist-')
 
-    controller.start_archive_sequence()
+    controller.start_sequence()
 
     assert controller.worker is None, 'a config error should never start a worker'
     assert 'Could not start sequence' in window.control_panel.status_label.text(), \
@@ -127,7 +128,7 @@ def test_reanalyze_is_a_noop_without_a_sequence(qapp):
 
 def test_source_selection_updates_measurements_in_place(qapp, focus_sweep):
     window, controller = _make_controller(focus_sweep)
-    controller.start_archive_sequence()
+    controller.start_sequence()
     _wait_for_worker(controller)
 
     n_before = len(window.image_panel._results)
@@ -141,3 +142,54 @@ def test_source_selection_updates_measurements_in_place(qapp, focus_sweep):
         'reanalysis should update existing entries, not add duplicates'
     assert len(window.curve_panel._results) == n_before, \
         'reanalysis should update existing entries, not add duplicates'
+
+
+def test_start_sequence_runs_grid_against_fake_hardware(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.grid_radio.setChecked(True)
+    window.control_panel.start_spin.setValue(340.)
+    window.control_panel.step_spin.setValue(5.)
+    window.control_panel.nstep_spin.setValue(5)
+    window.control_panel.exptime_spin.setValue(7.5)
+
+    controller.start_sequence()
+    _wait_for_worker(controller)
+
+    assert len(window.image_panel._results) == 5, 'image panel should have one entry per exposure'
+    assert window.control_panel._best_focus == pytest.approx(fake_hardware['best_focus'], abs=5.), \
+        'control panel should display the fitted best focus'
+    assert fake_hardware['focus'].current == 360., 'the fake Focus should have been commanded'
+    assert controller.sequence._exposure.cfg.exptime == 7.5, \
+        'exposure settings from the control panel should have been applied'
+
+
+def test_start_sequence_runs_automated_against_fake_hardware(qapp, fake_hardware):
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.automated_radio.setChecked(True)
+    window.control_panel.start_spin.setValue(340.)
+    window.control_panel.step_spin.setValue(5.)
+    window.control_panel.maxsteps_spin.setValue(12)
+
+    controller.start_sequence()
+    _wait_for_worker(controller)
+
+    assert isinstance(controller.sequence, focus.AutomatedFocusSequence)
+    assert window.control_panel._best_focus == pytest.approx(fake_hardware['best_focus'], abs=5.), \
+        'the adaptive search should converge near the known best focus'
+
+
+def test_start_sequence_without_ktl_reports_clear_failure(qapp):
+    # No fake_hardware fixture here: this dev machine has no ktl, so a
+    # live sequence type should fail immediately and clearly, without
+    # ever starting a worker thread.
+    window = MainWindow()
+    controller = Controller(window)
+    window.control_panel.grid_radio.setChecked(True)
+    window.control_panel.nstep_spin.setValue(5)
+
+    controller.start_sequence()
+
+    assert controller.worker is None, 'no worker should start without a ktl connection'
+    assert 'no ktl connection' in window.control_panel.status_label.text().lower()

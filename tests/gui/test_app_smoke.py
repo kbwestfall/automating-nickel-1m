@@ -56,7 +56,7 @@ def test_app_opens_and_shows_without_error(qapp):
 def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
     # Build the same sequence directly -- the same GridFocusSequence (for
     # its focus-value arithmetic) + ArchiveFocusSequence + execute() calls
-    # that both focus.py's CLI and Controller.start_archive_sequence()
+    # that both focus.py's CLI and Controller.start_sequence()
     # make -- and confirm the GUI reproduces the identical fit.
     grid = focus.GridFocusSequence(focus_sweep['focus_values'][0],
                                     focus_sweep['focus_values'][1] - focus_sweep['focus_values'][0],
@@ -69,7 +69,7 @@ def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
     controller = Controller(window)
     _configure_control_panel(window.control_panel, focus_sweep)
 
-    controller.start_archive_sequence()
+    controller.start_sequence()
     _wait_for_worker(controller)
 
     assert window.control_panel._best_focus == pytest.approx(expected_best_focus), \

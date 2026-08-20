@@ -25,9 +25,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.curve_panel = FocusCurvePanel()
         self.control_panel = FocusControlPanel()
 
+        # FocusControlPanel stacks enough group boxes that its natural
+        # minimum height can exceed a smaller screen's available height;
+        # a QScrollArea's own minimum size hint doesn't inherit that, so
+        # wrapping it here is what actually lets the window shrink to fit
+        # (see _size_to_screen) instead of being held open by the layout.
+        control_scroll = QtWidgets.QScrollArea()
+        control_scroll.setWidget(self.control_panel)
+        control_scroll.setWidgetResizable(True)
+
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         right.addWidget(self.curve_panel)
-        right.addWidget(self.control_panel)
+        right.addWidget(control_scroll)
 
         central = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         central.addWidget(self.image_panel)
@@ -36,4 +45,21 @@ class MainWindow(QtWidgets.QMainWindow):
         central.setStretchFactor(1, 1)
 
         self.setCentralWidget(central)
-        self.resize(1200, 800)
+        self._size_to_screen(1200, 800)
+
+    def _size_to_screen(self, preferred_width, preferred_height):
+        """
+        Size the window to ``(preferred_width, preferred_height)``, or
+        smaller if the screen's available area (excluding docks/taskbars)
+        can't fit that -- so the resize handles are never pushed off
+        screen -- then center it.
+        """
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            self.resize(preferred_width, preferred_height)
+            return
+        available = screen.availableGeometry()
+        width = min(preferred_width, int(available.width() * 0.9))
+        height = min(preferred_height, int(available.height() * 0.9))
+        self.resize(width, height)
+        self.move(available.center() - self.rect().center())

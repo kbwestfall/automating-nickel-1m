@@ -1111,3 +1111,43 @@ deferred until now, per earlier discussion) -- most notably §5.5's
 "Start New Sequence" button, which sub-phase 6 deliberately never built
 as a separate action since the existing "Start" button already does the
 same thing.
+
+## Post-Phase-3 revisions
+
+Fixes to real usage problems found by actually running the GUI on a
+physical display, ahead of Phase 4 -- something offscreen/fake-hardware
+testing can prove correct in isolation but can't surface (an
+`availableGeometry()`/layout-minimum-size interaction only shows up
+against a screen's *actual* resolution).
+
+### Window opens larger than the screen
+
+**Problem:** `MainWindow` unconditionally resized to a fixed 1200x800.
+On a smaller/lower-resolution screen, that's larger than the available
+desktop area, and since the initial position left the bottom-right
+resize handle off screen, the window couldn't be resized smaller either
+-- a genuine dead end, not just an inconvenience.
+
+**Fix:** `MainWindow._size_to_screen()` now sizes to the smaller of
+1200x800 and 90% of `screen().availableGeometry()` (excluding
+docks/taskbars), then centers the window -- so the resize handles are
+always reachable regardless of dock position. Also wrapped
+`FocusControlPanel` in a `QScrollArea` in `MainWindow.__init__`: without
+it, the fix above didn't actually work, because the panel's stacked
+group boxes (Sequence Type, Sequence Configuration, Exposure Settings,
+Photometry Method, Single Exposure, Status, Result) impose a combined
+minimum-height layout constraint taller than 720px (90% of the offscreen
+test screen's 800px height), and Qt's layout engine silently overrides
+`resize()` to respect a widget's minimum size hint -- so the window
+still opened oversized until the panel itself no longer bubbled its
+full minimum height up to the window. A `QScrollArea`'s own minimum size
+hint doesn't inherit its contents', which is what actually lets the
+outer window shrink; the control panel remains fully usable, just
+scrollable if the window is small.
+
+**Testing:** `tests/gui/test_main.py` gained
+`test_build_window_fits_within_the_screen`, asserting the built,
+shown window's size never exceeds `screen().availableGeometry()`. This
+test is what caught the layout-minimum-size issue above -- the naive
+resize-based fix alone still failed it. All 108 tests pass; Qt-free
+boundary reconfirmed.

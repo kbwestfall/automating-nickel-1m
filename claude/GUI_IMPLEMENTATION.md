@@ -99,9 +99,9 @@ code (CLI or future GUI) can drive it:
 
 **Design doc reference:** §9 Phased plan, item 2.
 
-**Status:** In progress — sub-phase 1 complete. Broken into sub-phases
-below before implementation starts, both because it's a large chunk of
-work and because of a
+**Status:** Complete (all 8 sub-phases). Broken into sub-phases below
+before implementation started, both because it's a large chunk of work
+and because of a
 constraint not fully spelled out in `GUI_DESIGN.md`: Qt must stay an
 *optional* dependency, exactly like `ktl`. `scripts/focus.py` (the CLI)
 must keep working with no Qt installed at all — nothing in `scripts/`
@@ -519,6 +519,73 @@ result count, not double. Also added 3 tests each to
 behavior. All 63 tests pass; reran the full GUI subtree twice more
 back-to-back with no flakiness observed.
 
+### Sub-phase 8 results: end-to-end smoke test + Phase 2 close-out
+
+Added `tests/gui/test_app_smoke.py` with two tests:
+
+- A genuine entry-point smoke test going through `gui.main.build_app()`/
+  `build_window()` + `Controller` + `window.show()` — everything prior
+  sub-phases tested constructed `MainWindow`/`Controller` directly, never
+  the actual `gui/main.py` path a user running `python -m gui.main` would
+  take.
+- A GUI/Model equivalence check: rather than re-testing `focus.main()`
+  itself (already covered by `test_focus_cli.py`), this builds the same
+  sequence directly — the same `GridFocusSequence`-for-focus-values +
+  `ArchiveFocusSequence` + `execute()` calls both `focus.py`'s CLI and
+  `Controller.start_archive_sequence()` make under the hood — and
+  confirms the GUI's fitted best focus matches exactly. This is the
+  concrete version of §8's testing philosophy: the CLI and GUI share the
+  same underlying `FocusSequence` code because of the Phase 1 `step()`
+  refactor, so this test is what actually proves that sharing holds at
+  the GUI's integration point, rather than assuming it.
+
+**No deviations for this sub-phase.** Final Phase 2 check: reran the full
+suite with `PySide6` simulated absent (and `pytest-qt` explicitly
+disabled, matching a real Qt-free environment — see sub-phase 2's
+caveat) — 17 tests pass, the entire `tests/gui/` subtree (now 6 files)
+skips as one unit, confirming the optional-Qt boundary still holds with
+the complete `gui/` package in place, not just the scaffolding from
+sub-phase 2.
+
+**Testing:** 2 new tests. All 65 tests pass with PySide6 installed; 17
+pass (48 cleanly skipped) with it simulated as absent.
+
+### Phase 2 summary
+
+All 8 sub-phases complete. What exists now:
+
+- `gui/qt.py`, `gui/__init__.py` — the optional-Qt import boundary.
+- `gui/model/sequence_worker.py` — `SequenceWorker`, the `QThread` engine.
+- `gui/views/image_panel.py`, `focus_curve_panel.py`,
+  `focus_control_panel.py`, `main_window.py` — the three panels and their
+  layout.
+- `gui/controller.py`, `gui/main.py` — wiring and the entry point.
+- `requirements-gui.txt` — `PySide6`, kept separate from `requirements.txt`.
+- `tests/gui/` (`conftest.py` + 8 test files) +
+  `tests/test_optional_qt_boundary.py` — 48 GUI tests, all `ktl`-free,
+  all passing offscreen.
+
+Functionally, the GUI can today: configure and run an archive/replay
+sequence against files on disk; watch the image, stamp-implicit outlier
+box, and FWHM curve update live as it runs; browse prior exposures by a
+focus-value-sorted drop-down without disrupting a running sequence;
+click a source to reanalyze the whole sequence with a new photometry
+target, in place; and Stop cleanly between steps. It cannot yet: talk to
+real hardware (Grid/Automated sequence types and exposure settings are
+present but disabled), take a single exposure, or move the telescope to
+the best focus (the button and its confirmation dialog exist but are
+unconditionally disabled) — all Phase 3.
+
+Two real gaps were found and fixed only because tests were written
+alongside each piece rather than after the fact: the `pytest-qt`/Qt-free
+interaction (sub-phase 2) and the append-vs-replace bug in
+`ImagePanel`/`FocusCurvePanel` that reanalysis would have silently
+duplicated every point through (sub-phase 7). Both are documented above
+in their sub-phases as issues/gaps, not just as fixes.
+
 ### Next
 
-Phase 2, sub-phase 8: end-to-end smoke test + log update (closing out Phase 2).
+Phase 3: live mode (§9) — wiring `SequenceWorker` to real
+`GridFocusSequence`/`AutomatedFocusSequence`, Start/Stop against real
+hardware, the safety-relevant confirmations from §5.4 (enabling "Move to
+Best Focus" for real), and the single-exposure workflow (§5.5).

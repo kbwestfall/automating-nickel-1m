@@ -1,169 +1,262 @@
 """
 Focus-sequence configuration and controls.
 
-See GUI_DESIGN.md §5.4. This view only exposes configuration and emits
-signals for requested actions; it never constructs a `focus.FocusSequence`
-or talks to `gui.model.sequence_worker.SequenceWorker` itself -- that's
-the Controller's job (sub-phase 7).
+See GUI_DESIGN.md §5.4 and claude/GUI_IMPLEMENTATION.md's Phase 4 for the
+tabbed redesign. This view only exposes configuration and emits signals
+for requested actions; it never constructs a `focus.FocusSequence` or
+talks to `gui.model.sequence_worker.SequenceWorker` itself -- that's the
+Controller's job.
 """
 from pathlib import Path
 
 from gui.qt import QtCore, QtWidgets
 
-_NO_MOVE_TOOLTIP = 'Only available after a live (Grid/Automated) sequence finishes'
-_NO_PENDING_TOOLTIP = 'Take a single exposure first, with a sequence already loaded'
+
+def _int_spin(minimum, maximum, value):
+    """A :class:`~PySide6.QtWidgets.QSpinBox` with no increment/decrement buttons."""
+    spin = QtWidgets.QSpinBox()
+    spin.setRange(minimum, maximum)
+    spin.setValue(value)
+    spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+    return spin
+
+
+def _float_spin(minimum, maximum, value):
+    """A :class:`~PySide6.QtWidgets.QDoubleSpinBox` with no increment/decrement buttons."""
+    spin = QtWidgets.QDoubleSpinBox()
+    spin.setRange(minimum, maximum)
+    spin.setValue(value)
+    spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+    return spin
+
+
+def _add_exposure_rows(form):
+    """
+    Add exposure-time/speed/binning rows to ``form``, used identically by
+    the Single, Grid, and Auto tabs (all of which take real exposures).
+
+    Returns
+    -------
+    tuple
+        ``(exptime_spin, speed_combo, binning_combo)``.
+    """
+    exptime_spin = _float_spin(0.1, 600., 5.)
+    speed_combo = QtWidgets.QComboBox()
+    speed_combo.addItems(['Slow', 'Fast'])
+    binning_combo = QtWidgets.QComboBox()
+    binning_combo.addItems(['1,1', '2,2', '4,4'])
+    form.addRow('Exposure time (s):', exptime_spin)
+    form.addRow('Speed:', speed_combo)
+    form.addRow('Binning:', binning_combo)
+    return exptime_spin, speed_combo, binning_combo
 
 
 class FocusControlPanel(QtWidgets.QWidget):
     """
-    Sequence configuration, Start/Stop, live status, and results.
+    Sequence configuration/action tabs, a shared photometry-method
+    selector, and Start/Stop -- plus live status/history on the Log tab
+    and short usage reminders on the Help tab.
 
-    All three sequence types -- Archive/Replay, Grid, and Automated -- are
-    selectable; which configuration fields are enabled follows the
-    selected type (:func:`_on_sequence_type_changed`): Archive needs the
-    data directory/prefix/suffix/obsnum fields and exposure settings are
-    irrelevant (no new exposures are taken); Grid/Automated need exposure
-    settings and have no archive fields to fill in; Grid uses "number of
-    steps," Automated uses "max steps" instead.
+    One tab per action -- Single, Grid, Auto, Replay -- each showing only
+    the fields relevant to it. Photometry method and Start/Stop are
+    shared below the tabs rather than duplicated on each one, since they
+    mean the same thing regardless of which tab is active: "Start" reads
+    whichever tab is currently selected via :func:`get_sequence_type`/
+    :func:`get_sequence_config` (or, for Single, emits
+    :attr:`takeSingleExposureRequested` directly) and "Stop" always
+    targets whatever's currently running.
+
+    The Single tab doubles as "move to best focus": its focus field
+    defaults to the most recent fitted best focus (via
+    :func:`show_best_focus`), so acquiring a single exposure there with
+    the default value *is* moving to best focus; changing the value
+    first tests any other focus instead. There is no separate
+    confirmation step -- reviewing/editing the value before pressing
+    Start is the confirmation.
 
     Attributes
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted when "Start" is clicked; the Controller should read
-        :func:`get_sequence_type` and :func:`get_sequence_config` (and,
-        for a live sequence type, :func:`get_exposure_config`) to build
-        and run the sequence.
+        Emitted when "Start" is clicked while Grid/Auto/Replay is active;
+        the Controller should read :func:`get_sequence_type` and
+        :func:`get_sequence_config` (and :func:`get_exposure_config` for
+        Grid/Auto) to build and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when "Stop" is clicked.
     methodChanged : :class:`~PySide6.QtCore.Signal`
         Emitted with ``'brightest'`` or ``'weighted'`` when the user picks
         one from the method combo box.
-    moveToBestFocusRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted with the target focus value once the user confirms the
-        "Move to best focus" dialog. Only enabled after a sequence
-        finishes with a hardware connection to move (see
-        :func:`show_best_focus`'s ``can_move`` argument) -- archive/replay
-        sequences have no hardware to move.
     takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted with a focus value when "Take Single Exposure" is
-        clicked (§5.5) -- a standalone exposure with no sequence
-        bookkeeping, e.g. to confirm the field or mark a source before a
-        real sequence starts.
-    addToSequenceRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted when "Add to Existing Sequence" is clicked, to commit the
-        pending single exposure (see :func:`show_pending_exposure`) into
-        the currently loaded sequence's data. Starting a new sequence
-        instead (§5.5) needs no separate signal -- it's just
-        ``startRequested`` -- the pending exposure is simply discarded.
+        Emitted with a focus value when "Start" is clicked while Single
+        is active.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
     methodChanged = QtCore.Signal(str)
-    moveToBestFocusRequested = QtCore.Signal(float)
     takeSingleExposureRequested = QtCore.Signal(float)
-    addToSequenceRequested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._best_focus = None
+        self._running = False
+
+        self.single_tab = self._build_single_tab()
+        self.grid_tab = self._build_grid_tab()
+        self.auto_tab = self._build_auto_tab()
+        self.replay_tab = self._build_replay_tab()
+        self.log_tab = self._build_log_tab()
+        self.help_tab = self._build_help_tab()
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.addTab(self.single_tab, 'Single')
+        self.tabs.addTab(self.grid_tab, 'Grid')
+        self.tabs.addTab(self.auto_tab, 'Auto')
+        self.tabs.addTab(self.replay_tab, 'Replay')
+        self.tabs.addTab(self.log_tab, 'Log')
+        self.tabs.addTab(self.help_tab, 'Help')
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+        # Every input widget across the four actionable tabs, locked
+        # uniformly while anything is running (hardware exclusivity:
+        # only one operation at a time, so there's no reason to allow
+        # editing a different tab's configuration meanwhile). The tab
+        # bar itself is deliberately never disabled, so the Log tab
+        # stays reachable while a sequence runs.
+        self._config_widgets = [
+            self.single_focus_spin, self.single_exptime_spin, self.single_speed_combo,
+            self.single_binning_combo,
+            self.grid_start_spin, self.grid_step_spin, self.grid_nstep_spin,
+            self.grid_exptime_spin, self.grid_speed_combo, self.grid_binning_combo,
+            self.auto_start_spin, self.auto_step_spin, self.auto_maxsteps_spin,
+            self.auto_exptime_spin, self.auto_speed_combo, self.auto_binning_combo,
+            self.replay_datadir_edit, self.replay_browse_button, self.replay_prefix_edit,
+            self.replay_suffix_edit, self.replay_obsnum_spin, self.replay_start_spin,
+            self.replay_step_spin, self.replay_nstep_spin,
+        ]
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(self._build_sequence_type_group())
-        layout.addWidget(self._build_sequence_config_group())
-        layout.addWidget(self._build_exposure_settings_group())
+        layout.addWidget(self.tabs)
         layout.addWidget(self._build_method_group())
         layout.addLayout(self._build_start_stop_row())
-        layout.addWidget(self._build_single_exposure_group())
-        layout.addWidget(self._build_status_group())
-        layout.addWidget(self._build_result_group())
-        layout.addStretch(1)
 
-        for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
-            radio.toggled.connect(lambda checked: self._on_sequence_type_changed())
-        self._on_sequence_type_changed()
+        self._update_start_button()
 
     # -- widget construction ----------------------------------------------
 
-    def _build_sequence_type_group(self):
-        group = QtWidgets.QGroupBox('Sequence Type')
-        self.archive_radio = QtWidgets.QRadioButton('Archive / Replay')
-        self.grid_radio = QtWidgets.QRadioButton('Grid')
-        self.automated_radio = QtWidgets.QRadioButton('Automated')
-        self.archive_radio.setChecked(True)
+    def _build_single_tab(self):
+        self.single_focus_spin = _int_spin(165, 500, 340)
+        form = QtWidgets.QFormLayout()
+        form.addRow('Focus value:', self.single_focus_spin)
+        (self.single_exptime_spin, self.single_speed_combo,
+         self.single_binning_combo) = _add_exposure_rows(form)
 
-        self.sequence_type_buttons = QtWidgets.QButtonGroup(self)
-        for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
-            self.sequence_type_buttons.addButton(radio)
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form)
+        return widget
 
-        row = QtWidgets.QHBoxLayout(group)
-        row.addWidget(self.archive_radio)
-        row.addWidget(self.grid_radio)
-        row.addWidget(self.automated_radio)
-        return group
+    def _build_grid_tab(self):
+        self.grid_start_spin = _int_spin(165, 500, 340)
+        self.grid_step_spin = _int_spin(1, 100, 5)
+        self.grid_nstep_spin = _int_spin(3, 100, 5)
 
-    def _build_sequence_config_group(self):
-        group = QtWidgets.QGroupBox('Sequence Configuration')
+        form = QtWidgets.QFormLayout()
+        form.addRow('Start focus:', self.grid_start_spin)
+        form.addRow('Step size:', self.grid_step_spin)
+        form.addRow('Number of steps:', self.grid_nstep_spin)
+        (self.grid_exptime_spin, self.grid_speed_combo,
+         self.grid_binning_combo) = _add_exposure_rows(form)
 
-        self.datadir_edit = QtWidgets.QLineEdit('.')
-        self.browse_button = QtWidgets.QPushButton('Browse…')
-        self.browse_button.clicked.connect(self._on_browse_clicked)
-        self.prefix_edit = QtWidgets.QLineEdit('n')
-        self.suffix_edit = QtWidgets.QLineEdit('.fits')
-        self.obsnum_spin = QtWidgets.QSpinBox()
-        self.obsnum_spin.setRange(0, 999999)
-        self.obsnum_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        # Focus values and step sizes are both expressed in the same
-        # physical telescope-position units (whole units), even though a
-        # best-fit focus (§ move-to-best-focus) can land on a fractional
-        # value -- that gets rounded before it's ever offered here, so
-        # these entry fields are always integers.
-        self.start_spin = QtWidgets.QSpinBox()
-        self.start_spin.setRange(165, 500)
-        self.start_spin.setValue(340)
-        self.start_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.step_spin = QtWidgets.QSpinBox()
-        self.step_spin.setRange(1, 100)
-        self.step_spin.setValue(5)
-        self.step_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.nstep_spin = QtWidgets.QSpinBox()
-        self.nstep_spin.setRange(3, 100)
-        self.nstep_spin.setValue(5)
-        self.nstep_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.maxsteps_spin = QtWidgets.QSpinBox()
-        self.maxsteps_spin.setRange(2, 100)
-        self.maxsteps_spin.setValue(12)
-        self.maxsteps_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form)
+        return widget
 
-        form = QtWidgets.QFormLayout(group)
+    def _build_auto_tab(self):
+        self.auto_start_spin = _int_spin(165, 500, 340)
+        self.auto_step_spin = _int_spin(1, 100, 5)
+        self.auto_maxsteps_spin = _int_spin(2, 100, 12)
+
+        form = QtWidgets.QFormLayout()
+        form.addRow('Start focus:', self.auto_start_spin)
+        form.addRow('Step size:', self.auto_step_spin)
+        form.addRow('Max steps:', self.auto_maxsteps_spin)
+        (self.auto_exptime_spin, self.auto_speed_combo,
+         self.auto_binning_combo) = _add_exposure_rows(form)
+
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form)
+        return widget
+
+    def _build_replay_tab(self):
+        self.replay_datadir_edit = QtWidgets.QLineEdit('.')
+        self.replay_browse_button = QtWidgets.QPushButton('Browse…')
+        self.replay_browse_button.clicked.connect(self._on_browse_clicked)
+        self.replay_prefix_edit = QtWidgets.QLineEdit('n')
+        self.replay_suffix_edit = QtWidgets.QLineEdit('.fits')
+        self.replay_obsnum_spin = _int_spin(0, 999999, 0)
+        self.replay_start_spin = _int_spin(165, 500, 340)
+        self.replay_step_spin = _int_spin(1, 100, 5)
+        self.replay_nstep_spin = _int_spin(3, 100, 5)
+
         datadir_row = QtWidgets.QHBoxLayout()
-        datadir_row.addWidget(self.datadir_edit, 1)
-        datadir_row.addWidget(self.browse_button)
+        datadir_row.addWidget(self.replay_datadir_edit, 1)
+        datadir_row.addWidget(self.replay_browse_button)
+
+        form = QtWidgets.QFormLayout()
         form.addRow('Data directory:', datadir_row)
-        form.addRow('Prefix:', self.prefix_edit)
-        form.addRow('Suffix:', self.suffix_edit)
-        form.addRow('Obsnum:', self.obsnum_spin)
-        form.addRow('Start focus:', self.start_spin)
-        form.addRow('Step size:', self.step_spin)
-        form.addRow('Number of steps (Archive/Grid):', self.nstep_spin)
-        form.addRow('Max steps (Automated):', self.maxsteps_spin)
-        return group
+        form.addRow('Prefix:', self.replay_prefix_edit)
+        form.addRow('Suffix:', self.replay_suffix_edit)
+        form.addRow('Obsnum:', self.replay_obsnum_spin)
+        form.addRow('Start focus:', self.replay_start_spin)
+        form.addRow('Step size:', self.replay_step_spin)
+        form.addRow('Number of steps:', self.replay_nstep_spin)
 
-    def _build_exposure_settings_group(self):
-        group = QtWidgets.QGroupBox('Exposure Settings')
-        self.exptime_spin = QtWidgets.QDoubleSpinBox()
-        self.exptime_spin.setRange(0.1, 600.)
-        self.exptime_spin.setValue(5.)
-        self.exptime_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.speed_combo = QtWidgets.QComboBox()
-        self.speed_combo.addItems(['Slow', 'Fast'])
-        self.binning_combo = QtWidgets.QComboBox()
-        self.binning_combo.addItems(['1,1', '2,2', '4,4'])
+        widget = QtWidgets.QWidget()
+        widget.setLayout(form)
+        return widget
 
-        form = QtWidgets.QFormLayout(group)
-        form.addRow('Exposure time (s):', self.exptime_spin)
-        form.addRow('Speed:', self.speed_combo)
-        form.addRow('Binning:', self.binning_combo)
-        return group
+    def _build_log_tab(self):
+        self.status_label = QtWidgets.QLabel('')
+        self.step_label = QtWidgets.QLabel('Step: —')
+        self.log_widget = QtWidgets.QPlainTextEdit()
+        self.log_widget.setReadOnly(True)
+        self.log_widget.setMaximumBlockCount(500)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.step_label)
+        layout.addWidget(self.log_widget)
+
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _build_help_tab(self):
+        text = (
+            '<b>Single</b> — take one exposure at the given focus. '
+            'Defaults to the most recent fitted best focus, so acquiring '
+            'it as-is moves to best focus; change the value first to '
+            'test any other focus.<br><br>'
+            '<b>Grid</b> — step through an evenly spaced focus grid.<br>'
+            '<b>Auto</b> — adaptively search for the best focus.<br>'
+            '<b>Replay</b> — reprocess an existing set of exposures from disk.<br>'
+            '<b>Log</b> — live status and history.<br><br>'
+            "<b>Method</b> — choose Brightest or Weighted below, or hover "
+            "over a source in the image and press 'm' to select it "
+            'directly.<br><br>'
+            '<b>Start / Stop</b> — run or stop the action configured in '
+            'the current tab.'
+        )
+        label = QtWidgets.QLabel(text)
+        label.setWordWrap(True)
+        label.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(label)
+        layout.addStretch(1)
+
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        return widget
 
     def _build_method_group(self):
         group = QtWidgets.QGroupBox('Photometry Method')
@@ -173,16 +266,16 @@ class FocusControlPanel(QtWidgets.QWidget):
             lambda text: self.methodChanged.emit(text.lower()))
         self.method_label = QtWidgets.QLabel('Current method: Brightest')
 
-        col = QtWidgets.QVBoxLayout(group)
-        col.addWidget(self.method_combo)
-        col.addWidget(self.method_label)
+        row = QtWidgets.QHBoxLayout(group)
+        row.addWidget(self.method_combo)
+        row.addWidget(self.method_label, 1)
         return group
 
     def _build_start_stop_row(self):
         self.start_button = QtWidgets.QPushButton('Start')
         self.stop_button = QtWidgets.QPushButton('Stop')
         self.stop_button.setEnabled(False)
-        self.start_button.clicked.connect(self.startRequested.emit)
+        self.start_button.clicked.connect(self._on_start_clicked)
         self.stop_button.clicked.connect(self.stopRequested.emit)
 
         row = QtWidgets.QHBoxLayout()
@@ -190,104 +283,78 @@ class FocusControlPanel(QtWidgets.QWidget):
         row.addWidget(self.stop_button)
         return row
 
-    def _build_single_exposure_group(self):
-        group = QtWidgets.QGroupBox('Single Exposure')
-        self.single_focus_spin = QtWidgets.QSpinBox()
-        self.single_focus_spin.setRange(165, 500)
-        self.single_focus_spin.setValue(340)
-        self.single_focus_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.take_single_exposure_button = QtWidgets.QPushButton('Take Single Exposure')
-        self.take_single_exposure_button.clicked.connect(
-            lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
-
-        self.pending_label = QtWidgets.QLabel('No pending exposure')
-        self.add_to_sequence_button = QtWidgets.QPushButton('Add to Existing Sequence')
-        self.add_to_sequence_button.setEnabled(False)
-        self.add_to_sequence_button.setToolTip(_NO_PENDING_TOOLTIP)
-        self.add_to_sequence_button.clicked.connect(self.addToSequenceRequested.emit)
-
-        form = QtWidgets.QFormLayout()
-        form.addRow('Focus value:', self.single_focus_spin)
-        col = QtWidgets.QVBoxLayout(group)
-        col.addLayout(form)
-        col.addWidget(self.take_single_exposure_button)
-        col.addWidget(self.pending_label)
-        col.addWidget(self.add_to_sequence_button)
-        return group
-
-    def _build_status_group(self):
-        group = QtWidgets.QGroupBox('Status')
-        self.status_label = QtWidgets.QLabel('')
-        self.step_label = QtWidgets.QLabel('Step: —')
-        self.log_widget = QtWidgets.QPlainTextEdit()
-        self.log_widget.setReadOnly(True)
-        self.log_widget.setMaximumBlockCount(500)
-
-        col = QtWidgets.QVBoxLayout(group)
-        col.addWidget(self.status_label)
-        col.addWidget(self.step_label)
-        col.addWidget(self.log_widget)
-        return group
-
-    def _build_result_group(self):
-        group = QtWidgets.QGroupBox('Result')
-        self.result_label = QtWidgets.QLabel('Best focus: —')
-        self.move_to_best_focus_button = QtWidgets.QPushButton('Move to Best Focus')
-        self.move_to_best_focus_button.setEnabled(False)
-        self.move_to_best_focus_button.setToolTip(_NO_MOVE_TOOLTIP)
-        self.move_to_best_focus_button.clicked.connect(self._on_move_to_best_focus_clicked)
-
-        col = QtWidgets.QVBoxLayout(group)
-        col.addWidget(self.result_label)
-        col.addWidget(self.move_to_best_focus_button)
-        return group
-
     # -- public API used by the Controller ---------------------------------
+
+    def get_sequence_type(self):
+        """
+        The sequence type for the currently active tab, as ``'grid'``,
+        ``'automated'``, or ``'archive'`` -- or ``None`` if Single, Log,
+        or Help is active (in which case "Start" is disabled anyway).
+        """
+        tab = self.tabs.currentWidget()
+        if tab is self.grid_tab:
+            return 'grid'
+        if tab is self.auto_tab:
+            return 'automated'
+        if tab is self.replay_tab:
+            return 'archive'
+        return None
 
     def get_sequence_config(self):
         """
-        Return the current sequence configuration as a :obj:`dict`. Not
-        every key is relevant to every sequence type -- the Controller
-        picks out what it needs based on :func:`get_sequence_type`.
-
-        Keys: ``datadir`` (:class:`pathlib.Path`), ``prefix``, ``suffix``
-        (:obj:`str`, Archive only), ``obsnum`` (:obj:`int`, Archive
-        only), ``start``, ``step`` (:obj:`int`, focus values, all
-        types), ``nstep`` (:obj:`int`, Archive/Grid), and ``maxsteps``
-        (:obj:`int`, Automated only) -- matching `focus.py`'s own CLI
-        arguments.
+        Return the currently active tab's configuration as a
+        :obj:`dict`. Only includes keys relevant to that tab -- e.g. a
+        Grid config has no ``datadir``, an Auto config has ``maxsteps``
+        instead of ``nstep`` -- matching `focus.py`'s own CLI arguments.
+        Empty for Single/Log/Help.
         """
-        return {
-            'datadir': Path(self.datadir_edit.text()),
-            'prefix': self.prefix_edit.text(),
-            'suffix': self.suffix_edit.text(),
-            'obsnum': self.obsnum_spin.value(),
-            'start': self.start_spin.value(),
-            'step': self.step_spin.value(),
-            'nstep': self.nstep_spin.value(),
-            'maxsteps': self.maxsteps_spin.value(),
-        }
-
-    def get_sequence_type(self):
-        """The selected sequence type, as ``'archive'``, ``'grid'``, or ``'automated'``."""
-        if self.grid_radio.isChecked():
-            return 'grid'
-        if self.automated_radio.isChecked():
-            return 'automated'
-        return 'archive'
+        tab = self.tabs.currentWidget()
+        if tab is self.grid_tab:
+            return {
+                'start': self.grid_start_spin.value(),
+                'step': self.grid_step_spin.value(),
+                'nstep': self.grid_nstep_spin.value(),
+            }
+        if tab is self.auto_tab:
+            return {
+                'start': self.auto_start_spin.value(),
+                'step': self.auto_step_spin.value(),
+                'maxsteps': self.auto_maxsteps_spin.value(),
+            }
+        if tab is self.replay_tab:
+            return {
+                'datadir': Path(self.replay_datadir_edit.text()),
+                'prefix': self.replay_prefix_edit.text(),
+                'suffix': self.replay_suffix_edit.text(),
+                'obsnum': self.replay_obsnum_spin.value(),
+                'start': self.replay_start_spin.value(),
+                'step': self.replay_step_spin.value(),
+                'nstep': self.replay_nstep_spin.value(),
+            }
+        return {}
 
     def get_exposure_config(self):
         """
-        Return the current exposure settings as a :obj:`dict` with keys
-        ``exptime`` (:obj:`float`), ``speed``, ``binning`` (:obj:`str`) --
-        passed to `ExposureConfig.configure` before a live sequence
-        steps. Not applicable in archive/replay mode.
+        Return the currently active tab's exposure settings as a
+        :obj:`dict` with keys ``exptime`` (:obj:`float`), ``speed``,
+        ``binning`` (:obj:`str`) -- passed to `ExposureConfig.configure`
+        before a live exposure. Empty for Replay/Log/Help, which take no
+        new exposures.
         """
-        return {
-            'exptime': self.exptime_spin.value(),
-            'speed': self.speed_combo.currentText(),
-            'binning': self.binning_combo.currentText(),
-        }
+        tab = self.tabs.currentWidget()
+        if tab is self.single_tab:
+            exptime, speed, binning = (self.single_exptime_spin, self.single_speed_combo,
+                                        self.single_binning_combo)
+        elif tab is self.grid_tab:
+            exptime, speed, binning = (self.grid_exptime_spin, self.grid_speed_combo,
+                                        self.grid_binning_combo)
+        elif tab is self.auto_tab:
+            exptime, speed, binning = (self.auto_exptime_spin, self.auto_speed_combo,
+                                        self.auto_binning_combo)
+        else:
+            return {}
+        return {'exptime': exptime.value(), 'speed': speed.currentText(),
+                'binning': binning.currentText()}
 
     def get_selected_method(self):
         """The method combo's current selection, as ``'brightest'`` or ``'weighted'``."""
@@ -306,32 +373,20 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.method_label.setText(f'Current method: {text}')
 
     def set_running(self, running):
-        """Toggle widget states for whether a sequence is currently running."""
-        self.start_button.setEnabled(not running)
+        """Toggle widget states for whether an action is currently running."""
+        self._running = running
         self.stop_button.setEnabled(running)
-        for radio in (self.archive_radio, self.grid_radio, self.automated_radio):
-            radio.setEnabled(not running)
-        for widget in (self.start_spin, self.step_spin, self.method_combo,
-                       self.single_focus_spin, self.take_single_exposure_button):
+        for widget in self._config_widgets:
             widget.setEnabled(not running)
+        self.method_combo.setEnabled(not running)
 
         if running:
-            # Force every type-specific field off; which ones matter
-            # depends on the sequence type, and none of them should be
-            # editable mid-run regardless.
-            for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
-                           self.suffix_edit, self.obsnum_spin, self.nstep_spin,
-                           self.maxsteps_spin, self.exptime_spin, self.speed_combo,
-                           self.binning_combo, self.move_to_best_focus_button,
-                           self.add_to_sequence_button):
-                widget.setEnabled(False)
+            self.start_button.setEnabled(False)
         else:
-            # Restore the correct per-type enabled state, not just "all on".
-            self._on_sequence_type_changed()
+            self._update_start_button()
             # Only clear a stale "Stopping..." message -- not a
             # confirmation/failure the worker's finishing signal may have
-            # just set moments before this (e.g. show_confirmation() from
-            # a completed "Move to Best Focus").
+            # just set moments before this.
             if self.status_label.text().startswith('Stopping'):
                 self.status_label.setText('')
 
@@ -351,23 +406,21 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.step_label.setText(text)
         self.log_widget.appendPlainText(text)
 
-    def show_best_focus(self, best_focus, best_fwhm, can_move=False):
+    def show_best_focus(self, best_focus, best_fwhm):
         """
-        Display a completed sequence's fitted result. ``can_move`` enables
-        "Move to Best Focus" -- the Controller sets it based on whether
-        the sequence that produced this result has a hardware connection
-        to move (archive/replay sequences never do).
+        Report a completed sequence's fitted result, and set it as the
+        Single tab's default focus value -- rounded, since a focus value
+        is a whole-unit telescope position even though the fit itself can
+        land on a fractional one.
         """
-        self._best_focus = best_focus
-        self.result_label.setText(f'Best focus: {best_focus:.1f}   Expected FWHM: {best_fwhm:.2f}')
-        self.log_widget.appendPlainText(
-            f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
-        self.move_to_best_focus_button.setEnabled(can_move)
-        self.move_to_best_focus_button.setToolTip('' if can_move else _NO_MOVE_TOOLTIP)
+        text = f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}'
+        self.status_label.setText(text)
+        self.log_widget.appendPlainText(text)
+        self.single_focus_spin.setValue(round(best_focus))
 
-    def show_confirmation(self, result):
-        """Report the confirmation exposure taken by "Move to Best Focus"."""
-        text = f'Moved to focus {result.focus_value:.0f}: measured FWHM {result.fwhm:.2f}'
+    def show_single_exposure_result(self, result):
+        """Report one exposure taken from the Single tab."""
+        text = f'Took exposure at focus {result.focus_value:.0f}: measured FWHM {result.fwhm:.2f}'
         self.status_label.setText(text)
         self.log_widget.appendPlainText(text)
 
@@ -376,73 +429,32 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.status_label.setText(message)
         self.log_widget.appendPlainText(f'ERROR: {message}')
 
-    def show_pending_exposure(self, result, can_add):
-        """
-        Report a standalone single exposure (§5.5) awaiting a decision --
-        "Add to Existing Sequence" or discard by starting a new one.
-        ``can_add`` reflects whether a sequence is actually loaded to add
-        it to.
-        """
-        self.pending_label.setText(
-            f'Pending: Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}')
-        self.log_widget.appendPlainText(
-            f'Took single exposure at focus {result.focus_value:.0f}: FWHM {result.fwhm:.2f}')
-        self.add_to_sequence_button.setEnabled(can_add)
-        self.add_to_sequence_button.setToolTip('' if can_add else _NO_PENDING_TOOLTIP)
-
-    def clear_pending_exposure(self):
-        """Clear the pending single-exposure display, e.g. once committed or discarded."""
-        self.pending_label.setText('No pending exposure')
-        self.add_to_sequence_button.setEnabled(False)
-        self.add_to_sequence_button.setToolTip(_NO_PENDING_TOOLTIP)
-
     def reset(self):
-        """Clear live status, log, and result display for a new run."""
-        self._best_focus = None
+        """Clear live status and log for a new run."""
         self.step_label.setText('Step: —')
-        self.result_label.setText('Best focus: —')
         self.status_label.setText('')
         self.log_widget.clear()
-        self.move_to_best_focus_button.setEnabled(False)
-        self.move_to_best_focus_button.setToolTip(_NO_MOVE_TOOLTIP)
-        self.clear_pending_exposure()
 
     # -- internals ----------------------------------------------------------
 
-    def _on_sequence_type_changed(self):
-        """Enable/disable configuration fields to match the selected sequence type."""
-        is_archive = self.archive_radio.isChecked()
-        is_automated = self.automated_radio.isChecked()
+    def _on_tab_changed(self, _index):
+        if self._running:
+            return  # set_running() alone governs Start/Stop while running
+        self._update_start_button()
 
-        for widget in (self.datadir_edit, self.browse_button, self.prefix_edit,
-                       self.suffix_edit, self.obsnum_spin):
-            widget.setEnabled(is_archive)
-        self.nstep_spin.setEnabled(not is_automated)
-        self.maxsteps_spin.setEnabled(is_automated)
+    def _update_start_button(self):
+        tab = self.tabs.currentWidget()
+        self.start_button.setEnabled(
+            tab in (self.single_tab, self.grid_tab, self.auto_tab, self.replay_tab))
 
-        is_live = not is_archive
-        for widget in (self.exptime_spin, self.speed_combo, self.binning_combo):
-            widget.setEnabled(is_live)
+    def _on_start_clicked(self):
+        if self.tabs.currentWidget() is self.single_tab:
+            self.takeSingleExposureRequested.emit(self.single_focus_spin.value())
+        else:
+            self.startRequested.emit()
 
     def _on_browse_clicked(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(
-            self, 'Select archive directory', self.datadir_edit.text())
+            self, 'Select archive directory', self.replay_datadir_edit.text())
         if directory:
-            self.datadir_edit.setText(directory)
-
-    def _on_move_to_best_focus_clicked(self):
-        if self._best_focus is None:
-            return
-        # The fit can land on a fractional focus value, but a focus
-        # target is a whole-unit telescope position -- round once here,
-        # so the confirmation dialog shows the observer exactly the
-        # value that will actually be commanded.
-        target = round(self._best_focus)
-        reply = QtWidgets.QMessageBox.question(
-            self, 'Move to best focus',
-            f'Move the telescope focus to {target}?',
-            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-            QtWidgets.QMessageBox.StandardButton.No,
-        )
-        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.moveToBestFocusRequested.emit(target)
+            self.replay_datadir_edit.setText(directory)

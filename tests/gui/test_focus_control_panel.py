@@ -11,82 +11,93 @@ def _step_result(focus_sweep, index=0):
     return list(seq.step(method='brightest'))[index]
 
 
+def test_tabs_exist_in_the_requested_order(qapp):
+    panel = FocusControlPanel()
+    titles = [panel.tabs.tabText(i) for i in range(panel.tabs.count())]
+    assert titles == ['Single', 'Grid', 'Auto', 'Replay', 'Log', 'Help']
+
+
 def test_number_entry_boxes_have_no_increment_buttons(qapp):
     panel = FocusControlPanel()
-    spin_boxes = (panel.obsnum_spin, panel.start_spin, panel.step_spin, panel.nstep_spin,
-                  panel.maxsteps_spin, panel.exptime_spin, panel.single_focus_spin)
+    spin_boxes = (
+        panel.single_focus_spin, panel.single_exptime_spin,
+        panel.grid_start_spin, panel.grid_step_spin, panel.grid_nstep_spin,
+        panel.grid_exptime_spin,
+        panel.auto_start_spin, panel.auto_step_spin, panel.auto_maxsteps_spin,
+        panel.auto_exptime_spin,
+        panel.replay_obsnum_spin, panel.replay_start_spin, panel.replay_step_spin,
+        panel.replay_nstep_spin,
+    )
     for spin_box in spin_boxes:
         assert spin_box.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons, \
-            f'{spin_box.objectName() or spin_box} should not show increment/decrement buttons'
+            f'{spin_box} should not show increment/decrement buttons'
 
 
 def test_focus_value_entries_are_integers(qapp):
-    # Focus values and step sizes are whole-unit telescope positions,
-    # even though a best-fit focus can land on a fractional value (that
-    # gets rounded before it's ever offered as a target -- see the
-    # move-to-best-focus tests below).
+    # A focus value/step size is a whole-unit telescope position, even
+    # though a best-fit focus can land on a fractional value (that gets
+    # rounded before it's ever offered as the Single tab's default --
+    # see the show_best_focus tests below).
     panel = FocusControlPanel()
-    assert isinstance(panel.start_spin, QtWidgets.QSpinBox), 'start focus should be an integer entry'
-    assert isinstance(panel.step_spin, QtWidgets.QSpinBox), 'step size should be an integer entry'
-    assert isinstance(panel.single_focus_spin, QtWidgets.QSpinBox), \
-        'single-exposure focus should be an integer entry'
-
-
-def test_all_sequence_types_are_selectable(qapp):
-    panel = FocusControlPanel()
-    assert panel.archive_radio.isChecked(), 'Archive should be the default sequence type'
-    for radio in (panel.archive_radio, panel.grid_radio, panel.automated_radio):
-        assert radio.isEnabled(), 'all three sequence types should be selectable'
+    integer_entries = (
+        panel.single_focus_spin,
+        panel.grid_start_spin, panel.grid_step_spin,
+        panel.auto_start_spin, panel.auto_step_spin,
+        panel.replay_start_spin, panel.replay_step_spin,
+    )
+    for spin_box in integer_entries:
+        assert isinstance(spin_box, QtWidgets.QSpinBox), f'{spin_box} should be an integer entry'
 
 
 def test_get_sequence_type(qapp):
     panel = FocusControlPanel()
-    assert panel.get_sequence_type() == 'archive'
 
-    panel.grid_radio.setChecked(True)
+    panel.tabs.setCurrentWidget(panel.single_tab)
+    assert panel.get_sequence_type() is None
+    panel.tabs.setCurrentWidget(panel.grid_tab)
     assert panel.get_sequence_type() == 'grid'
-
-    panel.automated_radio.setChecked(True)
+    panel.tabs.setCurrentWidget(panel.auto_tab)
     assert panel.get_sequence_type() == 'automated'
+    panel.tabs.setCurrentWidget(panel.replay_tab)
+    assert panel.get_sequence_type() == 'archive'
+    panel.tabs.setCurrentWidget(panel.log_tab)
+    assert panel.get_sequence_type() is None
+    panel.tabs.setCurrentWidget(panel.help_tab)
+    assert panel.get_sequence_type() is None
 
 
-def test_archive_fields_enabled_only_for_archive(qapp):
+def test_get_sequence_config_for_grid(qapp):
     panel = FocusControlPanel()
-    archive_fields = (panel.datadir_edit, panel.browse_button, panel.prefix_edit,
-                      panel.suffix_edit, panel.obsnum_spin)
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+    panel.grid_start_spin.setValue(300)
+    panel.grid_step_spin.setValue(2)
+    panel.grid_nstep_spin.setValue(7)
 
-    assert all(w.isEnabled() for w in archive_fields), 'Archive fields start enabled (default type)'
-    assert panel.nstep_spin.isEnabled(), 'Archive uses number-of-steps'
-    assert not panel.maxsteps_spin.isEnabled(), 'Archive does not use max-steps'
-    assert not panel.exptime_spin.isEnabled(), 'exposure settings are not applicable in archive mode'
-
-    panel.grid_radio.setChecked(True)
-    assert not any(w.isEnabled() for w in archive_fields), 'Grid has no archive fields to fill in'
-    assert panel.nstep_spin.isEnabled(), 'Grid uses number-of-steps'
-    assert not panel.maxsteps_spin.isEnabled(), 'Grid does not use max-steps'
-    assert panel.exptime_spin.isEnabled(), 'Grid takes real exposures, so settings apply'
-
-    panel.automated_radio.setChecked(True)
-    assert not any(w.isEnabled() for w in archive_fields), 'Automated has no archive fields either'
-    assert not panel.nstep_spin.isEnabled(), 'Automated does not use number-of-steps'
-    assert panel.maxsteps_spin.isEnabled(), 'Automated uses max-steps instead'
-    assert panel.exptime_spin.isEnabled(), 'Automated takes real exposures, so settings apply'
+    assert panel.get_sequence_config() == {'start': 300, 'step': 2, 'nstep': 7}
 
 
-def test_get_sequence_config_reflects_form_fields(qapp):
+def test_get_sequence_config_for_auto(qapp):
     panel = FocusControlPanel()
-    panel.datadir_edit.setText('/tmp/some/dir')
-    panel.prefix_edit.setText('x')
-    panel.suffix_edit.setText('.fit')
-    panel.obsnum_spin.setValue(1234)
-    panel.start_spin.setValue(300)
-    panel.step_spin.setValue(2)
-    panel.nstep_spin.setValue(7)
-    panel.maxsteps_spin.setValue(9)
+    panel.tabs.setCurrentWidget(panel.auto_tab)
+    panel.auto_start_spin.setValue(310)
+    panel.auto_step_spin.setValue(3)
+    panel.auto_maxsteps_spin.setValue(9)
 
-    config = panel.get_sequence_config()
+    assert panel.get_sequence_config() == {'start': 310, 'step': 3, 'maxsteps': 9}
 
-    assert config == {
+
+def test_get_sequence_config_for_replay(qapp):
+    panel = FocusControlPanel()
+    panel.tabs.setCurrentWidget(panel.replay_tab)
+    panel.replay_datadir_edit.setText('/tmp/some/dir')
+    panel.replay_prefix_edit.setText('x')
+    panel.replay_suffix_edit.setText('.fit')
+    panel.replay_obsnum_spin.setValue(1234)
+    panel.replay_start_spin.setValue(300)
+    panel.replay_step_spin.setValue(2)
+    panel.replay_nstep_spin.setValue(7)
+
+    assert panel.get_sequence_config() == {
         'datadir': Path('/tmp/some/dir'),
         'prefix': 'x',
         'suffix': '.fit',
@@ -94,17 +105,93 @@ def test_get_sequence_config_reflects_form_fields(qapp):
         'start': 300,
         'step': 2,
         'nstep': 7,
-        'maxsteps': 9,
-    }, 'get_sequence_config() should reflect exactly what the form fields hold'
+    }
 
 
-def test_get_exposure_config_reflects_form_fields(qapp):
+def test_get_sequence_config_is_empty_outside_grid_auto_replay(qapp):
     panel = FocusControlPanel()
-    panel.exptime_spin.setValue(12.5)
-    panel.speed_combo.setCurrentText('Fast')
-    panel.binning_combo.setCurrentText('2,2')
+    for tab in (panel.single_tab, panel.log_tab, panel.help_tab):
+        panel.tabs.setCurrentWidget(tab)
+        assert panel.get_sequence_config() == {}
 
-    assert panel.get_exposure_config() == {'exptime': 12.5, 'speed': 'Fast', 'binning': '2,2'}
+
+def test_get_exposure_config_for_single_grid_auto(qapp):
+    panel = FocusControlPanel()
+
+    panel.tabs.setCurrentWidget(panel.single_tab)
+    panel.single_exptime_spin.setValue(1.5)
+    panel.single_speed_combo.setCurrentText('Fast')
+    panel.single_binning_combo.setCurrentText('2,2')
+    assert panel.get_exposure_config() == {'exptime': 1.5, 'speed': 'Fast', 'binning': '2,2'}
+
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+    panel.grid_exptime_spin.setValue(2.5)
+    panel.grid_speed_combo.setCurrentText('Slow')
+    panel.grid_binning_combo.setCurrentText('1,1')
+    assert panel.get_exposure_config() == {'exptime': 2.5, 'speed': 'Slow', 'binning': '1,1'}
+
+    panel.tabs.setCurrentWidget(panel.auto_tab)
+    panel.auto_exptime_spin.setValue(3.5)
+    panel.auto_speed_combo.setCurrentText('Fast')
+    panel.auto_binning_combo.setCurrentText('4,4')
+    assert panel.get_exposure_config() == {'exptime': 3.5, 'speed': 'Fast', 'binning': '4,4'}
+
+
+def test_get_exposure_config_is_empty_for_replay_log_help(qapp):
+    panel = FocusControlPanel()
+    for tab in (panel.replay_tab, panel.log_tab, panel.help_tab):
+        panel.tabs.setCurrentWidget(tab)
+        assert panel.get_exposure_config() == {}
+
+
+def test_start_button_enabled_only_on_actionable_tabs(qapp):
+    panel = FocusControlPanel()
+    for tab in (panel.single_tab, panel.grid_tab, panel.auto_tab, panel.replay_tab):
+        panel.tabs.setCurrentWidget(tab)
+        assert panel.start_button.isEnabled(), f'{tab} should allow Start'
+    for tab in (panel.log_tab, panel.help_tab):
+        panel.tabs.setCurrentWidget(tab)
+        assert not panel.start_button.isEnabled(), f'{tab} has nothing to start'
+
+
+def test_start_click_on_single_tab_emits_take_single_exposure_requested(qapp):
+    panel = FocusControlPanel()
+    panel.tabs.setCurrentWidget(panel.single_tab)
+    panel.single_focus_spin.setValue(356)
+    starts, singles = [], []
+    panel.startRequested.connect(lambda: starts.append(True))
+    panel.takeSingleExposureRequested.connect(singles.append)
+
+    panel.start_button.click()
+
+    assert starts == [], 'Single tab should not emit startRequested'
+    assert singles == [356], 'Single tab should emit the configured focus value'
+
+
+def test_start_click_on_grid_tab_emits_start_requested(qapp):
+    panel = FocusControlPanel()
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+    starts, singles = [], []
+    panel.startRequested.connect(lambda: starts.append(True))
+    panel.takeSingleExposureRequested.connect(singles.append)
+
+    panel.start_button.click()
+
+    assert starts == [True], 'Grid tab should emit startRequested'
+    assert singles == [], 'Grid tab should not emit takeSingleExposureRequested'
+
+
+def test_stop_signal(qapp):
+    panel = FocusControlPanel()
+    stops = []
+    panel.stopRequested.connect(lambda: stops.append(True))
+
+    # Stop starts disabled (nothing is running yet); a disabled button
+    # doesn't emit clicked() at all, so put the panel in a running state
+    # first, matching how the Controller will actually use it.
+    panel.set_running(True)
+    panel.stop_button.click()
+    assert stops == [True], 'clicking Stop should emit stopRequested'
 
 
 def test_method_combo_and_signal(qapp):
@@ -129,58 +216,50 @@ def test_set_method_updates_display_for_string_and_coordinates(qapp):
     assert panel.method_label.text() == 'Current method: Selected source (123.4, 567.8)'
 
 
-def test_start_and_stop_signals(qapp):
+def test_set_running_locks_config_widgets_and_method(qapp):
     panel = FocusControlPanel()
-    starts = []
-    stops = []
-    panel.startRequested.connect(lambda: starts.append(True))
-    panel.stopRequested.connect(lambda: stops.append(True))
-
-    panel.start_button.click()
-    assert starts == [True], 'clicking Start should emit startRequested'
-
-    # Stop starts disabled (nothing is running yet); a disabled button
-    # doesn't emit clicked() at all, so put the panel in a running state
-    # first, matching how the Controller will actually use it.
-    panel.set_running(True)
-    panel.stop_button.click()
-    assert stops == [True], 'clicking Stop should emit stopRequested'
-
-
-def test_set_running_toggles_widget_states(qapp):
-    panel = FocusControlPanel()
-    panel.show_best_focus(350., 3.0, can_move=True)
+    panel.tabs.setCurrentWidget(panel.grid_tab)
 
     panel.set_running(True)
     assert not panel.start_button.isEnabled(), 'Start should be disabled while running'
     assert panel.stop_button.isEnabled(), 'Stop should be enabled while running'
-    assert not panel.datadir_edit.isEnabled(), 'config fields should be locked while running'
-    assert not panel.move_to_best_focus_button.isEnabled(), \
-        'move-to-best-focus should be locked out while anything else is running'
+    assert not panel.grid_start_spin.isEnabled(), 'config fields should be locked while running'
+    assert not panel.method_combo.isEnabled(), 'method should be locked while running'
 
     panel.set_running(False)
-    assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped'
+    assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped (Grid is active)'
     assert not panel.stop_button.isEnabled(), 'Stop should be disabled once stopped'
-    assert panel.datadir_edit.isEnabled(), 'config fields should unlock once stopped'
-    assert not panel.move_to_best_focus_button.isEnabled(), \
-        'move-to-best-focus should stay disabled until the next result explicitly re-enables it'
+    assert panel.grid_start_spin.isEnabled(), 'config fields should unlock once stopped'
+    assert panel.method_combo.isEnabled(), 'method should unlock once stopped'
 
 
-def test_set_running_restores_the_correct_per_type_state(qapp):
-    # set_running(False) must not just re-enable everything -- it should
-    # restore whatever's correct for the currently-selected sequence
-    # type, e.g. Automated has no archive fields and no nstep, even after
-    # a run finishes.
+def test_set_running_restores_start_button_per_current_tab(qapp):
     panel = FocusControlPanel()
-    panel.automated_radio.setChecked(True)
+    panel.tabs.setCurrentWidget(panel.log_tab)
 
     panel.set_running(True)
     panel.set_running(False)
 
-    assert not panel.datadir_edit.isEnabled(), 'Automated has no archive fields to restore'
-    assert not panel.nstep_spin.isEnabled(), 'Automated does not use number-of-steps'
-    assert panel.maxsteps_spin.isEnabled(), 'Automated should have max-steps re-enabled'
-    assert panel.exptime_spin.isEnabled(), 'Automated should have exposure settings re-enabled'
+    assert not panel.start_button.isEnabled(), \
+        'Start should reflect the Log tab (nothing to start), not just re-enable blindly'
+
+
+def test_tab_bar_stays_enabled_while_running(qapp):
+    # The Log tab must stay reachable while a sequence runs.
+    panel = FocusControlPanel()
+    panel.set_running(True)
+    assert panel.tabs.isEnabled(), 'the tab bar itself should never be disabled'
+
+
+def test_switching_tabs_while_running_does_not_enable_start(qapp):
+    panel = FocusControlPanel()
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+    panel.set_running(True)
+
+    panel.tabs.setCurrentWidget(panel.single_tab)
+
+    assert not panel.start_button.isEnabled(), \
+        'Start should stay disabled while running, regardless of tab switches'
 
 
 def test_set_stopping_disables_stop_and_shows_status(qapp):
@@ -204,31 +283,29 @@ def test_update_step_updates_label_and_log(qapp, focus_sweep):
     assert panel.log_widget.toPlainText().strip(), 'the step should also be appended to the log'
 
 
-def test_show_best_focus_updates_result_and_gates_move_button(qapp):
+def test_show_best_focus_updates_log_and_single_tab_default(qapp):
     panel = FocusControlPanel()
 
-    panel.show_best_focus(356.1, 3.3, can_move=False)
-    assert '356.1' in panel.result_label.text(), 'result label should show the best focus'
-    assert '3.3' in panel.result_label.text(), 'result label should show the expected FWHM'
-    assert not panel.move_to_best_focus_button.isEnabled(), \
-        'move-to-best-focus should stay disabled when the sequence has no hardware to move'
+    panel.show_best_focus(356.6, 3.3)
 
-    panel.show_best_focus(356.1, 3.3, can_move=True)
-    assert panel.move_to_best_focus_button.isEnabled(), \
-        'move-to-best-focus should enable once a live sequence finishes'
+    assert '356.6' in panel.status_label.text(), 'status should show the best focus'
+    assert '3.3' in panel.status_label.text(), 'status should show the expected FWHM'
+    assert 'ERROR' not in panel.log_widget.toPlainText()
+    assert panel.single_focus_spin.value() == 357, \
+        'the Single tab default should be the best focus, rounded to the nearest integer'
 
 
-def test_show_confirmation_updates_status_and_log(qapp, focus_sweep):
+def test_show_single_exposure_result_updates_status_and_log(qapp, focus_sweep):
     result = _step_result(focus_sweep)
     panel = FocusControlPanel()
 
-    panel.show_confirmation(result)
+    panel.show_single_exposure_result(result)
 
     assert f'{result.focus_value:.0f}' in panel.status_label.text(), \
-        'status should report the confirmed focus value'
+        'status should report the exposure focus value'
     assert f'{result.fwhm:.2f}' in panel.status_label.text(), \
         'status should report the measured FWHM'
-    assert panel.log_widget.toPlainText().strip(), 'the confirmation should also be logged'
+    assert panel.log_widget.toPlainText().strip(), 'the result should also be logged'
 
 
 def test_show_failure_updates_status_and_log(qapp):
@@ -239,157 +316,27 @@ def test_show_failure_updates_status_and_log(qapp):
     assert 'ERROR' in panel.log_widget.toPlainText(), 'failures should be logged too'
 
 
-def test_reset_clears_status_log_and_result(qapp, focus_sweep):
+def test_reset_clears_status_and_log(qapp, focus_sweep):
     result = _step_result(focus_sweep)
     panel = FocusControlPanel()
     panel.update_step(result)
-    panel.show_best_focus(350., 3.0, can_move=True)
     panel.show_failure('oops')
 
     panel.reset()
 
     assert panel.step_label.text() == 'Step: —'
-    assert panel.result_label.text() == 'Best focus: —'
     assert panel.status_label.text() == ''
     assert panel.log_widget.toPlainText() == ''
-    assert not panel.move_to_best_focus_button.isEnabled(), \
-        'reset should disable move-to-best-focus until the next result arrives'
 
 
-def test_move_to_best_focus_confirmation_flow(qapp, monkeypatch):
+def test_reset_does_not_touch_the_single_tab_default(qapp):
     panel = FocusControlPanel()
-    received = []
-    panel.moveToBestFocusRequested.connect(received.append)
-
-    # No result yet: nothing should happen, regardless of the dialog.
-    panel._on_move_to_best_focus_clicked()
-    assert received == [], 'should be a no-op with no best-focus result yet'
-
-    panel.show_best_focus(356.1, 3.3, can_move=True)
-
-    monkeypatch.setattr(
-        QtWidgets.QMessageBox, 'question',
-        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.No)
-    panel._on_move_to_best_focus_clicked()
-    assert received == [], 'declining the confirmation should not emit the signal'
-
-    monkeypatch.setattr(
-        QtWidgets.QMessageBox, 'question',
-        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
-    panel._on_move_to_best_focus_clicked()
-    assert received == [356], \
-        'confirming should emit the target focus value rounded to the nearest integer'
-
-
-def test_move_to_best_focus_rounds_up_not_just_truncates(qapp, monkeypatch):
-    # 356.6 rounds to 357; a naive int() truncation would give 356 --
-    # this is what distinguishes the two.
-    panel = FocusControlPanel()
-    received = []
-    panel.moveToBestFocusRequested.connect(received.append)
-    panel.show_best_focus(356.6, 3.3, can_move=True)
-
-    monkeypatch.setattr(
-        QtWidgets.QMessageBox, 'question',
-        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
-    panel._on_move_to_best_focus_clicked()
-
-    assert received == [357], 'the target focus value should be rounded, not truncated'
-
-
-def test_move_to_best_focus_dialog_shows_the_rounded_value(qapp, monkeypatch):
-    panel = FocusControlPanel()
-    panel.show_best_focus(356.6, 3.3, can_move=True)
-
-    seen_text = []
-    def fake_question(self, title, text, *a, **k):
-        seen_text.append(text)
-        return QtWidgets.QMessageBox.StandardButton.Yes
-    monkeypatch.setattr(QtWidgets.QMessageBox, 'question', fake_question)
-    panel._on_move_to_best_focus_clicked()
-
-    assert '357' in seen_text[0], 'the confirmation dialog should show the rounded target, not 356.6'
-
-
-def test_take_single_exposure_signal(qapp):
-    panel = FocusControlPanel()
-    received = []
-    panel.takeSingleExposureRequested.connect(received.append)
-
-    panel.single_focus_spin.setValue(356)
-    panel.take_single_exposure_button.click()
-
-    assert received == [356], 'clicking should emit the configured focus value'
-
-
-def test_show_pending_exposure_updates_label_and_gates_add_button(qapp, focus_sweep):
-    result = _step_result(focus_sweep)
-    panel = FocusControlPanel()
-
-    panel.show_pending_exposure(result, can_add=False)
-    assert f'{result.focus_value:.0f}' in panel.pending_label.text(), \
-        'pending label should show the focus value'
-    assert f'{result.fwhm:.2f}' in panel.pending_label.text(), \
-        'pending label should show the measured FWHM'
-    assert not panel.add_to_sequence_button.isEnabled(), \
-        'add-to-sequence should stay disabled with no sequence loaded to add to'
-
-    panel.show_pending_exposure(result, can_add=True)
-    assert panel.add_to_sequence_button.isEnabled(), \
-        'add-to-sequence should enable once a sequence is loaded'
-
-
-def test_add_to_sequence_signal(qapp, focus_sweep):
-    result = _step_result(focus_sweep)
-    panel = FocusControlPanel()
-    panel.show_pending_exposure(result, can_add=True)
-    received = []
-    panel.addToSequenceRequested.connect(lambda: received.append(True))
-
-    panel.add_to_sequence_button.click()
-
-    assert received == [True], 'clicking should emit addToSequenceRequested'
-
-
-def test_clear_pending_exposure_resets_label_and_button(qapp, focus_sweep):
-    result = _step_result(focus_sweep)
-    panel = FocusControlPanel()
-    panel.show_pending_exposure(result, can_add=True)
-
-    panel.clear_pending_exposure()
-
-    assert panel.pending_label.text() == 'No pending exposure'
-    assert not panel.add_to_sequence_button.isEnabled(), \
-        'add-to-sequence should disable once the pending exposure is cleared'
-
-
-def test_reset_clears_pending_exposure(qapp, focus_sweep):
-    result = _step_result(focus_sweep)
-    panel = FocusControlPanel()
-    panel.show_pending_exposure(result, can_add=True)
+    panel.show_best_focus(356.6, 3.3)
 
     panel.reset()
 
-    assert panel.pending_label.text() == 'No pending exposure'
-    assert not panel.add_to_sequence_button.isEnabled()
-
-
-def test_set_running_locks_out_single_exposure_widgets(qapp, focus_sweep):
-    result = _step_result(focus_sweep)
-    panel = FocusControlPanel()
-    panel.show_pending_exposure(result, can_add=True)
-
-    panel.set_running(True)
-    assert not panel.single_focus_spin.isEnabled()
-    assert not panel.take_single_exposure_button.isEnabled()
-    assert not panel.add_to_sequence_button.isEnabled()
-
-    panel.set_running(False)
-    assert panel.single_focus_spin.isEnabled(), 'single-exposure focus entry should re-enable'
-    assert panel.take_single_exposure_button.isEnabled(), \
-        'Take Single Exposure should re-enable'
-    assert not panel.add_to_sequence_button.isEnabled(), \
-        'add-to-sequence should stay disabled until the next pending exposure re-enables it'
+    assert panel.single_focus_spin.value() == 357, \
+        "reset() clears status/log, but shouldn't discard the Single tab's best-focus default"
 
 
 def test_browse_button_updates_datadir(qapp, monkeypatch):
@@ -398,9 +345,18 @@ def test_browse_button_updates_datadir(qapp, monkeypatch):
     monkeypatch.setattr(QtWidgets.QFileDialog, 'getExistingDirectory',
                          lambda *a, **k: '/some/chosen/dir')
     panel._on_browse_clicked()
-    assert panel.datadir_edit.text() == '/some/chosen/dir'
+    assert panel.replay_datadir_edit.text() == '/some/chosen/dir'
 
     # Canceling the dialog (empty string) should leave the field alone.
     monkeypatch.setattr(QtWidgets.QFileDialog, 'getExistingDirectory', lambda *a, **k: '')
     panel._on_browse_clicked()
-    assert panel.datadir_edit.text() == '/some/chosen/dir', 'canceling should not clear the field'
+    assert panel.replay_datadir_edit.text() == '/some/chosen/dir', 'canceling should not clear the field'
+
+
+def test_help_tab_has_reminder_text(qapp):
+    panel = FocusControlPanel()
+    labels = panel.help_tab.findChildren(QtWidgets.QLabel)
+    assert labels, 'the Help tab should contain some descriptive text'
+    text = ' '.join(label.text() for label in labels)
+    for keyword in ('Single', 'Grid', 'Auto', 'Replay', 'Log'):
+        assert keyword in text, f'Help text should mention {keyword}'

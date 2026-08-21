@@ -1390,3 +1390,268 @@ the two integration tests checking the confirmation status text
 (`test_move_to_best_focus_runs_against_fake_hardware`,
 `test_phase3_full_live_workflow`) that asserted the old `.1f` text. All
 118 tests still pass; Qt-free boundary reconfirmed.
+
+## Phase 4: Focus control panel redesign (tabs)
+
+Per request: replace `FocusControlPanel`'s flat, always-fully-laid-out
+structure (every sequence type's fields present at once, shown/hidden
+by enabling/disabling) with a `QTabWidget`: **Single, Grid, Auto,
+Replay, Log, Help**. Each tab shows only the fields relevant to that
+action -- the actual fix for "minimize white space," since disabled
+fields still consume layout space but a hidden tab page doesn't.
+
+Design decisions, confirmed with the user before starting:
+
+- **Single tab absorbs "Move to Best Focus" entirely.** Its focus field
+  defaults to the most recent fit's best focus (rounded to an integer);
+  acquiring a single exposure there with the default value *is* moving
+  to best focus, and changing the value first tests any other focus.
+  There is no separate confirmation dialog -- reviewing/editing the
+  value before pressing Start *is* the confirmation. This removes
+  `moveToBestFocusRequested`, `move_to_best_focus_button`, and its
+  `QMessageBox` confirmation entirely.
+- **"Add to Existing Sequence" is dropped.** A standalone single
+  exposure is never folded into another sequence's curve -- simplest,
+  and matches the Single tab's narrower new role. This removes
+  `addToSequenceRequested`, `pending_result`, `add_to_sequence_button`,
+  `show_pending_exposure()`/`clear_pending_exposure()`. Interactive
+  source selection ('m' key) reanalyzing a standalone single exposure in
+  place when no sequence is loaded (§5.6) is *not* dropped -- that's a
+  different feature (marking a source), orthogonal to committing data
+  into a sequence -- so `Controller.reanalyze()`'s existing
+  self.sequence-else-`_standalone_sequence` targeting is kept as-is.
+- **Photometry method and Start/Stop are shared, below the tabs**, not
+  duplicated on each one -- they mean the same thing regardless of which
+  tab is active. "Start" reads whichever tab is currently selected
+  (`get_sequence_type()`/`get_sequence_config()`), except on Single,
+  where it emits `takeSingleExposureRequested` directly instead.
+- **Live progress lives on the Log tab only** -- no persistent status
+  line outside it. The Log tab replaces the old "Status" group
+  one-for-one (`status_label`, `step_label`, `log_widget`, unchanged
+  internally); there is no more separate "Result" group, since the
+  fitted best focus is now conveyed by the Single tab's default value
+  (plus the existing "Sequence finished..." log line) rather than a
+  dedicated label.
+- The tab *bar* is never disabled while something is running (only the
+  input widgets within each tab are) -- otherwise the Log tab wouldn't
+  be reachable while a sequence runs, defeating the point above.
+
+### Sub-phases
+
+1. **Rewrite `FocusControlPanel`** as the tabbed view described above,
+   with its own updated unit tests (`tests/gui/test_focus_control_panel.py`
+   rewritten to match -- most existing tests reference removed
+   radios/groups and won't survive as-is). No `Controller`/`MainWindow`
+   changes yet, so this is verifiable in isolation. Includes small
+   shared helpers (`_int_spin`/`_float_spin`/exposure-fields-row
+   builder) reused across Single/Grid/Auto tabs, per the "minimize
+   replicated code" request -- Grid and Auto in particular are identical
+   apart from `nstep` vs. `maxsteps`.
+2. **Update `Controller`** to match: drop `move_to_best_focus()`/
+   `add_pending_to_sequence()`/their signal connections and the
+   `_single_purpose`-style branching in `_on_single_exposure_finished`
+   they required (only one single-exposure flow remains); wire
+   `show_best_focus()`'s simplified signature (no more `can_move`).
+   Update `tests/gui/test_controller.py` accordingly.
+3. **Update the end-to-end tests** (`tests/gui/test_app_smoke.py`,
+   `tests/gui/test_phase3_smoke.py`) to drive the new tabbed workflow,
+   run the full suite plus the Qt-free boundary check, and log results/
+   deviations here.
+
+`scripts/focus.py` and `gui/model/sequence_worker.py` need no changes at
+all -- this is purely a View/Controller reorganization; `take_single_exposure()`
+and `mode='single'` already do exactly what the unified Single tab needs.
+
+### Sub-phase 1 results: rewrite `FocusControlPanel`
+
+`gui/views/focus_control_panel.py` rewritten per the design above.
+Structure: `QTabWidget` (Single/Grid/Auto/Replay/Log/Help) +
+`_build_method_group()` + Start/Stop row, all inside one `QVBoxLayout`.
+Each tab is its own plain `QWidget` with a single `QFormLayout` (or
+`QVBoxLayout` for Log/Help) -- no nested `QGroupBox` wrappers, since the
+tab title already says what the fields are for; that redundant nesting
+was part of the old whitespace problem.
+
+Shared helpers, per the "minimize replicated code" request:
+`_int_spin()`/`_float_spin()` (module-level, no `self` needed) wrap
+`QSpinBox`/`QDoubleSpinBox` construction with the no-buttons behavior
+from the last round of revisions, used by every numeric field across
+all four tabs; `_add_exposure_rows(form)` adds the
+exptime/speed/binning rows identically for Single/Grid/Auto (the three
+tabs that take real exposures), collapsing what would otherwise be
+three near-identical copies of that group into one function called
+three times.
+
+Per-tab widgets are fully independent instances (`grid_start_spin` vs.
+`auto_start_spin` vs. `replay_start_spin`, etc., all separately
+named/prefixed) rather than one shared set of fields toggled by type,
+as before. This means Grid/Auto/Replay each remember their own
+last-used configuration independently, which is arguably a small UX
+improvement, not just an implementation detail -- and it's what makes
+"each tab shows only its own relevant fields" trivially true rather
+than something that needs enable/disable logic to maintain.
+
+New public API on the panel, replacing the old
+type-radio-driven one: `get_sequence_type()`/`get_sequence_config()`
+read whichever tab is currently active (`self.tabs.currentWidget()`),
+returning `None`/`{}` for Single/Log/Help; `get_exposure_config()`
+similarly reads Single/Grid/Auto's own fields, `{}` for Replay/Log/Help.
+`show_best_focus(best_focus, best_fwhm)` dropped the old `can_move`
+parameter (no more "Move to Best Focus" button to gate) and now also
+sets `single_focus_spin`'s value to `round(best_focus)` -- the
+mechanism behind "Single tab defaults to the best fit." New
+`show_single_exposure_result(result)` replaces the old
+`show_confirmation()`/`show_pending_exposure()` pair (only one flavor
+of single-exposure result exists now). `set_running()` disables every
+input widget across all four actionable tabs plus the method combo,
+but deliberately never touches `self.tabs.setEnabled()` -- confirmed
+directly with `test_tab_bar_stays_enabled_while_running` -- so the Log
+tab stays reachable mid-run, per the earlier discussion.
+
+Removed entirely: the sequence-type radios and
+`_on_sequence_type_changed()` (superseded by tabs);
+`moveToBestFocusRequested`/`move_to_best_focus_button`/
+`_on_move_to_best_focus_clicked()` and its confirmation `QMessageBox`;
+`addToSequenceRequested`/`add_to_sequence_button`/
+`add_pending_to_sequence()`-adjacent view methods
+(`show_pending_exposure()`/`clear_pending_exposure()`); the separate
+"Result" group (`result_label`) -- its information now lives in the Log
+tab's existing log line plus the Single tab's default value.
+
+No `Controller`/`MainWindow` changes yet (as planned) -- `Controller`
+still calls the old API, so `tests/gui/test_controller.py`,
+`test_app_smoke.py`, and `test_phase3_smoke.py` currently fail (mostly
+`AttributeError` on removed panel attributes/methods) when run on their
+own; that's expected and is sub-phases 2-3's job. One thing worth
+recording: running the *entire* `tests/gui/` directory together in this
+intermediate state triggered a PySide6 segfault, not just clean test
+failures -- but running `test_controller.py` alone (or any other single
+file alone) reproduces only ordinary `AttributeError` failures, and a
+standalone script constructing 30 `MainWindow`s back-to-back in a loop
+raised nothing at all. This points to instability from combining many
+already-broken (mid-refactor) test files in one pytest session rather
+than a real bug in the new panel code, but it's not fully explained;
+worth keeping an eye on once sub-phases 2-3 restore a fully consistent
+test suite -- if the segfault recurs on a *consistent* suite, that
+would be a real bug to chase.
+
+**Testing:** `tests/gui/test_focus_control_panel.py` rewritten from
+scratch (29 tests) covering: tab order; no-spinner-buttons and
+integer-focus-value coverage across all four tabs;
+`get_sequence_type()`/`get_sequence_config()`/`get_exposure_config()`
+per tab, including the empty-dict cases; Start emitting the right
+signal per tab (`startRequested` vs. `takeSingleExposureRequested`) and
+being disabled on Log/Help; `set_running()` locking fields/method while
+leaving the tab bar itself enabled, and correctly restoring (not
+blindly re-enabling) the Start button for whichever tab is active once
+stopped; `show_best_focus()` rounding into `single_focus_spin`, and
+`reset()` explicitly *not* clearing that default; the Browse dialog;
+and a light check that the Help tab actually mentions every other tab
+by name. All 29 pass in isolation.
+
+### Sub-phase 2 results: update `Controller`
+
+Removed `move_to_best_focus()`, `add_pending_to_sequence()`, their
+signal connections, `pending_result`, and the
+`worker.sequence is self.sequence`/`_single_purpose`-style branching in
+`_on_single_exposure_finished` that distinguishing "move to best focus"
+from "standalone exposure" required -- only one single-exposure flow
+exists now, so `_on_single_exposure_finished` unconditionally does what
+the old "standalone" branch did: display the result, seed
+`_standalone_sequence`'s bookkeeping (kept, for §5.6 reanalyze
+targeting -- see the Phase 4 plan above), and report it via the new
+`show_single_exposure_result()`. `_on_sequence_finished` now calls
+`show_best_focus(best_focus, best_fwhm)` without the removed `can_move`
+argument. `start_sequence()` resets `_standalone_sequence = None`
+directly (no more `_clear_pending()` helper needed, since there's no
+paired View state to clear alongside it anymore -- `reset()` on the
+View side already doesn't touch anything Single-tab-related, per
+sub-phase 1).
+
+No deviations otherwise. **Testing:** `tests/gui/test_controller.py`
+rewritten: `_configure_control_panel` became `_configure_replay_tab`
+(switches to `replay_tab`, sets its own fields); every
+`grid_radio.setChecked(True)`-style call became
+`panel.tabs.setCurrentWidget(panel.grid_tab)`, etc. Dropped all
+move-to-best-focus and add-pending-to-sequence tests; renamed/adapted
+the standalone-exposure tests
+(`test_source_selection_reanalyzes_a_standalone_exposure`,
+`test_start_sequence_discards_standalone_sequence_state`) to check
+`controller._standalone_sequence` instead of the removed
+`pending_result`. Added an assertion to each of the three
+sequence-completion tests confirming `single_focus_spin` picks up the
+rounded fitted best focus -- the concrete behavior behind "Single tab
+defaults to best focus," which no prior test exercised end-to-end
+through the Controller (sub-phase 1's tests only checked the View
+method in isolation). All 17 tests pass.
+
+Ran `tests/gui/test_focus_control_panel.py` + `test_controller.py`
+together (46 tests, all pass) to specifically check for the segfault
+noted at the end of sub-phase 1 -- it did not recur. Ran the entire
+`tests/gui/` directory: only `test_app_smoke.py` and
+`test_phase3_smoke.py` fail now (plain `AttributeError`s on the removed
+API, e.g. `datadir_edit`, `pending_result`), exactly the two files
+sub-phase 3 will update -- no segfault there either. This is reasonably
+strong evidence the earlier crash really was instability from a
+mostly-broken suite (many files failing against a half-migrated API at
+once) rather than a bug in the new code, though it was never fully
+root-caused.
+
+### Sub-phase 3 results: end-to-end tests + Phase 4 close-out
+
+`tests/gui/test_app_smoke.py`: `_configure_control_panel` became
+`_configure_replay_tab` (switches to `replay_tab`, sets its own
+fields). `test_gui_controller_matches_direct_execute` lost its
+assertion target -- `window.control_panel._best_focus` no longer exists,
+since there's no separate "Result" state on the panel anymore, only the
+rounded value baked into `single_focus_spin`. Comparing against the
+rounded integer would have weakened the test's actual purpose (bit-exact
+GUI/CLI fit equivalence), so instead it now connects directly to
+`controller.worker.sequenceFinished` right after `start_sequence()`
+returns (before pumping the event loop) to capture the *raw* fitted
+float the same way `test_sequence_worker.py`'s `_run_and_collect` does,
+and compares that.
+
+`tests/gui/test_phase3_smoke.py` rewritten around the Single tab's new
+role: standalone exposure with no sequence loaded -> mark a source (§5.6
+reanalyze-in-place) -> start a Grid sequence with that method -> switch
+to the Single tab and confirm its focus value already defaults to the
+fitted best focus -> click Start there to actually move to it (no
+confirmation dialog needed -- the previous sub-phase already removed
+that entirely) -> mark a different source on the now-loaded sequence
+(confirming reanalyze-target priority still favors a loaded sequence
+over a standalone exposure) -> take one more standalone exposure ->
+discard it by starting an Automated sequence. Dropped the old "Add to
+Existing Sequence" step entirely, per the Phase 4 design decision.
+
+No deviations. Full-suite and Qt-free-boundary checks: 112 tests pass;
+26 pass (`tests/gui/` skipped as one unit) with PySide6 simulated
+absent. Re-ran `tests/gui/` three times in a row (86 tests each) to
+specifically watch for the sub-phase-1 segfault recurring now that the
+whole suite is consistent again -- it did not, in any of the three
+runs, reinforcing that it really was an artifact of the mid-refactor
+state rather than a latent bug.
+
+Also spot-checked the actual visual outcome the whole redesign was for:
+building a real `MainWindow` offscreen, `FocusControlPanel`'s size
+dropped from roughly 640x1050 (pre-redesign, with every group always
+laid out) to 312x384 -- a concrete, measured confirmation that showing
+only the active tab's fields (rather than disabling irrelevant ones in
+place) actually solves the "minimize white space" request, not just in
+principle.
+
+### Phase 4 summary
+
+All 3 sub-phases complete. `FocusControlPanel` is now a `QTabWidget`
+(Single/Grid/Auto/Replay/Log/Help) with a shared photometry-method
+selector and Start/Stop row below it. The Single tab absorbed "Move to
+Best Focus" entirely (defaults to the last fit's rounded result; no
+confirmation dialog); "Add to Existing Sequence" was dropped outright.
+`Controller` and `scripts/focus.py`/`SequenceWorker` needed
+correspondingly little and no change, respectively -- confirming the
+sub-phase 1 prediction that this was purely a View/Controller
+reorganization. `claude/GUI_DESIGN.md` still describes the pre-Phase-4
+layout (radios, a separate Result group, the Move-to-Best-Focus
+confirmation dialog, Add-to-Existing-Sequence) and needs reconciling
+against this document during the end-of-GUI-development pass already
+on record as deferred.

@@ -26,14 +26,16 @@ def _wait_for_worker(controller, timeout_ms=5000):
     loop.exec()
 
 
-def _configure_control_panel(panel, focus_sweep):
-    panel.datadir_edit.setText(str(focus_sweep['datadir']))
-    panel.prefix_edit.setText(focus_sweep['prefix'])
-    panel.suffix_edit.setText(focus_sweep['suffix'])
-    panel.obsnum_spin.setValue(focus_sweep['obsnum'])
-    panel.start_spin.setValue(focus_sweep['focus_values'][0])
-    panel.step_spin.setValue(focus_sweep['focus_values'][1] - focus_sweep['focus_values'][0])
-    panel.nstep_spin.setValue(len(focus_sweep['focus_values']))
+def _configure_replay_tab(panel, focus_sweep):
+    panel.tabs.setCurrentWidget(panel.replay_tab)
+    panel.replay_datadir_edit.setText(str(focus_sweep['datadir']))
+    panel.replay_prefix_edit.setText(focus_sweep['prefix'])
+    panel.replay_suffix_edit.setText(focus_sweep['suffix'])
+    panel.replay_obsnum_spin.setValue(focus_sweep['obsnum'])
+    panel.replay_start_spin.setValue(int(focus_sweep['focus_values'][0]))
+    panel.replay_step_spin.setValue(
+        int(focus_sweep['focus_values'][1] - focus_sweep['focus_values'][0]))
+    panel.replay_nstep_spin.setValue(len(focus_sweep['focus_values']))
 
 
 def test_app_opens_and_shows_without_error(qapp):
@@ -67,10 +69,13 @@ def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
 
     window = gui.main.build_window()
     controller = Controller(window)
-    _configure_control_panel(window.control_panel, focus_sweep)
+    _configure_replay_tab(window.control_panel, focus_sweep)
 
     controller.start_sequence()
+    fitted = []
+    controller.worker.sequenceFinished.connect(lambda bf, bfw: fitted.append((bf, bfw)))
     _wait_for_worker(controller)
 
-    assert window.control_panel._best_focus == pytest.approx(expected_best_focus), \
+    assert fitted, 'sequenceFinished should have fired exactly once'
+    assert fitted[0][0] == pytest.approx(expected_best_focus), \
         'the GUI Controller should produce the same fit as calling FocusSequence.execute() directly'

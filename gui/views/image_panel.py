@@ -8,7 +8,10 @@ import bisect
 from matplotlib import patches
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from astropy.visualization import ImageNormalize, ZScaleInterval, MinMaxInterval, LinearStretch
+from astropy.visualization import (
+    ImageNormalize, ZScaleInterval, MinMaxInterval, LinearStretch, SqrtStretch, LogStretch,
+    AsinhStretch,
+)
 
 from gui.qt import QtCore, QtWidgets
 
@@ -49,11 +52,25 @@ class ImagePanel(QtWidgets.QWidget):
 
     #: Available stretch options, by name, as callables returning an
     #: `astropy.visualization.ImageNormalize` for a given data array.
+    #: The non-linear options (Sqrt/Log/Asinh) pair `ZScaleInterval`'s
+    #: already-good limits with a different stretch curve, to bring out
+    #: faint structure (Sqrt/Asinh) or compress a large dynamic range
+    #: (Log), without needing a separate interval choice for each. Kept
+    #: to short, single-word names -- a longer combo entry (e.g. the
+    #: originally-tried "ZScale + Sqrt") widens the whole combo box
+    #: enough to push the window past a smaller screen's available width
+    #: (see claude/GUI_IMPLEMENTATION.md's Phase 5 sub-phase 3 log).
     STRETCHES = {
         'ZScale': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
                                                stretch=LinearStretch()),
         'Min/Max': lambda data: ImageNormalize(data, interval=MinMaxInterval(),
                                                 stretch=LinearStretch()),
+        'Sqrt': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
+                                             stretch=SqrtStretch()),
+        'Log': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
+                                            stretch=LogStretch()),
+        'Asinh': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
+                                              stretch=AsinhStretch()),
     }
 
     def __init__(self, parent=None):
@@ -226,6 +243,20 @@ class ImagePanel(QtWidgets.QWidget):
     def recenter(self):
         """Reset to a fit-to-view zoom (GUI_DESIGN.md §5.2)."""
         self.set_zoom(1.0)
+
+    def get_settings_state(self):
+        """
+        Return the persistable display preference (currently just the
+        stretch choice) as a flat :obj:`dict`, suitable for a settings
+        store like :class:`~PySide6.QtCore.QSettings`.
+        """
+        return {'stretch': self._stretch_name}
+
+    def set_settings_state(self, state):
+        """Apply a settings :obj:`dict` from :func:`get_settings_state`."""
+        name = state.get('stretch')
+        if name in self.STRETCHES:
+            self.stretch_combo.setCurrentText(name)
 
     def set_zoom(self, zoom):
         """Set the display magnification (``1.0`` fits the whole frame)."""

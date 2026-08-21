@@ -114,6 +114,13 @@ class FocusControlPanel(QtWidgets.QWidget):
     :func:`show_single_exposure_result` rather than shown as a persistent
     "current method" state.
 
+    The Options tab holds app-wide preferences -- currently just
+    "Remember settings between sessions," which opts into (and, when
+    unchecked, immediately erases) the settings persistence handled by
+    `~gui.views.main_window.MainWindow`. It's meant to grow as more
+    such preferences become useful, rather than being specific to any
+    one sequence action the way the other tabs are.
+
     Attributes
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
@@ -138,6 +145,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.auto_tab = self._build_auto_tab()
         self.replay_tab = self._build_replay_tab()
         self.log_tab = self._build_log_tab()
+        self.options_tab = self._build_options_tab()
         self.help_tab = self._build_help_tab()
 
         self.tabs = QtWidgets.QTabWidget()
@@ -146,6 +154,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.tabs.addTab(self.auto_tab, 'Auto')
         self.tabs.addTab(self.replay_tab, 'Replay')
         self.tabs.addTab(self.log_tab, 'Log')
+        self.tabs.addTab(self.options_tab, 'Options')
         self.tabs.addTab(self.help_tab, 'Help')
 
         # Every input widget across the four actionable tabs, locked
@@ -330,6 +339,20 @@ class FocusControlPanel(QtWidgets.QWidget):
         widget.setLayout(layout)
         return widget
 
+    def _build_options_tab(self):
+        # Meant to grow as more app-wide (as opposed to per-sequence)
+        # preferences become useful -- currently just the one checkbox.
+        self.remember_settings_checkbox = QtWidgets.QCheckBox(
+            'Remember settings between sessions')
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.remember_settings_checkbox)
+        layout.addStretch(1)
+
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        return widget
+
     def _build_help_tab(self):
         text = (
             '<b>Single</b> — take one exposure at the given focus. '
@@ -339,7 +362,8 @@ class FocusControlPanel(QtWidgets.QWidget):
             '<b>Grid</b> — step through an evenly spaced focus grid.<br>'
             '<b>Auto</b> — adaptively search for the best focus.<br>'
             '<b>Replay</b> — reprocess an existing set of exposures from disk.<br>'
-            '<b>Log</b> — live status and history.<br><br>'
+            '<b>Log</b> — live status and history.<br>'
+            '<b>Options</b> — app-wide preferences.<br><br>'
             '<b>Source selection</b> — the brightest star is measured '
             "automatically by default (see the Log for its coordinates); "
             "hover over a different star in the image and press 'm' to "
@@ -435,6 +459,75 @@ class FocusControlPanel(QtWidgets.QWidget):
             return {}
         return {'exptime': exptime.value(), 'speed': speed.currentText(),
                 'binning': binning.currentText()}
+
+    def get_settings_state(self):
+        """
+        Return every persistable field's current value as a flat
+        :obj:`dict` keyed by ``'<tab>/<field>'`` (e.g. ``'grid/start'``),
+        suitable for a settings store like
+        :class:`~PySide6.QtCore.QSettings`. The Single tab's focus value
+        is deliberately excluded -- it tracks the most recent fit (see
+        :func:`show_best_focus`), not a persisted default.
+        """
+        state = {}
+        for key, widget in self._settings_fields().items():
+            if isinstance(widget, QtWidgets.QComboBox):
+                state[key] = widget.currentText()
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                state[key] = widget.text()
+            else:
+                state[key] = widget.value()
+        return state
+
+    def set_settings_state(self, state):
+        """
+        Apply a settings :obj:`dict` from :func:`get_settings_state` (or
+        any subset of it -- e.g. an older saved state missing a field
+        added later). Keys not recognized, or missing entirely, are
+        left at their current value.
+        """
+        for key, widget in self._settings_fields().items():
+            if key not in state:
+                continue
+            value = state[key]
+            if isinstance(widget, QtWidgets.QComboBox):
+                widget.setCurrentText(value)
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                widget.setText(value)
+            else:
+                widget.setValue(value)
+
+    def _settings_fields(self):
+        """
+        Map of persistable setting key to the widget holding it. The
+        single source of truth for both :func:`get_settings_state` and
+        :func:`set_settings_state`, so the two can't drift apart into
+        covering different fields.
+        """
+        return {
+            'single/exptime': self.single_exptime_spin,
+            'single/speed': self.single_speed_combo,
+            'single/binning': self.single_binning_combo,
+            'grid/start': self.grid_start_spin,
+            'grid/step': self.grid_step_spin,
+            'grid/nstep': self.grid_nstep_spin,
+            'grid/exptime': self.grid_exptime_spin,
+            'grid/speed': self.grid_speed_combo,
+            'grid/binning': self.grid_binning_combo,
+            'auto/start': self.auto_start_spin,
+            'auto/step': self.auto_step_spin,
+            'auto/maxsteps': self.auto_maxsteps_spin,
+            'auto/exptime': self.auto_exptime_spin,
+            'auto/speed': self.auto_speed_combo,
+            'auto/binning': self.auto_binning_combo,
+            'replay/datadir': self.replay_datadir_edit,
+            'replay/prefix': self.replay_prefix_edit,
+            'replay/suffix': self.replay_suffix_edit,
+            'replay/obsnum': self.replay_obsnum_spin,
+            'replay/start': self.replay_start_spin,
+            'replay/step': self.replay_step_spin,
+            'replay/nstep': self.replay_nstep_spin,
+        }
 
     def set_running(self, running):
         """Toggle widget states for whether an action is currently running."""

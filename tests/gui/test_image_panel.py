@@ -243,3 +243,36 @@ def test_reset_clears_everything(qapp, focus_sweep):
     assert panel.exposure_combo.count() == 0, 'reset should clear the dropdown'
     assert panel._current is None, 'reset should clear the currently displayed result'
     assert panel._results == [], 'reset should clear the stored results'
+
+
+def test_every_stretch_option_renders_without_error(qapp, focus_sweep):
+    result = _step_results(focus_sweep)[0]
+    panel = ImagePanel()
+
+    for name in panel.STRETCHES:
+        panel.stretch_combo.setCurrentText(name)
+        panel.show_result(result)
+        assert panel._stretch_name == name
+        assert panel.ax.get_images(), f'{name} should have actually drawn an image'
+
+
+def test_get_and_set_settings_state_round_trip(qapp):
+    panel = ImagePanel()
+    panel.stretch_combo.setCurrentText('Min/Max')
+
+    state = panel.get_settings_state()
+    assert state == {'stretch': 'Min/Max'}
+
+    fresh = ImagePanel()
+    fresh.set_settings_state(state)
+    assert fresh._stretch_name == 'Min/Max'
+    assert fresh.stretch_combo.currentText() == 'Min/Max'
+
+
+def test_set_settings_state_ignores_an_unknown_stretch_name(qapp):
+    panel = ImagePanel()
+    original = panel._stretch_name
+
+    panel.set_settings_state({'stretch': 'NotARealStretch'})
+
+    assert panel._stretch_name == original, 'an unrecognized stretch name should be ignored'

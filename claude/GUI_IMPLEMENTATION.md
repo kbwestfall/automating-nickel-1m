@@ -1828,3 +1828,283 @@ word wrap can only break between words) and asserts
 `status_label.minimumSizeHint().width()` stays small. Verified this
 fails without `setWordWrap(True)` and passes with it. All 109 tests
 pass; Qt-free boundary reconfirmed.
+
+## Phase 5: Polish
+
+Per GUI_DESIGN.md §9, item 5. Per explicit decision, item 4 (evaluating
+`pyqtgraph.ImageView` for `ImagePanel` responsiveness) is skipped
+entirely -- matplotlib has been responsive enough in practice to not
+warrant the swap. Phase 5 is three largely independent pieces of work:
+
+### Sub-phase 1: CLI output-file writing
+
+Implements `scripts/focus.py`'s standing `# TODO: Write the output file
+if provided` in `main()`. When `--ofile` is given, write an ECSV table
+of the completed sequence's per-exposure results. Column names must
+match what the (still-unimplemented) `--refit` path already reads back
+(`tbl['FOCUS']`, `tbl['SIGMA']`) for internal consistency, even though
+"SIGMA" is really the FWHM-based image-quality metric
+(`StepResult.fwhm`) rather than a literal Gaussian sigma -- that naming
+predates this work and isn't being changed here. Additional columns
+(obsnum/exposure filename, outlier flag) are added alongside for
+traceability, since `--refit`'s stub only reads the two it needs and
+extra columns are harmless.
+
+Explicitly out of scope: implementing `--refit` itself (stays
+`raise NotImplementedError('Not ready to refit.')`) -- the design doc's
+Phase 5 bullet only names "output-file writing," not refitting, and
+that's a separable, larger feature.
+
+This is a Qt-free, CLI-only change with no GUI involvement -- testable
+entirely with `tests/test_focus_cli.py`-style tests already in place.
+
+### Sub-phase 2: GUI settings persistence
+
+"Last-used exposure time, directories, etc." -- persist each tab's own
+configuration (Single/Grid/Auto's exposure settings; Grid/Auto/Replay's
+focus-sequence fields; Replay's datadir/prefix/suffix/obsnum) plus
+`ImagePanel`'s stretch choice, using `QtCore.QSettings` (Qt's built-in
+cross-platform persistent-settings mechanism -- an macOS
+`~/Library/Preferences` plist, a Windows registry key, or a Linux ini
+file, depending on platform, with no new dependency). Saved on window
+close (`MainWindow.closeEvent`), restored on construction. Deliberately
+*not* saved on every keystroke/change -- these are convenience defaults
+for next time, not data that needs crash-safety, and per-field change
+wiring across ~20 fields is a lot of code for that marginal benefit.
+
+Uses flat, individually-typed key/value pairs (e.g. `'grid/start'`)
+rather than one serialized blob, since `QSettings`'s native backends
+don't reliably round-trip nested Python structures across platforms --
+each panel gets `get_settings_state()`/`set_settings_state(state)`
+methods operating on a flat `dict` of primitives, which `MainWindow`
+reads/writes via `QSettings` key-by-key. `set_settings_state()` must
+tolerate a state dict missing keys (a fresh install, or an older saved
+state from before a field existed).
+
+The Single tab's focus value itself is deliberately *not* persisted --
+its default is meant to reflect the most recent fit
+(`show_best_focus()`), and restoring a stale persisted value on startup
+would fight with that.
+
+**Testing:** pure `get_settings_state()`/`set_settings_state()`
+round-trip tests on `FocusControlPanel`/`ImagePanel` (no real
+`QSettings` needed); one `MainWindow`-level test using a real but
+isolated `QSettings` instance (a distinct organization/application name
+or an explicit `IniFormat` pointed at a temp file, cleaned up after the
+test) confirming save-then-reconstruct actually restores values end to
+end.
+
+### Sub-phase 3: Richer stretch options
+
+`ImagePanel.STRETCHES` currently only has ZScale and Min/Max (both
+`LinearStretch`). Add more of `astropy.visualization`'s stretch classes
+(already a dependency -- no new package) paired with `ZScaleInterval`,
+e.g. `SqrtStretch`, `LogStretch`, `AsinhStretch`, giving more ways to
+bring out faint structure or compress a large dynamic range.
+
+**Testing:** confirm each new stretch entry actually produces a valid
+`ImageNormalize` and renders without error against a synthetic frame
+(mirroring how the existing ZScale/Min-Max entries are implicitly
+covered today).
+
+### Sub-phase 1 results: CLI output-file writing
+
+Implemented in `scripts/focus.py`'s `main()`: when `--ofile` is given,
+after `seq.execute()` completes, writes an ECSV table with columns
+`EXPOSURE` (the exposure file path, as a string), `FOCUS`
+(`seq.observed_focus`), `SIGMA` (`seq.img_quality` -- the FWHM-based
+image-quality metric; kept as `SIGMA` to match what `--refit`'s
+already-written reader expects, per the plan above), and `OUTLIER`.
+`OUTLIER` is recomputed via `FocusPlot.is_outlier(seq.centroids[:i+1])`
+for each row -- the same *cumulative-up-to-that-point* comparison
+`step()` itself uses live, not a single pass over the complete, final
+centroid list (which could flag different points as outliers than what
+was actually seen/plotted during the run). Prints `Wrote focus data to
+{path}` for user feedback, matching the existing `Best focus:`/
+`Expected sigma:` print style.
+
+No deviations from the plan. `--refit` remains
+`raise NotImplementedError('Not ready to refit.')`, unchanged --
+correctly out of scope per the sub-phase boundary.
+
+**Testing:** added `test_cli_writes_output_file_when_requested` to
+`tests/test_focus_cli.py`, which runs the CLI archive-mode path with
+`--ofile`, reads the written ECSV back with `Table.read()`, and checks
+row count, the recorded focus values, and that all four expected
+columns exist. Added a one-line check to the existing
+`test_cli_archive_mode_runs_end_to_end` confirming *no* "Wrote focus
+data" message appears when `--ofile` isn't given. Also manually
+verified end-to-end against real synthetic FITS files outside pytest,
+confirming the file is valid, readable ECSV. All 110 tests pass;
+Qt-free boundary reconfirmed (this sub-phase touches no GUI code at
+all).
+
+### Sub-phase 2 results: GUI settings persistence
+
+`FocusControlPanel` gained `get_settings_state()`/`set_settings_state()`
+plus a private `_settings_fields()` -- a single dict mapping each
+persistable key (e.g. `'grid/start'`) to its widget, used by *both*
+methods via `isinstance` dispatch (`QComboBox` -> `currentText()`/
+`setCurrentText()`, `QLineEdit` -> `text()`/`setText()`, spin boxes ->
+`value()`/`setValue()`). Keeping one field table rather than writing
+the getter and setter as two separately-maintained lists is what
+guarantees they can't drift apart into covering different fields.
+`ImagePanel` gained the same two methods for its one persistable
+preference, the stretch choice. The Single tab's focus value is
+excluded from `FocusControlPanel`'s field table entirely, per the plan
+-- it must keep tracking `show_best_focus()`'s most recent fit, not a
+stale session-old default.
+
+`MainWindow` calls `_load_settings()` at the end of `__init__` and
+`_save_settings()` from an overridden `closeEvent()`, via
+`QtCore.QSettings(_SETTINGS_ORG, _SETTINGS_APP)`. The load side reuses
+each panel's *own current* `get_settings_state()` output as
+`QSettings.value(key, default)`'s default argument -- Qt uses that
+default's Python type to coerce whatever was actually stored, so no
+separate key-to-type map is needed; a key that was never saved (fresh
+install, or a field added after the user's last save) simply falls
+back to the value the widget was already constructed with.
+
+**A real bug caught before it reached anyone, not by a test:** the
+first working version wrote to the actual per-machine `QSettings` store
+-- an real macOS preferences plist at
+`~/Library/Preferences/com.lickobservatory.NickelFocusGUI.plist` --
+every time *any* test constructed (and every time one that called
+`.close()` on) a `MainWindow`, since `_load_settings()`/`_save_settings()`
+run unconditionally with no test-mode guard. Running the test suite
+during this sub-phase actually created that file on this machine with
+placeholder test values; it was deleted immediately upon discovery.
+Fixed by adding an `autouse=True` fixture, `isolate_qsettings`, to
+`tests/gui/conftest.py`: it monkeypatches `MainWindow._settings()` to
+return a `QSettings` pointed at a per-test-function temp `.ini` file
+instead, for every test under `tests/gui/` regardless of whether it
+requests the fixture by name. Re-ran the full suite afterward and
+confirmed via `ls`/`defaults read` that no real preferences file
+reappears. This is the same category of lesson as the segfault noted in
+Phase 4 sub-phase 1 -- a new mechanism (there: many widgets under a
+half-migrated API; here: persistent state shared across the whole test
+session) needs its own isolation, which doesn't exist until something
+new actually needs it.
+
+No other deviations. **Testing:** `get_settings_state()`/
+`set_settings_state()` round-trip tests on both panels, plus a test
+confirming `'single/focus'` is never a key in `FocusControlPanel`'s
+state, and a test confirming an unknown/partial state dict only
+touches the keys it names, leaving everything else alone (also
+covered per-panel for `ImagePanel`'s single key with an unrecognized
+stretch name). `tests/gui/test_main.py` gained an end-to-end test
+building a window, changing settings across both panels, closing it,
+building a *second* window against the same isolated settings file,
+and confirming the values actually round-tripped -- plus a test
+confirming the Single tab's focus value specifically does *not*
+survive that round trip. Manually verified the same save/restore cycle
+outside pytest against a real (but manually isolated) ini file, to be
+sure this wasn't a self-fulfilling green test suite. All 117 tests
+pass; Qt-free boundary reconfirmed; no real settings file created by a
+full test run.
+
+### Settings persistence made opt-in, via a new Options tab
+
+Follow-up to sub-phase 2, before starting sub-phase 3: the user asked
+whether persistence could be opt-in, since silently writing *any* file
+-- even an inert preferences file -- for a user who never asked for it
+is unwelcome. New **Options** tab (Single, Grid, Auto, Replay, Log,
+**Options**, Help), holding one checkbox for now -- "Remember settings
+between sessions" -- and explicitly scoped to grow as more app-wide (as
+opposed to per-sequence) preferences become useful later.
+
+The first working version still had a privacy gap: it saved the
+checkbox's *own* checked state as an always-written flag, meaning every
+user got a settings file the moment they closed the window, whether
+they'd ever opted in or not -- exactly the silent-write problem the
+request was about, just narrowed to one boolean instead of the whole
+configuration. Caught by the user during review, before it shipped.
+
+**Fix:** there is no separately-persisted opt-in flag at all. Whether
+anything was ever saved *is* the opt-in signal:
+`MainWindow._load_settings()` checks the checkbox if (and only if)
+`'control_panel' in settings.childGroups()` -- i.e. a previous session
+actually wrote something -- and `_load_settings()` never itself calls
+anything that writes (`QSettings.value()`/`.childGroups()` are
+read-only; merely constructing/reading a `QSettings` object doesn't
+create its backing file). `_save_settings()` only calls `setValue()` at
+all if the checkbox is checked; if it's unchecked, it removes the
+`control_panel`/`image_panel` groups *only if they already exist*
+(guarded the same way), so a session that never opts in never makes a
+single mutating `QSettings` call and therefore never creates a file.
+Verified manually end-to-end with a real isolated ini file: closing
+without opting in leaves no file on disk at all; opting in and setting
+a value creates one and it's readable next launch (with the checkbox
+auto-checked); unchecking and closing again empties it back out, and
+the next launch correctly detects "not opted in" and reverts to code
+defaults.
+
+**Testing:** rewrote the sub-phase 2 `MainWindow` tests around explicit
+opt-in: `test_settings_default_unchecked_and_nothing_is_ever_written`
+(closing without ever checking the box leaves no file at all, checked
+via `os.path.exists` on the isolated settings file's actual path, not
+just "values didn't come back"),
+`test_settings_are_saved_on_close_and_restored_on_open_once_opted_in`
+(now explicitly checks the box first), the existing
+`test_settings_do_not_restore_a_stale_single_tab_focus_value` (now also
+opts in first, since otherwise it wouldn't be testing anything), and a
+new `test_unchecking_settings_erases_previously_saved_configuration`
+(opt in, save, opt back out, confirm the saved group is actually gone
+and a third launch reverts to defaults). Updated tab-order/button-set
+tests in `tests/gui/test_focus_control_panel.py` for the new seventh
+tab. All 119 tests pass; Qt-free boundary reconfirmed; confirmed via
+`ls`/`defaults read` that no real preferences file is created by a full
+test run.
+
+### Sub-phase 3 results: richer stretch options
+
+Added three entries to `ImagePanel.STRETCHES`: `Sqrt`, `Log`, `Asinh`,
+each pairing `ZScaleInterval` (the same already-good limits `ZScale`
+itself uses) with a different `astropy.visualization` stretch curve
+instead of `LinearStretch` -- Sqrt/Asinh to bring out faint structure,
+Log to compress a large dynamic range. All from `astropy.visualization`,
+already a dependency, so no new package.
+
+**Deviation caught by the full-suite run, not by a targeted test:**
+the first attempt named these `'ZScale + Sqrt'`/`'ZScale + Log'`/
+`'ZScale + Asinh'`, to make the paired interval explicit in the
+dropdown. That made `stretch_combo`'s minimum width wide enough to push
+`ImagePanel`'s (and thus the whole window's) minimum width to 812px --
+just over the 800px offscreen test screen's available width, failing
+`test_build_window_fits_within_the_screen` (a Post-Phase-3-era test,
+run as part of the routine full-suite pass, not something written for
+this sub-phase). This is the same class of problem as the "control
+panel width balloons"/"long Log message" bugs from earlier -- a widget
+whose minimum size depends on its content quietly grows past a
+constraint elsewhere in the layout -- just triggered by wider combo-box
+text instead of an unwrapped label this time. Fixed by shortening the
+names to single words (`Sqrt`/`Log`/`Asinh`, dropping the redundant
+"ZScale + " prefix) rather than doing anything more elaborate to the
+layout -- simplest fix, and arguably better anyway: none of the other
+combo entries spell out their interval either (`Min/Max` doesn't say
+"Min/Max + Linear").
+
+**Testing:** added `test_every_stretch_option_renders_without_error`,
+which iterates every key in `STRETCHES`, selects it, calls
+`show_result()`, and confirms an image actually got drawn (`ax.get_images()`
+non-empty) -- covering the three new entries generically, and any
+future ones added the same way, without hardcoding their names. All
+120 tests pass; Qt-free boundary reconfirmed.
+
+## Phase 5 summary
+
+All 3 sub-phases complete, plus the opt-in settings revision that
+followed sub-phase 2. `scripts/focus.py` gained `--ofile` output
+writing; the GUI gained an Options tab whose one setting (for now)
+governs opt-in persistence of every other tab's configuration and the
+image stretch choice; `ImagePanel` gained three more stretch curves.
+`claude/GUI_DESIGN.md` remains unreconciled against the as-built
+GUI (tabs, buttons-in-tabs, no method selector, the Options tab, opt-in
+persistence) -- still deferred to the end-of-GUI-development pass
+already on record.
+
+### Next
+
+Awaiting further direction -- Phase 5 (and the currently-known scope of
+GUI_DESIGN.md's phased plan, since Phase 4/pyqtgraph was explicitly
+skipped) is complete.

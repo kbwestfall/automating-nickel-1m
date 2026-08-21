@@ -28,3 +28,20 @@ def qapp():
     """The (session-wide, singleton) QApplication needed to create any Qt widget."""
     from gui.qt import QtWidgets
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def isolate_qsettings(monkeypatch, tmp_path):
+    """
+    Redirect `MainWindow`'s settings persistence (GUI_DESIGN.md §9 phase
+    5) to an isolated, per-test ini file instead of the real application
+    preferences store. Without this, every test that constructs --  and
+    especially every test that closes -- a `MainWindow` would read from
+    and write to the developer's actual saved GUI settings on disk.
+    """
+    from gui.qt import QtCore
+    from gui.views.main_window import MainWindow
+    settings_path = str(tmp_path / 'test_settings.ini')
+    monkeypatch.setattr(
+        MainWindow, '_settings',
+        lambda self: QtCore.QSettings(settings_path, QtCore.QSettings.Format.IniFormat))

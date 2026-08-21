@@ -884,12 +884,23 @@ def main():
     print(f'Best focus: {best_focus:.1f}')
     print(f'Expected sigma: {best_img_quality:.1f} pixels')
 
+    if args.ofile is not None:
+        # Outlier status is recomputed the same way step() does it live:
+        # relative to every centroid observed up to and including that
+        # one, not the full, final set.
+        outlier = [FocusPlot.is_outlier(seq.centroids[:i+1]) for i in range(len(seq.centroids))]
+        tbl = Table({
+            'EXPOSURE': [str(f) for f in seq.exposures],
+            'FOCUS': seq.observed_focus,
+            'SIGMA': seq.img_quality,
+            'OUTLIER': outlier,
+        })
+        tbl.write(args.ofile, format='ecsv', overwrite=True)
+        print(f'Wrote focus data to {args.ofile}')
+
     if seq.plot is not None:
         pyplot.ioff()
         pyplot.show(block=True)
-
-    # TODO:
-    # - Write the output file if provided
 
 
 if __name__ == "__main__":

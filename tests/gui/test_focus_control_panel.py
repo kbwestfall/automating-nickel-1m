@@ -194,29 +194,7 @@ def test_stop_signal(qapp):
     assert stops == [True], 'clicking Stop should emit stopRequested'
 
 
-def test_method_combo_and_signal(qapp):
-    panel = FocusControlPanel()
-    received = []
-    panel.methodChanged.connect(received.append)
-
-    assert panel.get_selected_method() == 'brightest', 'Brightest should be the default'
-
-    panel.method_combo.setCurrentText('Weighted')
-    assert panel.get_selected_method() == 'weighted'
-    assert received == ['weighted'], 'methodChanged should emit the lowercase method name'
-
-
-def test_set_method_updates_display_for_string_and_coordinates(qapp):
-    panel = FocusControlPanel()
-
-    panel.set_method('brightest')
-    assert panel.method_label.text() == 'Current method: Brightest'
-
-    panel.set_method((123.4, 567.8))
-    assert panel.method_label.text() == 'Current method: Selected source (123.4, 567.8)'
-
-
-def test_set_running_locks_config_widgets_and_method(qapp):
+def test_set_running_locks_config_widgets(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.grid_tab)
 
@@ -224,13 +202,11 @@ def test_set_running_locks_config_widgets_and_method(qapp):
     assert not panel.start_button.isEnabled(), 'Start should be disabled while running'
     assert panel.stop_button.isEnabled(), 'Stop should be enabled while running'
     assert not panel.grid_start_spin.isEnabled(), 'config fields should be locked while running'
-    assert not panel.method_combo.isEnabled(), 'method should be locked while running'
 
     panel.set_running(False)
     assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped (Grid is active)'
     assert not panel.stop_button.isEnabled(), 'Stop should be disabled once stopped'
     assert panel.grid_start_spin.isEnabled(), 'config fields should unlock once stopped'
-    assert panel.method_combo.isEnabled(), 'method should unlock once stopped'
 
 
 def test_set_running_restores_start_button_per_current_tab(qapp):
@@ -280,6 +256,8 @@ def test_update_step_updates_label_and_log(qapp, focus_sweep):
 
     assert 'Step 2/5' in panel.step_label.text(), 'step label should show 1-based step/total'
     assert f'{result.focus_value:.0f}' in panel.step_label.text(), 'step label should show focus'
+    assert f'{result.centroid[0]:.1f}' in panel.step_label.text(), \
+        'step label should show the measured source coordinates'
     assert panel.log_widget.toPlainText().strip(), 'the step should also be appended to the log'
 
 
@@ -305,6 +283,8 @@ def test_show_single_exposure_result_updates_status_and_log(qapp, focus_sweep):
         'status should report the exposure focus value'
     assert f'{result.fwhm:.2f}' in panel.status_label.text(), \
         'status should report the measured FWHM'
+    assert f'{result.centroid[0]:.1f}' in panel.status_label.text(), \
+        'status should report the measured source coordinates'
     assert panel.log_widget.toPlainText().strip(), 'the result should also be logged'
 
 

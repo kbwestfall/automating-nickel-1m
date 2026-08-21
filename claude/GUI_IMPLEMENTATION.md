@@ -1655,3 +1655,69 @@ layout (radios, a separate Result group, the Move-to-Best-Focus
 confirmation dialog, Add-to-Existing-Sequence) and needs reconciling
 against this document during the end-of-GUI-development pass already
 on record as deferred.
+
+## Post-Phase-4 revisions
+
+### Remove photometry method selector; report coordinates in the Log instead
+
+Per request: dropped the "Photometry Method" group (`method_combo`,
+`method_label`) and `methodChanged` entirely. Measurement always uses
+the brightest detected source by default (`self.method = 'brightest'`
+at `Controller` construction, unchanged); clicking a source and
+pressing 'm' still overrides it to that source's coordinates via
+`Controller.set_method()`, which is now just `self.method = method`
+with no paired View call. Rather than a persistent "Current method: ..."
+label, the coordinates *actually measured* -- `StepResult.centroid`,
+which reflects whichever source was used either way -- are now folded
+into the existing per-exposure log lines: `update_step()` (every
+step/reanalysis) and the new-in-Phase-4 `show_single_exposure_result()`
+both append `Source (x, y)` to their text. This is more accurate than
+the old display ever was, too -- the old "Selected source (x, y)" text
+showed the raw *clicked* point, not the actual detected centroid
+`image_quality()` measured nearest to it.
+
+`FocusControlPanel.get_selected_method()`/`set_method()` are gone; the
+Help tab's "Method" paragraph became "Source selection," describing the
+automatic-brightest default and the 'm'-key override without mentioning
+a combo box that no longer exists.
+
+**Testing:** removed `test_method_combo_and_signal` and
+`test_set_method_updates_display_for_string_and_coordinates`
+(`tests/gui/test_focus_control_panel.py`); dropped the `method_combo`
+assertions from the renamed `test_set_running_locks_config_widgets`;
+added coordinate assertions to `test_update_step_updates_label_and_log`
+and `test_show_single_exposure_result_updates_status_and_log`. In
+`tests/gui/test_controller.py`, `test_set_method_updates_state_and_display`
+(renamed `test_set_method_updates_state`) and
+`test_source_selection_updates_measurements_in_place` lost their
+`method_label` assertions -- the latter already covers the coordinate
+now living in the log indirectly via the shared `update_step()` path
+tested elsewhere. All 110 tests pass; Qt-free boundary reconfirmed.
+
+### Two-column tab layout to compress height further
+
+New `_two_column_row(left_rows, right_rows)` helper lays a tab's fields
+out as two side-by-side `QFormLayout`s instead of one stacked column:
+exposure parameters (exptime/speed/binning) on the left, the focus
+value(s) that define the sequence on the right, per request. Single's
+right column is just its one focus field, as expected. `_add_exposure_rows`
+(which mutated a `QFormLayout` directly) became `_exposure_field_rows()`,
+returning `(label, widget)` pairs instead so it composes with the new
+helper -- still one function shared by Single/Grid/Auto, unchanged in
+spirit from Phase 4 sub-phase 1. Replay keeps its data-directory row
+on its own line on top (unchanged position), with prefix/suffix/obsnum
+(file-name construction) on the left and start/step/nstep (focus
+values) on the right below it. Log and Help are untouched, per request.
+
+Measured effect: a real `MainWindow`'s `FocusControlPanel` height
+dropped from 384px (Phase 4's single-column tabs) to 264px with the
+same window/tab content otherwise unchanged -- confirming the
+two-column layout achieves real additional vertical compression, not
+just a rearrangement.
+
+**Testing:** no new tests -- purely a layout change with no new
+behavior (every widget referenced by existing tests keeps the same
+name and `panel.tabs`/tab-widget structure; `_config_widgets`,
+`get_sequence_config()`, etc. are unaffected since they read widgets by
+attribute, not by layout position). Reran the full suite to confirm
+nothing broke: all 110 tests pass; Qt-free boundary reconfirmed.

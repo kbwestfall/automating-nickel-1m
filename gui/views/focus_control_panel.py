@@ -30,41 +30,72 @@ def _float_spin(minimum, maximum, value):
     return spin
 
 
-def _add_exposure_rows(form):
+def _exposure_field_rows():
     """
-    Add exposure-time/speed/binning rows to ``form``, used identically by
-    the Single, Grid, and Auto tabs (all of which take real exposures).
+    Build exposure-time/speed/binning fields, used identically by the
+    Single, Grid, and Auto tabs (all of which take real exposures).
 
     Returns
     -------
     tuple
-        ``(exptime_spin, speed_combo, binning_combo)``.
+        ``(rows, exptime_spin, speed_combo, binning_combo)``, where
+        ``rows`` is a list of ``(label, widget)`` pairs suitable for
+        :func:`_two_column_row`.
     """
     exptime_spin = _float_spin(0.1, 600., 5.)
     speed_combo = QtWidgets.QComboBox()
     speed_combo.addItems(['Slow', 'Fast'])
     binning_combo = QtWidgets.QComboBox()
     binning_combo.addItems(['1,1', '2,2', '4,4'])
-    form.addRow('Exposure time (s):', exptime_spin)
-    form.addRow('Speed:', speed_combo)
-    form.addRow('Binning:', binning_combo)
-    return exptime_spin, speed_combo, binning_combo
+    rows = [
+        ('Exposure time (s):', exptime_spin),
+        ('Speed:', speed_combo),
+        ('Binning:', binning_combo),
+    ]
+    return rows, exptime_spin, speed_combo, binning_combo
+
+
+def _two_column_row(left_rows, right_rows):
+    """
+    Lay ``left_rows``/``right_rows`` (each a list of ``(label, widget)``
+    pairs) out as two side-by-side :class:`~PySide6.QtWidgets.QFormLayout`\\
+    s, so a tab's fields use horizontal space instead of stacking
+    everything in one tall column -- exposure parameters on the left,
+    the focus value(s) that define the sequence on the right.
+
+    Returns
+    -------
+    :class:`~PySide6.QtWidgets.QHBoxLayout`
+    """
+    left_form = QtWidgets.QFormLayout()
+    for label, widget in left_rows:
+        left_form.addRow(label, widget)
+    right_form = QtWidgets.QFormLayout()
+    for label, widget in right_rows:
+        right_form.addRow(label, widget)
+
+    row = QtWidgets.QHBoxLayout()
+    row.addLayout(left_form)
+    row.addLayout(right_form)
+    return row
 
 
 class FocusControlPanel(QtWidgets.QWidget):
     """
-    Sequence configuration/action tabs, a shared photometry-method
-    selector, and Start/Stop -- plus live status/history on the Log tab
-    and short usage reminders on the Help tab.
+    Sequence configuration/action tabs and Start/Stop -- plus live
+    status/history on the Log tab and short usage reminders on the Help
+    tab.
 
     One tab per action -- Single, Grid, Auto, Replay -- each showing only
-    the fields relevant to it. Photometry method and Start/Stop are
-    shared below the tabs rather than duplicated on each one, since they
-    mean the same thing regardless of which tab is active: "Start" reads
-    whichever tab is currently selected via :func:`get_sequence_type`/
-    :func:`get_sequence_config` (or, for Single, emits
-    :attr:`takeSingleExposureRequested` directly) and "Stop" always
-    targets whatever's currently running.
+    the fields relevant to it, with exposure parameters and the focus
+    value(s) that define the sequence laid out in two side-by-side
+    columns to keep each tab short (see :func:`_two_column_row`).
+    Start/Stop are shared below the tabs rather than duplicated on each
+    one, since they mean the same thing regardless of which tab is
+    active: "Start" reads whichever tab is currently selected via
+    :func:`get_sequence_type`/:func:`get_sequence_config` (or, for
+    Single, emits :attr:`takeSingleExposureRequested` directly) and
+    "Stop" always targets whatever's currently running.
 
     The Single tab doubles as "move to best focus": its focus field
     defaults to the most recent fitted best focus (via
@@ -73,6 +104,14 @@ class FocusControlPanel(QtWidgets.QWidget):
     first tests any other focus instead. There is no separate
     confirmation step -- reviewing/editing the value before pressing
     Start is the confirmation.
+
+    There is no photometry-method selector: every measurement uses the
+    brightest detected source by default, and the coordinates actually
+    used (whether the automatic brightest source or one picked by
+    clicking the image and pressing 'm' -- see `ImagePanel`) are
+    reported on the Log tab via :func:`update_step`/
+    :func:`show_single_exposure_result` rather than shown as a persistent
+    "current method" state.
 
     Attributes
     ----------
@@ -83,16 +122,12 @@ class FocusControlPanel(QtWidgets.QWidget):
         Grid/Auto) to build and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when "Stop" is clicked.
-    methodChanged : :class:`~PySide6.QtCore.Signal`
-        Emitted with ``'brightest'`` or ``'weighted'`` when the user picks
-        one from the method combo box.
     takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
         Emitted with a focus value when "Start" is clicked while Single
         is active.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
-    methodChanged = QtCore.Signal(str)
     takeSingleExposureRequested = QtCore.Signal(float)
 
     def __init__(self, parent=None):
@@ -135,7 +170,6 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.tabs)
-        layout.addWidget(self._build_method_group())
         layout.addLayout(self._build_start_stop_row())
 
         self._update_start_button()
@@ -144,45 +178,56 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _build_single_tab(self):
         self.single_focus_spin = _int_spin(165, 500, 340)
-        form = QtWidgets.QFormLayout()
-        form.addRow('Focus value:', self.single_focus_spin)
-        (self.single_exptime_spin, self.single_speed_combo,
-         self.single_binning_combo) = _add_exposure_rows(form)
+        exposure_rows, self.single_exptime_spin, self.single_speed_combo, \
+            self.single_binning_combo = _exposure_field_rows()
+        focus_rows = [('Focus value:', self.single_focus_spin)]
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
+        layout.addStretch(1)
 
         widget = QtWidgets.QWidget()
-        widget.setLayout(form)
+        widget.setLayout(layout)
         return widget
 
     def _build_grid_tab(self):
         self.grid_start_spin = _int_spin(165, 500, 340)
         self.grid_step_spin = _int_spin(1, 100, 5)
         self.grid_nstep_spin = _int_spin(3, 100, 5)
+        exposure_rows, self.grid_exptime_spin, self.grid_speed_combo, \
+            self.grid_binning_combo = _exposure_field_rows()
+        focus_rows = [
+            ('Start focus:', self.grid_start_spin),
+            ('Step size:', self.grid_step_spin),
+            ('Number of steps:', self.grid_nstep_spin),
+        ]
 
-        form = QtWidgets.QFormLayout()
-        form.addRow('Start focus:', self.grid_start_spin)
-        form.addRow('Step size:', self.grid_step_spin)
-        form.addRow('Number of steps:', self.grid_nstep_spin)
-        (self.grid_exptime_spin, self.grid_speed_combo,
-         self.grid_binning_combo) = _add_exposure_rows(form)
+        layout = QtWidgets.QVBoxLayout()
+        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
+        layout.addStretch(1)
 
         widget = QtWidgets.QWidget()
-        widget.setLayout(form)
+        widget.setLayout(layout)
         return widget
 
     def _build_auto_tab(self):
         self.auto_start_spin = _int_spin(165, 500, 340)
         self.auto_step_spin = _int_spin(1, 100, 5)
         self.auto_maxsteps_spin = _int_spin(2, 100, 12)
+        exposure_rows, self.auto_exptime_spin, self.auto_speed_combo, \
+            self.auto_binning_combo = _exposure_field_rows()
+        focus_rows = [
+            ('Start focus:', self.auto_start_spin),
+            ('Step size:', self.auto_step_spin),
+            ('Max steps:', self.auto_maxsteps_spin),
+        ]
 
-        form = QtWidgets.QFormLayout()
-        form.addRow('Start focus:', self.auto_start_spin)
-        form.addRow('Step size:', self.auto_step_spin)
-        form.addRow('Max steps:', self.auto_maxsteps_spin)
-        (self.auto_exptime_spin, self.auto_speed_combo,
-         self.auto_binning_combo) = _add_exposure_rows(form)
+        layout = QtWidgets.QVBoxLayout()
+        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
+        layout.addStretch(1)
 
         widget = QtWidgets.QWidget()
-        widget.setLayout(form)
+        widget.setLayout(layout)
         return widget
 
     def _build_replay_tab(self):
@@ -199,18 +244,27 @@ class FocusControlPanel(QtWidgets.QWidget):
         datadir_row = QtWidgets.QHBoxLayout()
         datadir_row.addWidget(self.replay_datadir_edit, 1)
         datadir_row.addWidget(self.replay_browse_button)
+        datadir_form = QtWidgets.QFormLayout()
+        datadir_form.addRow('Data directory:', datadir_row)
 
-        form = QtWidgets.QFormLayout()
-        form.addRow('Data directory:', datadir_row)
-        form.addRow('Prefix:', self.replay_prefix_edit)
-        form.addRow('Suffix:', self.replay_suffix_edit)
-        form.addRow('Obsnum:', self.replay_obsnum_spin)
-        form.addRow('Start focus:', self.replay_start_spin)
-        form.addRow('Step size:', self.replay_step_spin)
-        form.addRow('Number of steps:', self.replay_nstep_spin)
+        filename_rows = [
+            ('Prefix:', self.replay_prefix_edit),
+            ('Suffix:', self.replay_suffix_edit),
+            ('Obsnum:', self.replay_obsnum_spin),
+        ]
+        focus_rows = [
+            ('Start focus:', self.replay_start_spin),
+            ('Step size:', self.replay_step_spin),
+            ('Number of steps:', self.replay_nstep_spin),
+        ]
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addLayout(datadir_form)
+        layout.addLayout(_two_column_row(filename_rows, focus_rows))
+        layout.addStretch(1)
 
         widget = QtWidgets.QWidget()
-        widget.setLayout(form)
+        widget.setLayout(layout)
         return widget
 
     def _build_log_tab(self):
@@ -239,9 +293,10 @@ class FocusControlPanel(QtWidgets.QWidget):
             '<b>Auto</b> — adaptively search for the best focus.<br>'
             '<b>Replay</b> — reprocess an existing set of exposures from disk.<br>'
             '<b>Log</b> — live status and history.<br><br>'
-            "<b>Method</b> — choose Brightest or Weighted below, or hover "
-            "over a source in the image and press 'm' to select it "
-            'directly.<br><br>'
+            '<b>Source selection</b> — the brightest star is measured '
+            "automatically by default (see the Log for its coordinates); "
+            "hover over a different star in the image and press 'm' to "
+            'measure that one instead.<br><br>'
             '<b>Start / Stop</b> — run or stop the action configured in '
             'the current tab.'
         )
@@ -257,19 +312,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
         return widget
-
-    def _build_method_group(self):
-        group = QtWidgets.QGroupBox('Photometry Method')
-        self.method_combo = QtWidgets.QComboBox()
-        self.method_combo.addItems(['Brightest', 'Weighted'])
-        self.method_combo.currentTextChanged.connect(
-            lambda text: self.methodChanged.emit(text.lower()))
-        self.method_label = QtWidgets.QLabel('Current method: Brightest')
-
-        row = QtWidgets.QHBoxLayout(group)
-        row.addWidget(self.method_combo)
-        row.addWidget(self.method_label, 1)
-        return group
 
     def _build_start_stop_row(self):
         self.start_button = QtWidgets.QPushButton('Start')
@@ -356,29 +398,12 @@ class FocusControlPanel(QtWidgets.QWidget):
         return {'exptime': exptime.value(), 'speed': speed.currentText(),
                 'binning': binning.currentText()}
 
-    def get_selected_method(self):
-        """The method combo's current selection, as ``'brightest'`` or ``'weighted'``."""
-        return self.method_combo.currentText().lower()
-
-    def set_method(self, method):
-        """
-        Update the read-only "current method" display. ``method`` is
-        ``'brightest'``, ``'weighted'``, or an ``(x, y)`` coordinate tuple
-        (set after an image click is selected; see `ImagePanel.sourceSelected`).
-        """
-        if isinstance(method, tuple):
-            text = f'Selected source ({method[0]:.1f}, {method[1]:.1f})'
-        else:
-            text = str(method).capitalize()
-        self.method_label.setText(f'Current method: {text}')
-
     def set_running(self, running):
         """Toggle widget states for whether an action is currently running."""
         self._running = running
         self.stop_button.setEnabled(running)
         for widget in self._config_widgets:
             widget.setEnabled(not running)
-        self.method_combo.setEnabled(not running)
 
         if running:
             self.start_button.setEnabled(False)
@@ -400,7 +425,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         text = f'Step {result.index + 1}'
         if total_expected:
             text += f'/{total_expected}'
-        text += f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}'
+        text += (f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
+                  f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
         if result.is_outlier:
             text += '  [outlier]'
         self.step_label.setText(text)
@@ -420,7 +446,8 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def show_single_exposure_result(self, result):
         """Report one exposure taken from the Single tab."""
-        text = f'Took exposure at focus {result.focus_value:.0f}: measured FWHM {result.fwhm:.2f}'
+        text = (f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
+                f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
         self.status_label.setText(text)
         self.log_widget.appendPlainText(text)
 

@@ -42,7 +42,6 @@ class Controller(QtCore.QObject):
 
         window.control_panel.startRequested.connect(self.start_sequence)
         window.control_panel.stopRequested.connect(self.stop)
-        window.control_panel.methodChanged.connect(self.set_method)
         window.control_panel.takeSingleExposureRequested.connect(self.take_single_exposure)
         window.image_panel.sourceSelected.connect(self._on_source_selected)
 
@@ -147,11 +146,14 @@ class Controller(QtCore.QObject):
     def set_method(self, method):
         """
         Update the photometry method used for future steps/reanalysis.
-        ``method`` is ``'brightest'``, ``'weighted'``, or an ``(x, y)``
-        coordinate tuple (from `ImagePanel.sourceSelected`).
+        ``method`` is ``'brightest'`` (the default) or an ``(x, y)``
+        coordinate tuple (from `ImagePanel.sourceSelected`); the
+        coordinates actually measured are reported per-exposure on the
+        Log tab (`~gui.views.focus_control_panel.FocusControlPanel.update_step`/
+        `~gui.views.focus_control_panel.FocusControlPanel.show_single_exposure_result`)
+        rather than tracked as a separate "current method" display.
         """
         self.method = method
-        self.window.control_panel.set_method(method)
 
     # -- internals ------------------------------------------------------------
 

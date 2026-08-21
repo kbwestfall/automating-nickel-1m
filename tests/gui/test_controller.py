@@ -113,14 +113,13 @@ def test_stop_is_a_noop_with_nothing_running(qapp):
     assert window.control_panel.status_label.text() == ''
 
 
-def test_set_method_updates_state_and_display(qapp):
+def test_set_method_updates_state(qapp):
     window = MainWindow()
     controller = Controller(window)
 
-    controller.set_method('weighted')
+    controller.set_method((123.4, 567.8))
 
-    assert controller.method == 'weighted'
-    assert window.control_panel.method_label.text() == 'Current method: Weighted'
+    assert controller.method == (123.4, 567.8)
 
 
 def test_reanalyze_is_a_noop_without_a_sequence(qapp):
@@ -141,7 +140,6 @@ def test_source_selection_updates_measurements_in_place(qapp, focus_sweep):
     _wait_for_worker(controller)
 
     assert controller.method == (50., 50.), 'clicking a source should update the active method'
-    assert window.control_panel.method_label.text() == 'Current method: Selected source (50.0, 50.0)'
     assert len(window.image_panel._results) == n_before, \
         'reanalysis should update existing entries, not add duplicates'
     assert len(window.curve_panel._results) == n_before, \

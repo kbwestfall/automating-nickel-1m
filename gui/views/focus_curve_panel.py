@@ -29,10 +29,6 @@ class FocusCurvePanel(QtWidgets.QWidget):
         # axis labels/title always have enough room, regardless of how
         # small the splitter/window makes this panel -- unlike a fixed
         # margin, which gets clipped once the panel shrinks below it.
-        # 'constrained' layout recomputes margins on every draw so the
-        # axis labels/title always have enough room, regardless of how
-        # small the splitter/window makes this panel -- unlike a fixed
-        # margin, which gets clipped once the panel shrinks below it.
         self.figure = Figure(figsize=(5, 4), layout='constrained')
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
@@ -44,22 +40,6 @@ class FocusCurvePanel(QtWidgets.QWidget):
     def add_result(self, result):
         """Add one more :class:`focus.StepResult` and redraw."""
         self._results.append(result)
-        self._render()
-
-    def update_result(self, result):
-        """
-        Replace an existing entry -- matched by ``result.exposure`` --
-        with an updated measurement and redraw. Falls back to
-        :func:`add_result` if no entry for that exposure exists yet. Used
-        when :func:`focus.FocusSequence.reanalyze` re-measures exposures
-        already plotted (§5.6).
-        """
-        existing_index = next(
-            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None)
-        if existing_index is None:
-            self.add_result(result)
-            return
-        self._results[existing_index] = result
         self._render()
 
     def reset(self):

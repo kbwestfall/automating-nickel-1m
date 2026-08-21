@@ -1769,3 +1769,62 @@ Updated the button references in `tests/gui/test_controller.py`
 (`replay_load_button`) and `tests/gui/test_phase3_smoke.py` (each
 `panel.start_button.click()` replaced with the specific tab's own
 button). All 109 tests pass; Qt-free boundary reconfirmed.
+
+### Reanalysis was iteratively replacing curve points instead of clearing first
+
+**Problem:** pressing 'm' to mark a source and reanalyze a loaded
+sequence fed each re-measured `StepResult` to
+`FocusCurvePanel.update_result()`, which replaces one point in place
+and redraws -- so as results streamed back from the worker one at a
+time, the plot showed a mix of old and new measurements, with old
+points disappearing one-by-one rather than the whole curve clearing
+upfront.
+
+**Fix:** `Controller.reanalyze()` now calls `self.window.curve_panel.reset()`
+synchronously, before starting the worker, whenever the reanalyze
+target is the actively-loaded `sequence` (not a standalone Single-tab
+exposure, which never touches the curve panel at all). `_on_step_complete`'s
+reanalyze branch now calls `curve_panel.add_result()` instead of
+`update_result()`, since the panel starts empty and simply
+accumulates fresh points as they arrive -- there's nothing left to
+"replace." This made `FocusCurvePanel.update_result()` completely
+unused (it was only ever called from this one call site), so it was
+removed along with its two dedicated tests, rather than leaving dead
+code behind.
+
+**Testing:** added `test_reanalyze_clears_the_curve_panel_immediately_not_iteratively`,
+which populates the curve, calls `controller.reanalyze()`, and asserts
+`curve_panel._results == []` *before* pumping the event loop at all --
+proving the clear happens synchronously rather than as a side effect of
+processing results. Verified this fails without the fix (the curve
+still holds all 5 old points at that point) and passes with it. All
+108 tests pass; Qt-free boundary reconfirmed.
+
+### A long Log message balloons the panel width -- again
+
+While debugging an unrelated user-error (an incorrect obsnum on the
+Replay tab), a long failure message surfaced the same symptom as the
+"control panel width balloons" bug from Post-Phase-3 -- but a different
+root cause this time. Confirmed directly: `status_label.minimumSizeHint()`
+grew to ~1989px wide after `show_failure()` was given a realistic long
+message (a "missing files" list). A plain `QLabel` without word wrap
+reports its *entire single-line text's rendered width* as its minimum
+size -- there's nothing a scroll-area width floor can do about the
+widget's own natural minimum genuinely growing at runtime; that
+mitigation was for a different failure mode (the viewport being
+squeezed narrower than a *static* minimum).
+
+**Fix:** `status_label.setWordWrap(True)` and `step_label.setWordWrap(True)`
+(the latter proactively -- `update_step()` can also produce a fairly
+long line with focus/FWHM/source coordinates all on one line). Wrapping
+lets a long message grow the Log tab's *height* instead of the whole
+panel's width; height is exactly what the surrounding `QScrollArea`
+(from the original window-sizing fix) is already built to absorb.
+
+**Testing:** added `test_status_and_step_labels_wrap_instead_of_widening`,
+which feeds `show_failure()` a realistic long, space-separated message
+(a single unbroken token wouldn't exercise the fix meaningfully, since
+word wrap can only break between words) and asserts
+`status_label.minimumSizeHint().width()` stays small. Verified this
+fails without `setWordWrap(True)` and passes with it. All 109 tests
+pass; Qt-free boundary reconfirmed.

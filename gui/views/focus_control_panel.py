@@ -307,8 +307,16 @@ class FocusControlPanel(QtWidgets.QWidget):
         return widget
 
     def _build_log_tab(self):
+        # Word wrap is essential here, not cosmetic: a long message (e.g.
+        # a failure listing several missing file paths) in an unwrapped
+        # QLabel reports its *entire single-line* width as the label's
+        # minimum size, which balloons this whole panel's width to match.
+        # Wrapping lets it grow in height instead, which the surrounding
+        # QScrollArea (see MainWindow) handles gracefully.
         self.status_label = QtWidgets.QLabel('')
+        self.status_label.setWordWrap(True)
         self.step_label = QtWidgets.QLabel('Step: —')
+        self.step_label.setWordWrap(True)
         self.log_widget = QtWidgets.QPlainTextEdit()
         self.log_widget.setReadOnly(True)
         self.log_widget.setMaximumBlockCount(500)

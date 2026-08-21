@@ -146,6 +146,26 @@ def test_source_selection_updates_measurements_in_place(qapp, focus_sweep):
         'reanalysis should update existing entries, not add duplicates'
 
 
+def test_reanalyze_clears_the_curve_panel_immediately_not_iteratively(qapp, focus_sweep):
+    window, controller = _make_controller(focus_sweep)
+    controller.start_sequence()
+    _wait_for_worker(controller)
+    assert len(window.curve_panel._results) == len(focus_sweep['files']), \
+        'setup: the curve should be populated from the initial sequence'
+
+    controller.reanalyze()
+
+    # The clear must happen synchronously, before the worker thread has
+    # produced any results -- not get whittled down to zero one point at
+    # a time as each re-measured result streams back in.
+    assert window.curve_panel._results == [], \
+        'the curve should be cleared immediately when reanalysis starts'
+
+    _wait_for_worker(controller)
+    assert len(window.curve_panel._results) == len(focus_sweep['files']), \
+        'the curve should be fully repopulated once reanalysis completes'
+
+
 def test_start_sequence_runs_grid_against_fake_hardware(qapp, fake_hardware):
     window = MainWindow()
     controller = Controller(window)

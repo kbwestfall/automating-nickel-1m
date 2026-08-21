@@ -299,6 +299,25 @@ def test_show_failure_updates_status_and_log(qapp):
     assert 'ERROR' in panel.log_widget.toPlainText(), 'failures should be logged too'
 
 
+def test_status_and_step_labels_wrap_instead_of_widening(qapp):
+    # An unwrapped QLabel reports its entire single-line text width as
+    # its minimum size, which would balloon the whole panel's width to
+    # fit a long message (e.g. a failure listing several file paths).
+    panel = FocusControlPanel()
+    assert panel.status_label.wordWrap(), 'status_label must wrap long messages'
+    assert panel.step_label.wordWrap(), 'step_label must wrap long messages'
+
+    # Realistic long message (space-separated words) -- word wrap can
+    # only break between words, so a single unbroken token of the same
+    # length wouldn't exercise the fix meaningfully.
+    long_message = 'Expected to find the following files, but they are not available: ' + \
+        ', '.join(f'/some/long/data/directory/n{2000 + i}.fits' for i in range(10))
+    panel.show_failure(long_message)
+
+    assert panel.status_label.minimumSizeHint().width() < 200, \
+        'a long message should not inflate the label (and thus the panel) width'
+
+
 def test_reset_clears_status_and_log(qapp, focus_sweep):
     result = _step_result(focus_sweep)
     panel = FocusControlPanel()

@@ -112,6 +112,12 @@ class Controller(QtCore.QObject):
         target = self.sequence if self.sequence is not None else self._standalone_sequence
         if self.worker is not None or target is None or not target.exposures:
             return
+        if target is self.sequence:
+            # Clear the curve immediately rather than letting old points
+            # be replaced one at a time as each re-measured result
+            # streams in -- otherwise the plot would show a confusing
+            # mix of old and new measurements while reanalysis runs.
+            self.window.curve_panel.reset()
         self._start_worker(target, mode='reanalyze')
 
     def take_single_exposure(self, focus_value):
@@ -177,9 +183,14 @@ class Controller(QtCore.QObject):
         if self.worker is not None and self.worker.mode == 'reanalyze':
             self.window.image_panel.update_result(result)
             if not reanalyzing_standalone:
-                # A standalone exposure never appears on the curve
-                # panel, so there's nothing to update there for it.
-                self.window.curve_panel.update_result(result)
+                # The curve was already cleared in reanalyze(), so each
+                # re-measured result is simply added back in as it
+                # arrives, rather than replacing an old point in place --
+                # that would otherwise show a confusing mix of old and
+                # new measurements while reanalysis is still in progress.
+                # A standalone exposure never appears on the curve panel
+                # at all, so there's nothing to add for it.
+                self.window.curve_panel.add_result(result)
         else:
             self.window.image_panel.add_result(result)
             self.window.curve_panel.add_result(result)

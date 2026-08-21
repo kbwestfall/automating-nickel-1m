@@ -144,80 +144,93 @@ def test_get_exposure_config_is_empty_for_replay_log_help(qapp):
         assert panel.get_exposure_config() == {}
 
 
-def test_start_button_enabled_only_on_actionable_tabs(qapp):
+def test_each_tab_has_the_requested_buttons(qapp):
     panel = FocusControlPanel()
-    for tab in (panel.single_tab, panel.grid_tab, panel.auto_tab, panel.replay_tab):
-        panel.tabs.setCurrentWidget(tab)
-        assert panel.start_button.isEnabled(), f'{tab} should allow Start'
-    for tab in (panel.log_tab, panel.help_tab):
-        panel.tabs.setCurrentWidget(tab)
-        assert not panel.start_button.isEnabled(), f'{tab} has nothing to start'
+
+    def button_texts(tab):
+        return sorted(b.text() for b in tab.findChildren(QtWidgets.QPushButton))
+
+    assert button_texts(panel.single_tab) == ['Acquire']
+    assert button_texts(panel.grid_tab) == ['Acquire', 'Interrupt']
+    assert button_texts(panel.auto_tab) == ['Acquire', 'Interrupt']
+    # Replay also has its pre-existing "Browse…" button, unrelated to
+    # the acquisition action.
+    assert button_texts(panel.replay_tab) == ['Browse…', 'Load']
+    assert button_texts(panel.log_tab) == []
+    assert button_texts(panel.help_tab) == []
 
 
-def test_start_click_on_single_tab_emits_take_single_exposure_requested(qapp):
+def test_single_tab_acquire_emits_take_single_exposure_requested(qapp):
     panel = FocusControlPanel()
-    panel.tabs.setCurrentWidget(panel.single_tab)
     panel.single_focus_spin.setValue(356)
-    starts, singles = [], []
-    panel.startRequested.connect(lambda: starts.append(True))
+    singles = []
     panel.takeSingleExposureRequested.connect(singles.append)
 
-    panel.start_button.click()
+    panel.single_acquire_button.click()
 
-    assert starts == [], 'Single tab should not emit startRequested'
-    assert singles == [356], 'Single tab should emit the configured focus value'
+    assert singles == [356], 'Acquire should emit the configured focus value'
 
 
-def test_start_click_on_grid_tab_emits_start_requested(qapp):
+def test_grid_tab_acquire_and_interrupt_signals(qapp):
     panel = FocusControlPanel()
-    panel.tabs.setCurrentWidget(panel.grid_tab)
-    starts, singles = [], []
+    starts, stops = [], []
     panel.startRequested.connect(lambda: starts.append(True))
-    panel.takeSingleExposureRequested.connect(singles.append)
-
-    panel.start_button.click()
-
-    assert starts == [True], 'Grid tab should emit startRequested'
-    assert singles == [], 'Grid tab should not emit takeSingleExposureRequested'
-
-
-def test_stop_signal(qapp):
-    panel = FocusControlPanel()
-    stops = []
     panel.stopRequested.connect(lambda: stops.append(True))
 
-    # Stop starts disabled (nothing is running yet); a disabled button
-    # doesn't emit clicked() at all, so put the panel in a running state
-    # first, matching how the Controller will actually use it.
+    panel.grid_acquire_button.click()
+    assert starts == [True], 'Acquire should emit startRequested'
+
+    # Interrupt starts disabled (nothing is running yet); a disabled
+    # button doesn't emit clicked() at all, so put the panel in a
+    # running state first, matching how the Controller will actually
+    # use it.
     panel.set_running(True)
-    panel.stop_button.click()
-    assert stops == [True], 'clicking Stop should emit stopRequested'
+    panel.grid_interrupt_button.click()
+    assert stops == [True], 'Interrupt should emit stopRequested'
 
 
-def test_set_running_locks_config_widgets(qapp):
+def test_auto_tab_acquire_and_interrupt_signals(qapp):
     panel = FocusControlPanel()
-    panel.tabs.setCurrentWidget(panel.grid_tab)
+    starts, stops = [], []
+    panel.startRequested.connect(lambda: starts.append(True))
+    panel.stopRequested.connect(lambda: stops.append(True))
+
+    panel.auto_acquire_button.click()
+    assert starts == [True], 'Acquire should emit startRequested'
 
     panel.set_running(True)
-    assert not panel.start_button.isEnabled(), 'Start should be disabled while running'
-    assert panel.stop_button.isEnabled(), 'Stop should be enabled while running'
+    panel.auto_interrupt_button.click()
+    assert stops == [True], 'Interrupt should emit stopRequested'
+
+
+def test_replay_tab_load_emits_start_requested(qapp):
+    panel = FocusControlPanel()
+    starts = []
+    panel.startRequested.connect(lambda: starts.append(True))
+
+    panel.replay_load_button.click()
+
+    assert starts == [True], 'Load should emit startRequested'
+
+
+def test_set_running_locks_config_widgets_and_acquire_buttons(qapp):
+    panel = FocusControlPanel()
+
+    panel.set_running(True)
     assert not panel.grid_start_spin.isEnabled(), 'config fields should be locked while running'
+    for button in (panel.single_acquire_button, panel.grid_acquire_button,
+                   panel.auto_acquire_button, panel.replay_load_button):
+        assert not button.isEnabled(), f'{button.text()} should be disabled while running'
+    for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
+        assert button.isEnabled(), f'{button.text()} should be enabled while running'
 
     panel.set_running(False)
-    assert panel.start_button.isEnabled(), 'Start should be re-enabled once stopped (Grid is active)'
-    assert not panel.stop_button.isEnabled(), 'Stop should be disabled once stopped'
     assert panel.grid_start_spin.isEnabled(), 'config fields should unlock once stopped'
-
-
-def test_set_running_restores_start_button_per_current_tab(qapp):
-    panel = FocusControlPanel()
-    panel.tabs.setCurrentWidget(panel.log_tab)
-
-    panel.set_running(True)
-    panel.set_running(False)
-
-    assert not panel.start_button.isEnabled(), \
-        'Start should reflect the Log tab (nothing to start), not just re-enable blindly'
+    for button in (panel.single_acquire_button, panel.grid_acquire_button,
+                   panel.auto_acquire_button, panel.replay_load_button):
+        assert button.isEnabled(), f'{button.text()} should be re-enabled once stopped'
+    for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
+        assert not button.isEnabled(), f'{button.text()} should be disabled once stopped'
 
 
 def test_tab_bar_stays_enabled_while_running(qapp):
@@ -227,24 +240,14 @@ def test_tab_bar_stays_enabled_while_running(qapp):
     assert panel.tabs.isEnabled(), 'the tab bar itself should never be disabled'
 
 
-def test_switching_tabs_while_running_does_not_enable_start(qapp):
-    panel = FocusControlPanel()
-    panel.tabs.setCurrentWidget(panel.grid_tab)
-    panel.set_running(True)
-
-    panel.tabs.setCurrentWidget(panel.single_tab)
-
-    assert not panel.start_button.isEnabled(), \
-        'Start should stay disabled while running, regardless of tab switches'
-
-
-def test_set_stopping_disables_stop_and_shows_status(qapp):
+def test_set_stopping_disables_interrupt_buttons_and_shows_status(qapp):
     panel = FocusControlPanel()
     panel.set_running(True)
 
     panel.set_stopping()
 
-    assert not panel.stop_button.isEnabled(), 'Stop should disable itself once clicked'
+    assert not panel.grid_interrupt_button.isEnabled(), 'Interrupt should disable itself once clicked'
+    assert not panel.auto_interrupt_button.isEnabled(), 'Interrupt should disable itself once clicked'
     assert 'Stopping' in panel.status_label.text(), 'status should explain the wait'
 
 

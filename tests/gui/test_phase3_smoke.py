@@ -43,7 +43,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     #    tab -- no sequence is loaded yet.
     panel.tabs.setCurrentWidget(panel.single_tab)
     panel.single_focus_spin.setValue(340)
-    panel.start_button.click()
+    panel.single_acquire_button.click()
     _wait_for_worker(controller)
 
     assert controller.sequence is None, 'no sequence should be loaded yet'
@@ -68,7 +68,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     panel.grid_step_spin.setValue(5)
     panel.grid_nstep_spin.setValue(5)
     panel.grid_exptime_spin.setValue(5.0)
-    panel.start_button.click()
+    panel.grid_acquire_button.click()
     _wait_for_worker(controller)
 
     assert controller._standalone_sequence is None, \
@@ -88,7 +88,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     best_focus = panel.single_focus_spin.value()
     assert best_focus == pytest.approx(fake_hardware['best_focus'], abs=5.), \
         'the Single tab should default to the fitted best focus'
-    panel.start_button.click()
+    panel.single_acquire_button.click()
     _wait_for_worker(controller)
 
     assert fake_hardware['focus'].current == best_focus, \
@@ -114,7 +114,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     #    fresh Automated sequence -- confirming the earlier sequence's
     #    data is fully replaced and standalone state is cleared.
     panel.single_focus_spin.setValue(370)
-    panel.start_button.click()
+    panel.single_acquire_button.click()
     _wait_for_worker(controller)
     assert controller._standalone_sequence is not None, 'setup: a standalone exposure should exist'
 
@@ -122,7 +122,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     panel.auto_start_spin.setValue(340)
     panel.auto_step_spin.setValue(5)
     panel.auto_maxsteps_spin.setValue(12)
-    panel.start_button.click()
+    panel.auto_acquire_button.click()
     _wait_for_worker(controller)
 
     assert controller._standalone_sequence is None, \

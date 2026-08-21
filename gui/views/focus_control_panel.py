@@ -82,20 +82,21 @@ def _two_column_row(left_rows, right_rows):
 
 class FocusControlPanel(QtWidgets.QWidget):
     """
-    Sequence configuration/action tabs and Start/Stop -- plus live
-    status/history on the Log tab and short usage reminders on the Help
-    tab.
+    Sequence configuration/action tabs -- plus live status/history on
+    the Log tab and short usage reminders on the Help tab.
 
     One tab per action -- Single, Grid, Auto, Replay -- each showing only
     the fields relevant to it, with exposure parameters and the focus
     value(s) that define the sequence laid out in two side-by-side
-    columns to keep each tab short (see :func:`_two_column_row`).
-    Start/Stop are shared below the tabs rather than duplicated on each
-    one, since they mean the same thing regardless of which tab is
-    active: "Start" reads whichever tab is currently selected via
-    :func:`get_sequence_type`/:func:`get_sequence_config` (or, for
-    Single, emits :attr:`takeSingleExposureRequested` directly) and
-    "Stop" always targets whatever's currently running.
+    columns (see :func:`_two_column_row`), and its own acquisition
+    button(s) at the bottom: Single has "Acquire"; Grid and Auto have
+    "Acquire" and "Interrupt"; Replay has "Load". Log and Help have no
+    buttons at all. Because a `QTabWidget` only lets the user interact
+    with the currently visible page, each button unambiguously means
+    "do this tab's action" -- there's no need to track which tab is
+    active to decide what a click means, only to decide what
+    :func:`get_sequence_type`/:func:`get_sequence_config` should return
+    once a click has already happened.
 
     The Single tab doubles as "move to best focus": its focus field
     defaults to the most recent fitted best focus (via
@@ -103,7 +104,7 @@ class FocusControlPanel(QtWidgets.QWidget):
     the default value *is* moving to best focus; changing the value
     first tests any other focus instead. There is no separate
     confirmation step -- reviewing/editing the value before pressing
-    Start is the confirmation.
+    Acquire is the confirmation.
 
     There is no photometry-method selector: every measurement uses the
     brightest detected source by default, and the coordinates actually
@@ -116,15 +117,14 @@ class FocusControlPanel(QtWidgets.QWidget):
     Attributes
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted when "Start" is clicked while Grid/Auto/Replay is active;
-        the Controller should read :func:`get_sequence_type` and
-        :func:`get_sequence_config` (and :func:`get_exposure_config` for
-        Grid/Auto) to build and run the sequence.
+        Emitted when Grid/Auto's "Acquire" or Replay's "Load" is
+        clicked; the Controller should read :func:`get_sequence_type`
+        and :func:`get_sequence_config` (and :func:`get_exposure_config`
+        for Grid/Auto) to build and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted when "Stop" is clicked.
+        Emitted when Grid/Auto's "Interrupt" is clicked.
     takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
-        Emitted with a focus value when "Start" is clicked while Single
-        is active.
+        Emitted with a focus value when Single's "Acquire" is clicked.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
@@ -132,7 +132,6 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._running = False
 
         self.single_tab = self._build_single_tab()
         self.grid_tab = self._build_grid_tab()
@@ -148,7 +147,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.tabs.addTab(self.replay_tab, 'Replay')
         self.tabs.addTab(self.log_tab, 'Log')
         self.tabs.addTab(self.help_tab, 'Help')
-        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # Every input widget across the four actionable tabs, locked
         # uniformly while anything is running (hardware exclusivity:
@@ -167,12 +165,20 @@ class FocusControlPanel(QtWidgets.QWidget):
             self.replay_suffix_edit, self.replay_obsnum_spin, self.replay_start_spin,
             self.replay_step_spin, self.replay_nstep_spin,
         ]
+        # The "go" buttons on the four actionable tabs, disabled while
+        # anything is running.
+        self._acquire_buttons = [
+            self.single_acquire_button, self.grid_acquire_button,
+            self.auto_acquire_button, self.replay_load_button,
+        ]
+        # The "stop" buttons on Grid/Auto, enabled only while something
+        # is running -- either one works, since `stopRequested` always
+        # targets whatever's actually running, regardless of which tab
+        # is currently visible.
+        self._interrupt_buttons = [self.grid_interrupt_button, self.auto_interrupt_button]
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.tabs)
-        layout.addLayout(self._build_start_stop_row())
-
-        self._update_start_button()
 
     # -- widget construction ----------------------------------------------
 
@@ -182,9 +188,16 @@ class FocusControlPanel(QtWidgets.QWidget):
             self.single_binning_combo = _exposure_field_rows()
         focus_rows = [('Focus value:', self.single_focus_spin)]
 
+        self.single_acquire_button = QtWidgets.QPushButton('Acquire')
+        self.single_acquire_button.clicked.connect(
+            lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.single_acquire_button)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
+        layout.addLayout(button_row)
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -202,9 +215,19 @@ class FocusControlPanel(QtWidgets.QWidget):
             ('Number of steps:', self.grid_nstep_spin),
         ]
 
+        self.grid_acquire_button = QtWidgets.QPushButton('Acquire')
+        self.grid_acquire_button.clicked.connect(self.startRequested.emit)
+        self.grid_interrupt_button = QtWidgets.QPushButton('Interrupt')
+        self.grid_interrupt_button.setEnabled(False)
+        self.grid_interrupt_button.clicked.connect(self.stopRequested.emit)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.grid_acquire_button)
+        button_row.addWidget(self.grid_interrupt_button)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
+        layout.addLayout(button_row)
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -222,9 +245,19 @@ class FocusControlPanel(QtWidgets.QWidget):
             ('Max steps:', self.auto_maxsteps_spin),
         ]
 
+        self.auto_acquire_button = QtWidgets.QPushButton('Acquire')
+        self.auto_acquire_button.clicked.connect(self.startRequested.emit)
+        self.auto_interrupt_button = QtWidgets.QPushButton('Interrupt')
+        self.auto_interrupt_button.setEnabled(False)
+        self.auto_interrupt_button.clicked.connect(self.stopRequested.emit)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.auto_acquire_button)
+        button_row.addWidget(self.auto_interrupt_button)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
+        layout.addLayout(button_row)
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -258,10 +291,16 @@ class FocusControlPanel(QtWidgets.QWidget):
             ('Number of steps:', self.replay_nstep_spin),
         ]
 
+        self.replay_load_button = QtWidgets.QPushButton('Load')
+        self.replay_load_button.clicked.connect(self.startRequested.emit)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.replay_load_button)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(datadir_form)
         layout.addLayout(_two_column_row(filename_rows, focus_rows))
         layout.addStretch(1)
+        layout.addLayout(button_row)
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -297,8 +336,10 @@ class FocusControlPanel(QtWidgets.QWidget):
             "automatically by default (see the Log for its coordinates); "
             "hover over a different star in the image and press 'm' to "
             'measure that one instead.<br><br>'
-            '<b>Start / Stop</b> — run or stop the action configured in '
-            'the current tab.'
+            '<b>Acquire / Load</b> — run the action configured in that '
+            'tab.<br>'
+            '<b>Interrupt</b> — stop a running Grid/Auto sequence between '
+            'steps (does not abort the current exposure).'
         )
         label = QtWidgets.QLabel(text)
         label.setWordWrap(True)
@@ -313,25 +354,14 @@ class FocusControlPanel(QtWidgets.QWidget):
         widget.setLayout(layout)
         return widget
 
-    def _build_start_stop_row(self):
-        self.start_button = QtWidgets.QPushButton('Start')
-        self.stop_button = QtWidgets.QPushButton('Stop')
-        self.stop_button.setEnabled(False)
-        self.start_button.clicked.connect(self._on_start_clicked)
-        self.stop_button.clicked.connect(self.stopRequested.emit)
-
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.start_button)
-        row.addWidget(self.stop_button)
-        return row
-
     # -- public API used by the Controller ---------------------------------
 
     def get_sequence_type(self):
         """
         The sequence type for the currently active tab, as ``'grid'``,
         ``'automated'``, or ``'archive'`` -- or ``None`` if Single, Log,
-        or Help is active (in which case "Start" is disabled anyway).
+        or Help is active (in which case no button can have triggered
+        `startRequested` in the first place).
         """
         tab = self.tabs.currentWidget()
         if tab is self.grid_tab:
@@ -400,24 +430,23 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def set_running(self, running):
         """Toggle widget states for whether an action is currently running."""
-        self._running = running
-        self.stop_button.setEnabled(running)
         for widget in self._config_widgets:
             widget.setEnabled(not running)
+        for button in self._acquire_buttons:
+            button.setEnabled(not running)
+        for button in self._interrupt_buttons:
+            button.setEnabled(running)
 
-        if running:
-            self.start_button.setEnabled(False)
-        else:
-            self._update_start_button()
+        if not running and self.status_label.text().startswith('Stopping'):
             # Only clear a stale "Stopping..." message -- not a
             # confirmation/failure the worker's finishing signal may have
             # just set moments before this.
-            if self.status_label.text().startswith('Stopping'):
-                self.status_label.setText('')
+            self.status_label.setText('')
 
     def set_stopping(self):
-        """Reflect a Stop request that hasn't taken effect yet (§4.3)."""
-        self.stop_button.setEnabled(False)
+        """Reflect an Interrupt request that hasn't taken effect yet (§4.3)."""
+        for button in self._interrupt_buttons:
+            button.setEnabled(False)
         self.status_label.setText('Stopping — waiting for current exposure to finish...')
 
     def update_step(self, result, total_expected=None):
@@ -463,22 +492,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.log_widget.clear()
 
     # -- internals ----------------------------------------------------------
-
-    def _on_tab_changed(self, _index):
-        if self._running:
-            return  # set_running() alone governs Start/Stop while running
-        self._update_start_button()
-
-    def _update_start_button(self):
-        tab = self.tabs.currentWidget()
-        self.start_button.setEnabled(
-            tab in (self.single_tab, self.grid_tab, self.auto_tab, self.replay_tab))
-
-    def _on_start_clicked(self):
-        if self.tabs.currentWidget() is self.single_tab:
-            self.takeSingleExposureRequested.emit(self.single_focus_spin.value())
-        else:
-            self.startRequested.emit()
 
     def _on_browse_clicked(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(

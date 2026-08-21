@@ -1721,3 +1721,51 @@ name and `panel.tabs`/tab-widget structure; `_config_widgets`,
 `get_sequence_config()`, etc. are unaffected since they read widgets by
 attribute, not by layout position). Reran the full suite to confirm
 nothing broke: all 110 tests pass; Qt-free boundary reconfirmed.
+
+### Move acquisition buttons into their own tabs
+
+Per request: the shared Start/Stop row below the tab widget is gone.
+Each actionable tab now owns its own button(s) at the bottom of its
+layout (after the `addStretch(1)` already there, so they sit at the
+tab's bottom edge regardless of window height -- confirmed directly by
+checking button `y()` against tab `height()` once actually displayed):
+Single has one "Acquire" (`single_acquire_button`); Grid and Auto each
+have "Acquire"/"Interrupt" (`grid_acquire_button`/`grid_interrupt_button`,
+`auto_acquire_button`/`auto_interrupt_button`); Replay has one "Load"
+(`replay_load_button`). Log and Help have none.
+
+This actually *simplified* the controller-facing logic, not just moved
+buttons around: because a `QTabWidget` only lets the user interact with
+the currently-visible page, each button unambiguously means "run this
+tab's action" the moment it's clickable at all -- there's no longer a
+need to track which tab is active to decide what a click *means* (only
+`get_sequence_type()`/`get_sequence_config()` still consult
+`self.tabs.currentWidget()`, to decide what a click that already
+happened should build). This removed `_on_tab_changed()`,
+`_update_start_button()`, `_on_start_clicked()`, and the
+`currentChanged` connection entirely -- none of them are needed once
+enablement no longer depends on which tab is showing, only on whether
+something is running. `set_running()` now disables all four acquire
+buttons and enables both interrupt buttons uniformly (either Interrupt
+button works regardless of which tab is visible, since `stopRequested`
+always targets whatever `Controller.worker` actually is, not "whichever
+tab's sequence" -- there's only ever one). `Controller` needed **zero**
+changes: it only ever depended on the `startRequested`/`stopRequested`/
+`takeSingleExposureRequested` signals, never on the button widgets
+themselves.
+
+**Testing:** replaced the old shared-button tests in
+`tests/gui/test_focus_control_panel.py` with
+`test_each_tab_has_the_requested_buttons` (checks the exact button set
+per tab, including that Replay's pre-existing "Browse…" button coexists
+with "Load," and that Log/Help have none at all),
+per-tab signal tests (`test_single_tab_acquire_emits_take_single_exposure_requested`,
+`test_grid_tab_acquire_and_interrupt_signals`,
+`test_auto_tab_acquire_and_interrupt_signals`,
+`test_replay_tab_load_emits_start_requested`), and
+`test_set_running_locks_config_widgets_and_acquire_buttons` (all four
+acquire buttons disable, both interrupt buttons enable, and vice versa).
+Updated the button references in `tests/gui/test_controller.py`
+(`replay_load_button`) and `tests/gui/test_phase3_smoke.py` (each
+`panel.start_button.click()` replaced with the specific tab's own
+button). All 109 tests pass; Qt-free boundary reconfirmed.

@@ -61,14 +61,14 @@ def test_running_state_is_set_synchronously_before_worker_runs(qapp, focus_sweep
 
     # _set_running(True) happens before worker.start(), so this should
     # already be true without needing to pump the event loop at all.
-    assert not window.control_panel.start_button.isEnabled(), \
-        'Start should be disabled as soon as a sequence begins'
+    assert not window.control_panel.replay_load_button.isEnabled(), \
+        'Load should be disabled as soon as a sequence begins'
     assert not window.image_panel._selection_enabled, \
         'image selection should be disabled while a sequence is running'
     assert window.control_panel.tabs.isEnabled(), 'the tab bar should stay reachable while running'
 
     _wait_for_worker(controller)
-    assert window.control_panel.start_button.isEnabled(), 'Start should re-enable once finished'
+    assert window.control_panel.replay_load_button.isEnabled(), 'Load should re-enable once finished'
     assert window.image_panel._selection_enabled, 'selection should re-enable once finished'
 
 

@@ -5,6 +5,7 @@ import warnings
 from IPython import embed
 
 from pathlib import Path
+from dataclasses import dataclass
 import logging
 
 import numpy as np
@@ -164,7 +165,7 @@ class ExposurePath:
 
     @property
     def previous(self):
-        return self.expresult.read()
+        return Path(self.expresult.read())
 
     @property
     def next(self):
@@ -177,7 +178,7 @@ class ExposurePath:
             path = Path(self.recorddir.read()).absolute()
         else:
             path = Path(self.scratchdir.read()).absolute()
-        return str(path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}')
+        return path / f'{self.prefix.read()}{obsnum}{self.suffix.read()}'
     
 
 class ExposureConfig:
@@ -383,6 +384,41 @@ class FocusPlot:
         return distances[-1] > outlier_threshold
 
 
+@dataclass
+class StepResult:
+    """
+    The measurement produced by one step of a focus sequence.
+
+    Attributes
+    ----------
+    index : :obj:`int`
+        0-based position of this step within the sequence.
+    focus_value : :obj:`float`
+        The focus value used for this exposure.
+    exposure : :class:`pathlib.Path`
+        Path to the exposure's FITS file.
+    fwhm : :obj:`float`
+        Measured image quality (FWHM) of the selected source.
+    frame : :class:`numpy.ndarray`
+        Background-subtracted image data for the full exposure.
+    stamp : :class:`numpy.ndarray`
+        Cutout of ``frame`` around the selected source.
+    centroid : :obj:`tuple`
+        The (x,y) centroid of the selected source.
+    is_outlier : :obj:`bool`
+        Whether this step's centroid is an outlier relative to the rest of
+        the sequence collected so far; see :func:`FocusPlot.is_outlier`.
+    """
+    index: int
+    focus_value: float
+    exposure: Path
+    fwhm: float
+    frame: np.ndarray
+    stamp: np.ndarray
+    centroid: tuple
+    is_outlier: bool
+
+
 class FocusSequence:
     """
     Perform a focus sequence.
@@ -415,14 +451,32 @@ class FocusSequence:
             'the live plot.'
         )
 
-    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
+    def step(self, method='brightest'):
+        """
+        Advance the focus sequence one exposure at a time.
 
-        if self._exposure is not None:
-            self._exposure.cfg.configure(**exp_kwargs)
-        self.reset()
+        This is the engine shared by :func:`execute` (used by the CLI
+        script) and any other driver of the sequence (e.g., a GUI worker
+        thread): each iteration sets the focus, takes or retrieves an
+        exposure, measures its image quality, and yields the result. It
+        does not decide when the sequence should stop (see
+        :func:`continue_sequence`) or what to do once it has; callers are
+        responsible for calling :func:`reset` beforehand and for reacting
+        to each :class:`StepResult` as it's yielded (e.g., to update a
+        plot).
 
-        self.plot = FocusPlot(self.expected_steps) if plot else None
+        Parameters
+        ----------
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
 
+        Yields
+        ------
+        StepResult
+            The result of the most recently completed step.
+        """
+        self.method = method
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
@@ -432,28 +486,144 @@ class FocusSequence:
             self.img_quality += [img_quality]
             self.centroids += [coords]
 
-            if self.plot is not None:
-                outlier = FocusPlot.is_outlier(self.centroids)
-                self.plot.update_frame(data - bkg, coords, int(img_quality*10),
-                                        Path(self.exposures[-1]).stem, self.observed_focus[-1],
-                                        outlier)
-                self.plot.add_stamp(self.step_iter, source_stamp, self.observed_focus[-1],
-                                     img_quality, is_outlier=outlier)
-                self.plot.update_curve(self.observed_focus, self.img_quality)
-
+            result = StepResult(
+                index=self.step_iter,
+                focus_value=self.observed_focus[-1],
+                exposure=self.exposures[-1],
+                fwhm=img_quality,
+                frame=data - bkg,
+                stamp=source_stamp,
+                centroid=coords,
+                is_outlier=FocusPlot.is_outlier(self.centroids),
+            )
             self.step_iter += 1
+            yield result
+
+    def reanalyze(self, method='brightest'):
+        """
+        Re-run photometry on every exposure this sequence has already
+        collected, using a new ``method``, without taking any new
+        exposures.
+
+        This replaces the stored ``img_quality``/``source_stamps``/
+        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and
+        thus which exposures exist and what focus values they were taken
+        at) are left untouched. It's meant for interactively changing
+        which source is used for the FWHM measurement (e.g., after a user
+        clicks a different star in the displayed image) and seeing the
+        effect on every exposure already taken, live or archived, without
+        re-observing. If nothing has been collected yet (``exposures`` is
+        empty), this yields nothing.
+
+        Parameters
+        ----------
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
+
+        Yields
+        ------
+        StepResult
+            The updated result for each already-collected exposure, in
+            the order they were originally taken.
+        """
+        self.method = method
+        focus_values = list(self.observed_focus)
+        exposures = list(self.exposures)
+
+        self.img_quality = []
+        self.source_stamps = []
+        self.centroids = []
+
+        for i, (focus_value, exposure) in enumerate(zip(focus_values, exposures)):
+            data, bkg, src_data, img_quality, source_stamp, coords \
+                = image_quality(exposure, method=method)
+            self.source_stamps += [source_stamp]
+            self.img_quality += [img_quality]
+            self.centroids += [coords]
+
+            yield StepResult(
+                index=i,
+                focus_value=focus_value,
+                exposure=exposure,
+                fwhm=img_quality,
+                frame=data - bkg,
+                stamp=source_stamp,
+                centroid=coords,
+                is_outlier=FocusPlot.is_outlier(self.centroids),
+            )
+
+    def take_single_exposure(self, focus_value, method='brightest', **exp_kwargs):
+        """
+        Move to ``focus_value``, take one exposure, and measure its image
+        quality -- one iteration of :func:`step`'s body, without any
+        sequence bookkeeping (``step_iter``, ``observed_focus``,
+        ``img_quality``, etc. are left untouched).
+
+        This is the shared primitive behind both "move to best focus"
+        (moving to a fitted focus value and confirming it with one
+        exposure *is* taking a single exposure at that value) and the
+        standalone single-exposure workflow (GUI_DESIGN.md §5.5).
+
+        Parameters
+        ----------
+        focus_value : :obj:`int`, :obj:`float`
+            The focus value to move to before exposing.
+        method : :obj:`str`, :obj:`tuple`, optional
+            The photometry method passed to
+            :func:`photometry.image_quality`.
+        **exp_kwargs
+            Passed to :func:`ExposureConfig.configure` before exposing
+            (``record``, ``speed``, ``binning``, ``exptime``).
+
+        Returns
+        -------
+        StepResult
+            The measurement from the single exposure. Its ``index`` is
+            always 0, since it's not part of any larger sequence.
+        """
+        if self._focus is None or self._exposure is None:
+            raise ValueError(
+                'No telescope focus/exposure control is available (ktl not connected); cannot '
+                'take a single exposure.'
+            )
+        self._focus.set_to(focus_value)
+        self._exposure.cfg.configure(**exp_kwargs)
+        exposure = self.take_exposure()
+        data, bkg, src_data, img_quality, source_stamp, coords \
+            = image_quality(exposure, method=method)
+        return StepResult(
+            index=0,
+            focus_value=self._focus.current,
+            exposure=exposure,
+            fwhm=img_quality,
+            frame=data - bkg,
+            stamp=source_stamp,
+            centroid=coords,
+            is_outlier=False,
+        )
+
+    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
+
+        if self._exposure is not None:
+            self._exposure.cfg.configure(**exp_kwargs)
+        self.reset()
+
+        self.plot = FocusPlot(self.expected_steps) if plot else None
+
+        for result in self.step(method=method):
+            if self.plot is not None:
+                self.plot.update_frame(result.frame, result.centroid, int(result.fwhm*10),
+                                        result.exposure.stem, result.focus_value,
+                                        result.is_outlier)
+                self.plot.add_stamp(result.index, result.stamp, result.focus_value,
+                                     result.fwhm, is_outlier=result.is_outlier)
+                self.plot.update_curve(self.observed_focus, self.img_quality)
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
 
         if goto:
-            if self._focus is None:
-                raise ValueError(
-                    'No telescope focus control is available (ktl not connected); cannot move '
-                    'to the best-fit focus.'
-                )
-            self._focus.set_to(best_focus)
-            self.take_exposure()
-            sigma_at_best_focus = self.measure_fwhm(self.exposures[-1])
+            self.take_single_exposure(best_focus, method=method)
 
         return best_focus, best_img_quality
 
@@ -512,7 +682,11 @@ class AutomatedFocusSequence(FocusSequence):
         super().__init__()
 
         self.start = start
-        self.step = step
+        # NOTE: Named `step_size`, not `step`, because `step` is the name
+        # of the generator method inherited from FocusSequence -- an
+        # instance attribute of the same name would shadow it entirely
+        # (seq.step(...) would try to call a float).
+        self.step_size = step
         self.direction = None
         self.last = None
         self.maxsteps = maxsteps
@@ -529,32 +703,32 @@ class AutomatedFocusSequence(FocusSequence):
     def continue_sequence(self):
         return (
             self.step_iter < self.maxsteps
-            and (self.step_iter < 2 
+            and (self.step_iter < 2
                  or self.last is None
                  or (self.last is not None and self.step_iter < self.last)
             )
         )
-    
+
     def step_focus(self):
         if self.step_iter == 0:
             next_focus = self.start
         elif self.step_iter == 1:
-            next_focus = self.start + self.step
+            next_focus = self.start + self.step_size
         elif self.step_iter == 2 and self.img_quality[0] > self.img_quality[1]:
             self.direction = 1
-            next_focus = self.observed_focus[1] + self.step
+            next_focus = self.observed_focus[1] + self.step_size
         elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
             self.direction = -1
-            next_focus = self.observed_focus[0] - self.step
+            next_focus = self.observed_focus[0] - self.step_size
         elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
                 warnings.warn(
                     f'Number of steps to fulfill sequence ({self.last}) is more than the '
                     f'maximum number of steps requested ({self.maxsteps}).')
-            next_focus = self.observed_focus[-1] + self.direction * self.step
+            next_focus = self.observed_focus[-1] + self.direction * self.step_size
         else:
-            next_focus = self.observed_focus[-1] + self.direction * self.step
+            next_focus = self.observed_focus[-1] + self.direction * self.step_size
         self._focus.set_to(next_focus)
         return self._focus.current
 
@@ -692,14 +866,14 @@ def main():
             # archived sequences can be re-analyzed without a ktl connection.
             datadir = Path(args.datadir).absolute()
             expected_files = np.array([
-                str(datadir / f'{args.prefix}{args.obsnum + i}{args.suffix}')
+                datadir / f'{args.prefix}{args.obsnum + i}{args.suffix}'
                 for i in range(seq.nstep)
             ])
-            indx = np.array([Path(f).is_file() for f in expected_files])
+            indx = np.array([f.is_file() for f in expected_files])
             if not np.all(indx):
                 missing = expected_files[np.logical_not(indx)]
                 raise FileNotFoundError('Expected to find the following files, but they are not '
-                                        f'available: {", ".join(missing.tolist())}')
+                                        f'available: {", ".join(str(f) for f in missing)}')
             seq = ArchiveFocusSequence(seq.target_focus, expected_files)
     else:
         seq = AutomatedFocusSequence(args.focus[0], args.focus[1], maxsteps=args.maxsteps)
@@ -710,12 +884,23 @@ def main():
     print(f'Best focus: {best_focus:.1f}')
     print(f'Expected sigma: {best_img_quality:.1f} pixels')
 
+    if args.ofile is not None:
+        # Outlier status is recomputed the same way step() does it live:
+        # relative to every centroid observed up to and including that
+        # one, not the full, final set.
+        outlier = [FocusPlot.is_outlier(seq.centroids[:i+1]) for i in range(len(seq.centroids))]
+        tbl = Table({
+            'EXPOSURE': [str(f) for f in seq.exposures],
+            'FOCUS': seq.observed_focus,
+            'SIGMA': seq.img_quality,
+            'OUTLIER': outlier,
+        })
+        tbl.write(args.ofile, format='ecsv', overwrite=True)
+        print(f'Wrote focus data to {args.ofile}')
+
     if seq.plot is not None:
         pyplot.ioff()
         pyplot.show(block=True)
-
-    # TODO:
-    # - Write the output file if provided
 
 
 if __name__ == "__main__":

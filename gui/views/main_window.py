@@ -47,6 +47,10 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__(parent)
         self.setWindowTitle('Nickel Focus GUI')
 
+        # Each of these is a QWidget subclass -- constructing one here
+        # doesn't show anything on screen by itself; a widget only
+        # becomes visible once it's placed into a visible parent's
+        # layout (below) and that parent is eventually shown.
         self.image_panel = ImagePanel()
         self.curve_panel = FocusCurvePanel()
         self.control_panel = FocusControlPanel()
@@ -56,6 +60,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # a QScrollArea's own minimum size hint doesn't inherit that, so
         # wrapping it here is what actually lets the window shrink to fit
         # (see _size_to_screen) instead of being held open by the layout.
+        # A QScrollArea is itself a widget: it displays exactly one
+        # child widget (set via setWidget) inside a scrollable viewport,
+        # adding scrollbars only when that child doesn't fit.
         control_scroll = QtWidgets.QScrollArea()
         control_scroll.setWidget(self.control_panel)
         control_scroll.setWidgetResizable(True)
@@ -71,6 +78,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # vertical scrollbar's own width once one appears.
         control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width() + 20)
 
+        # QSplitter arranges its child widgets in a row or column with a
+        # user-draggable handle between each pair, unlike a plain layout
+        # (QVBoxLayout/QHBoxLayout elsewhere in this codebase), whose
+        # relative sizes the user can't adjust interactively. Splitters
+        # nest like any other widget: `right` (curve plot over the
+        # scrollable control panel) becomes one side of `central`
+        # (image panel beside that whole right-hand column).
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         right.addWidget(self.curve_panel)
         right.addWidget(control_scroll)
@@ -78,18 +92,36 @@ class MainWindow(QtWidgets.QMainWindow):
         central = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         central.addWidget(self.image_panel)
         central.addWidget(right)
+        # Give both sides of the horizontal splitter equal claim on any
+        # extra space when the window is resized (an equal, nonzero
+        # stretch factor on each), rather than one side absorbing all of
+        # it while the other stays fixed.
         central.setStretchFactor(0, 1)
         central.setStretchFactor(1, 1)
 
+        # A QMainWindow manages one designated central widget (menus,
+        # toolbars, and dockable panels -- none used here -- go around
+        # it); this is what actually makes `central` (and everything
+        # nested inside it) appear when the window is shown.
         self.setCentralWidget(central)
         self._size_to_screen(1200, 600)
         self._load_settings()
 
     def closeEvent(self, event):
+        """
+        Save settings before the window actually closes. This overrides
+        a `QWidget` *event handler* rather than connecting to a signal
+        (contrast `gui.controller.Controller`, which is all signal/slot
+        connections) -- Qt calls this method itself whenever the window
+        is about to close, however that was triggered (the close button,
+        `QWidget.close()`, or quitting the application), so overriding
+        it is the standard way to run code at that specific moment.
+        """
         self._save_settings()
         super().closeEvent(event)
 
     def _settings(self):
+        """The `QSettings` store this window persists to/restores from."""
         return QtCore.QSettings(self._SETTINGS_ORG, self._SETTINGS_APP)
 
     def _save_settings(self):

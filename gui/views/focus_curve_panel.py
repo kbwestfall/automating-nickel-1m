@@ -49,6 +49,12 @@ class FocusCurvePanel(QtWidgets.QWidget):
         self.canvas.draw_idle()
 
     def _reset_axis(self):
+        """
+        Clear the plot and redraw its static decorations (labels, title,
+        grid) -- everything :func:`_render` would otherwise have to
+        re-apply after every `Axes.clear`, factored out since both
+        :func:`_render` and :func:`reset` need exactly this.
+        """
         self.ax.clear()
         self.ax.set_xlabel('Focus Value')
         self.ax.set_ylabel('FWHM (pixels)')
@@ -56,6 +62,10 @@ class FocusCurvePanel(QtWidgets.QWidget):
         self.ax.grid(True, alpha=0.3)
 
     def _render(self):
+        """
+        Redraw the whole plot from `_results`: points, plus the fitted
+        curve/vertex if enough exist.
+        """
         self._reset_axis()
         if not self._results:
             self.canvas.draw_idle()

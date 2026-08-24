@@ -106,6 +106,11 @@ class ImagePanel(QtWidgets.QWidget):
 
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel('Exposure:'))
+        # The trailing 1 is a *stretch factor*: when this row is given
+        # more width than its widgets need, QHBoxLayout hands the extra
+        # space to whichever widgets have a nonzero factor, in
+        # proportion to it. Every other widget here defaults to 0 (no
+        # extra space), so the combo box is the only one that grows.
         top.addWidget(self.exposure_combo, 1)
         top.addWidget(QtWidgets.QLabel('Stretch:'))
         top.addWidget(self.stretch_combo)
@@ -116,15 +121,30 @@ class ImagePanel(QtWidgets.QWidget):
         grid.addWidget(self.v_scroll, 0, 1)
         grid.addWidget(self.h_scroll, 1, 0)
 
+        # Passing `self` to the constructor both creates this layout and
+        # immediately calls `self.setLayout(...)` with it -- equivalent
+        # to (and just a shorthand for) creating it plain and calling
+        # `setLayout` afterward, as the panels built from bare `QWidget`s
+        # elsewhere in this codebase do. `top`/`grid` above are added as
+        # *nested* sub-layouts, not widgets -- layouts, like widgets,
+        # can contain other layouts to build up more complex
+        # arrangements than a single row/column/grid alone could.
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(top)
         layout.addLayout(grid)
 
+        # Ordinary Qt signal/slot connections (see gui/controller.py for
+        # more on what that means).
         self.exposure_combo.currentIndexChanged.connect(self._on_combo_changed)
         self.stretch_combo.currentTextChanged.connect(self._on_stretch_changed)
         self.recenter_button.clicked.connect(self.recenter)
         self.h_scroll.valueChanged.connect(self._on_scroll)
         self.v_scroll.valueChanged.connect(self._on_scroll)
+        # `mpl_connect` is matplotlib's *own* callback registry, not a
+        # Qt signal -- the embedded figure's mouse/keyboard events don't
+        # become Qt signals, so matplotlib-specific events (like a plot
+        # scroll or a key press while the canvas has focus) need
+        # matplotlib's own connection mechanism instead of `.connect()`.
         self.canvas.mpl_connect('scroll_event', self._on_wheel_zoom)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
 
@@ -222,10 +242,7 @@ class ImagePanel(QtWidgets.QWidget):
         new_view_w, new_view_h = self._view_extent()
         new_x0 = round(center_x - new_view_w / 2)
         new_y0 = round(center_y - new_view_h / 2)
-        for bar, value in ((self.h_scroll, new_x0), (self.v_scroll, new_y0)):
-            bar.blockSignals(True)
-            bar.setValue(max(0, min(value, bar.maximum())))
-            bar.blockSignals(False)
+        self._set_scroll_position(new_x0, new_y0)
         self._render(reset_view=False)
 
     def reset(self):
@@ -269,20 +286,35 @@ class ImagePanel(QtWidgets.QWidget):
     # -- internals --------------------------------------------------------
 
     def _on_combo_changed(self, index):
+        """Slot for `exposure_combo`'s ``currentIndexChanged``: display the newly picked entry."""
         if 0 <= index < len(self._results):
             self._show_result_preserving_view(self._results[index])
 
     def _on_stretch_changed(self, name):
+        """Slot for `stretch_combo`'s ``currentTextChanged``: re-render with the new stretch."""
         self._stretch_name = name
         if self._current is not None:
             self._render(reset_view=False)
 
     def _on_scroll(self, _value):
+        """
+        Slot for both scrollbars' ``valueChanged``. The new value itself
+        (``_value``) isn't needed -- :func:`_apply_view_limits` reads
+        both bars' current positions directly -- but a slot connected to
+        a signal that carries an argument must still accept it
+        positionally; the leading underscore is just this codebase's way
+        of flagging "intentionally unused."
+        """
         if self._current is not None:
             self._apply_view_limits()
             self.canvas.draw_idle()
 
     def _on_wheel_zoom(self, event):
+        """
+        matplotlib ``scroll_event`` callback (mouse wheel or trackpad
+        scroll over the canvas): zoom in/out, anchored on the cursor
+        (see :func:`_zoom_at`).
+        """
         if event.inaxes != self.ax or self._current is None:
             return
         if event.button == 'up':
@@ -312,14 +344,17 @@ class ImagePanel(QtWidgets.QWidget):
         new_view_w, new_view_h = self._view_extent()
         new_x0 = round(xdata - frac_x * new_view_w)
         new_y0 = round(ydata - frac_y * new_view_h)
-        for bar, value in ((self.h_scroll, new_x0), (self.v_scroll, new_y0)):
-            bar.blockSignals(True)
-            bar.setValue(max(0, min(value, bar.maximum())))
-            bar.blockSignals(False)
+        self._set_scroll_position(new_x0, new_y0)
         self._apply_view_limits()
         self.canvas.draw_idle()
 
     def _on_key_press(self, event):
+        """
+        matplotlib ``key_press_event`` callback: pressing 'm' over the
+        canvas, while selection is enabled, emits :attr:`sourceSelected`
+        with the data coordinates under the cursor (see the class
+        docstring for why a key press rather than a click).
+        """
         if event.key != 'm' or not self._selection_enabled or event.inaxes != self.ax:
             return
         if event.xdata is None or event.ydata is None:
@@ -327,6 +362,14 @@ class ImagePanel(QtWidgets.QWidget):
         self.sourceSelected.emit(float(event.xdata), float(event.ydata))
 
     def _render(self, reset_view):
+        """
+        Redraw the currently displayed result from scratch: image,
+        stretch, and the measured-source box (or nothing, if
+        `_current` is `None`). ``reset_view`` controls whether the
+        zoom/scroll state is recomputed for a new frame shape (a
+        genuinely new image) or left alone (e.g. just changing the
+        stretch on the same image).
+        """
         result = self._current
         self.ax.clear()
         self.ax.set_xticks([])
@@ -362,7 +405,29 @@ class ImagePanel(QtWidgets.QWidget):
         ny, nx = self._data_shape
         return nx / self._zoom, ny / self._zoom
 
+    def _set_scroll_position(self, x0, y0):
+        """
+        Set both scrollbars' values at once, clamped to their valid
+        range, without triggering :func:`_on_scroll` for either -- used
+        whenever this panel repositions the view itself (recentering on
+        a data point, panning by right-clicking, etc.) rather than in
+        response to the user actually dragging a scrollbar. Signals are
+        blocked because :func:`_on_scroll` would otherwise fire once per
+        bar and redraw twice for what's really one logical view change;
+        the caller is expected to refresh the display itself afterward.
+        """
+        for bar, value in ((self.h_scroll, x0), (self.v_scroll, y0)):
+            bar.blockSignals(True)
+            bar.setValue(max(0, min(value, bar.maximum())))
+            bar.blockSignals(False)
+
     def _update_scrollbar_ranges(self):
+        """
+        Recompute each scrollbar's valid range/page size for the
+        current frame shape and zoom level (e.g. after loading a new
+        frame or changing zoom) -- signals are blocked for the same
+        reason as :func:`_set_scroll_position`.
+        """
         ny, nx = self._data_shape
         view_w, view_h = self._view_extent()
         for bar, extent, full in ((self.h_scroll, view_w, nx), (self.v_scroll, view_h, ny)):
@@ -373,6 +438,13 @@ class ImagePanel(QtWidgets.QWidget):
             bar.blockSignals(False)
 
     def _apply_view_limits(self):
+        """
+        Set the matplotlib axes' visible data range from the current
+        scrollbar positions and zoom level. Doesn't redraw the canvas
+        itself -- callers are responsible for that (`draw_idle`), since
+        this is often one of several changes made before a single
+        redraw.
+        """
         view_w, view_h = self._view_extent()
         x0 = self.h_scroll.value()
         y0 = self.v_scroll.value()

@@ -2108,3 +2108,68 @@ already on record.
 Awaiting further direction -- Phase 5 (and the currently-known scope of
 GUI_DESIGN.md's phased plan, since Phase 4/pyqtgraph was explicitly
 skipped) is complete.
+
+## Code-quality pass (pre-GUI_SUMMARY.md)
+
+Per request, ahead of writing a `GUI_SUMMARY.md` (replacing the earlier
+plan to reconcile `GUI_DESIGN.md` itself, which is being left as-is): a
+pass over every file in `gui/` for conciseness/modularity, complete
+docstring coverage (including trivial/private helpers), and inline
+comments explaining Qt mechanics at points a first-time Qt user would
+need them.
+
+**Docstrings:** added one to every function/class that lacked one,
+confirmed after the fact with a small AST-based script checking every
+`gui/` file for `FunctionDef`/`ClassDef` nodes with no docstring (empty
+output = none left) -- more reliable than eyeballing across nine files.
+`__init__` methods are excluded throughout, per direction: a class's own
+docstring already covers its constructor. Multi-line docstrings follow
+the existing convention of opening/closing `"""` on their own line;
+single-line ones stay inline as long as they fit the file's existing
+~98-character line length (checked the same way, across all of `gui/`).
+
+**Conciseness/modularity** -- three concrete, low-risk extractions,
+chosen for being exact, unambiguous duplication (not speculative
+"might be reused later" abstraction):
+- `ImagePanel`: `_zoom_at`/`_show_result_preserving_view` had an
+  identical 3-line "clamp and set both scrollbars without triggering
+  `_on_scroll`" block. Extracted to `_set_scroll_position(x0, y0)`.
+- `FocusControlPanel`: every `_build_*_tab` ended with the same
+  `QWidget()` + `setLayout()` + `return` triplet -- extracted to a
+  module-level `_tab_widget(layout)`. The Grid/Auto tabs' identical
+  Acquire/Interrupt button pair (construct, wire to
+  `startRequested`/`stopRequested`, disable Interrupt) became
+  `_build_acquire_interrupt_row()`. A smaller `_button_row(*buttons)`
+  replaced the repeated "new QHBoxLayout, addWidget each button" used
+  by all four actionable tabs. Deliberately did *not* merge the Grid
+  and Auto tab-builders further (into one parameterized method) -- the
+  residual duplication after these extractions is small, and a shared
+  builder would need either `setattr`-based dynamic attribute names or
+  a multi-item tuple/namespace return, either of which would make the
+  two tabs *harder* to read top-to-bottom than the current
+  near-identical-but-plainly-written pair, for a marginal line-count
+  win. "Three similar lines beat a premature abstraction" applies just
+  as much at nine similar lines.
+- `Controller._on_step_complete`: `self.worker is not None and
+  self.worker.mode == 'reanalyze'` was computed twice (once inline,
+  once via the `reanalyzing_standalone` tuple); factored into one
+  `is_reanalyze` local.
+
+**Inline comments for Qt mechanics**, placed once at each concept's
+first real occurrence rather than repeated everywhere: signal/slot
+`connect()` (`Controller.__init__`), a signal's `.emit` used directly
+as another signal's slot (`FocusControlPanel._build_acquire_interrupt_row`),
+`QThread.run()` as the actual background-thread entry point plus why
+emitting a signal from it is still safe (`SequenceWorker.run`),
+overriding a Qt *event handler* (`closeEvent`) as distinct from a
+signal connection, `QSplitter` vs. plain layouts and nesting them
+(`MainWindow.__init__`), `QScrollArea`'s one-child-widget model,
+`QMainWindow.setCentralWidget`, `QTabWidget` page-switching semantics
+and stretch factors (`QHBoxLayout.addWidget(..., 1)`), `QFormLayout`'s
+label/field pairing, matplotlib's own `mpl_connect` callback registry
+as something distinct from Qt signals, and `QLabel.setTextFormat`
+turning on HTML interpretation.
+
+No behavior changes anywhere in this pass -- confirmed by running the
+full suite (unchanged at 120 tests) and the Qt-free boundary check
+(unchanged at 26 pass) after every file, not just once at the end.

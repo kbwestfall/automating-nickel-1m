@@ -104,6 +104,19 @@ class SequenceWorker(QtCore.QThread):
         self.stop_requested = True
 
     def run(self):
+        """
+        `QThread`'s entry point: everything this method does runs on the
+        new background thread, not the GUI thread, once :func:`start`
+        is called. Overriding `run()` (rather than calling it directly)
+        is what actually moves the work to that other thread -- Qt's
+        machinery handles creating the OS-level thread and invoking this
+        method on it. Signal ``.emit()`` calls made from here (e.g.
+        ``self.stepComplete.emit(result)`` below) are still safe to
+        connect to GUI-thread slots: Qt automatically queues the
+        delivery back onto the GUI thread's event loop instead of
+        calling the slot immediately, so widgets are never touched from
+        the wrong thread.
+        """
         self.stop_requested = False
 
         if self.mode == 'single':

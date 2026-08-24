@@ -67,6 +67,11 @@ def _two_column_row(left_rows, right_rows):
     -------
     :class:`~PySide6.QtWidgets.QHBoxLayout`
     """
+    # QFormLayout is a layout specialized for exactly this
+    # "label: field" arrangement -- addRow() places each label to the
+    # left of its widget and keeps every label in the form the same
+    # width, so the fields line up in a column even though the labels
+    # themselves are different lengths.
     left_form = QtWidgets.QFormLayout()
     for label, widget in left_rows:
         left_form.addRow(label, widget)
@@ -78,6 +83,26 @@ def _two_column_row(left_rows, right_rows):
     row.addLayout(left_form)
     row.addLayout(right_form)
     return row
+
+
+def _button_row(*buttons):
+    """A :class:`~PySide6.QtWidgets.QHBoxLayout` containing each of ``buttons``, in order."""
+    row = QtWidgets.QHBoxLayout()
+    for button in buttons:
+        row.addWidget(button)
+    return row
+
+
+def _tab_widget(layout):
+    """
+    Wrap ``layout`` in a bare :class:`~PySide6.QtWidgets.QWidget`, ready
+    to hand to :func:`~PySide6.QtWidgets.QTabWidget.addTab` -- a tab
+    page must be an actual widget, not a layout by itself, so every
+    ``_build_*_tab`` method below ends by returning this.
+    """
+    widget = QtWidgets.QWidget()
+    widget.setLayout(layout)
+    return widget
 
 
 class FocusControlPanel(QtWidgets.QWidget):
@@ -148,6 +173,13 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.options_tab = self._build_options_tab()
         self.help_tab = self._build_help_tab()
 
+        # QTabWidget shows exactly one of its pages (each an ordinary
+        # widget, built above) at a time, switched via the row of tabs
+        # it draws automatically from the label given to addTab().
+        # Pages that aren't currently showing still exist as real
+        # widgets in memory -- their state (a spin box's value, etc.)
+        # isn't lost when you switch away -- they're just not painted or
+        # interactive until their tab is selected again.
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self.single_tab, 'Single')
         self.tabs.addTab(self.grid_tab, 'Grid')
@@ -191,7 +223,35 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     # -- widget construction ----------------------------------------------
 
+    def _build_acquire_interrupt_row(self):
+        """
+        An "Acquire"/"Interrupt" button pair wired to
+        :attr:`startRequested`/:attr:`stopRequested`, used identically
+        by the Grid and Auto tabs (the only two tabs with a running,
+        interruptible sequence). Interrupt starts disabled; see
+        :func:`set_running`/:func:`set_stopping` for how the two
+        buttons' enabled states are actually managed once the panel is
+        in use.
+
+        Returns
+        -------
+        tuple
+            ``(button_row, acquire_button, interrupt_button)``.
+        """
+        acquire_button = QtWidgets.QPushButton('Acquire')
+        # Connecting a button's `clicked` signal straight to another
+        # signal's `.emit` -- rather than to a Python method that then
+        # calls `.emit()` itself -- is a common Qt shorthand: `.emit` is
+        # itself just a callable, so anything that can be a slot
+        # (including it) can be connected directly.
+        acquire_button.clicked.connect(self.startRequested.emit)
+        interrupt_button = QtWidgets.QPushButton('Interrupt')
+        interrupt_button.setEnabled(False)
+        interrupt_button.clicked.connect(self.stopRequested.emit)
+        return _button_row(acquire_button, interrupt_button), acquire_button, interrupt_button
+
     def _build_single_tab(self):
+        """Build the Single tab: a focus value, exposure settings, and "Acquire"."""
         self.single_focus_spin = _int_spin(165, 500, 340)
         exposure_rows, self.single_exptime_spin, self.single_speed_combo, \
             self.single_binning_combo = _exposure_field_rows()
@@ -200,19 +260,18 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.single_acquire_button = QtWidgets.QPushButton('Acquire')
         self.single_acquire_button.clicked.connect(
             lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
-        button_row = QtWidgets.QHBoxLayout()
-        button_row.addWidget(self.single_acquire_button)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
-        layout.addLayout(button_row)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        layout.addLayout(_button_row(self.single_acquire_button))
+        return _tab_widget(layout)
 
     def _build_grid_tab(self):
+        """
+        Build the Grid tab: start focus/step size/number of steps,
+        exposure settings, and Acquire/Interrupt.
+        """
         self.grid_start_spin = _int_spin(165, 500, 340)
         self.grid_step_spin = _int_spin(1, 100, 5)
         self.grid_nstep_spin = _int_spin(3, 100, 5)
@@ -223,26 +282,20 @@ class FocusControlPanel(QtWidgets.QWidget):
             ('Step size:', self.grid_step_spin),
             ('Number of steps:', self.grid_nstep_spin),
         ]
-
-        self.grid_acquire_button = QtWidgets.QPushButton('Acquire')
-        self.grid_acquire_button.clicked.connect(self.startRequested.emit)
-        self.grid_interrupt_button = QtWidgets.QPushButton('Interrupt')
-        self.grid_interrupt_button.setEnabled(False)
-        self.grid_interrupt_button.clicked.connect(self.stopRequested.emit)
-        button_row = QtWidgets.QHBoxLayout()
-        button_row.addWidget(self.grid_acquire_button)
-        button_row.addWidget(self.grid_interrupt_button)
+        button_row, self.grid_acquire_button, self.grid_interrupt_button = \
+            self._build_acquire_interrupt_row()
 
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
         layout.addLayout(button_row)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        return _tab_widget(layout)
 
     def _build_auto_tab(self):
+        """
+        Build the Auto tab: start focus/step size/max steps, exposure
+        settings, and Acquire/Interrupt.
+        """
         self.auto_start_spin = _int_spin(165, 500, 340)
         self.auto_step_spin = _int_spin(1, 100, 5)
         self.auto_maxsteps_spin = _int_spin(2, 100, 12)
@@ -253,26 +306,20 @@ class FocusControlPanel(QtWidgets.QWidget):
             ('Step size:', self.auto_step_spin),
             ('Max steps:', self.auto_maxsteps_spin),
         ]
-
-        self.auto_acquire_button = QtWidgets.QPushButton('Acquire')
-        self.auto_acquire_button.clicked.connect(self.startRequested.emit)
-        self.auto_interrupt_button = QtWidgets.QPushButton('Interrupt')
-        self.auto_interrupt_button.setEnabled(False)
-        self.auto_interrupt_button.clicked.connect(self.stopRequested.emit)
-        button_row = QtWidgets.QHBoxLayout()
-        button_row.addWidget(self.auto_acquire_button)
-        button_row.addWidget(self.auto_interrupt_button)
+        button_row, self.auto_acquire_button, self.auto_interrupt_button = \
+            self._build_acquire_interrupt_row()
 
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(_two_column_row(exposure_rows, focus_rows))
         layout.addStretch(1)
         layout.addLayout(button_row)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        return _tab_widget(layout)
 
     def _build_replay_tab(self):
+        """
+        Build the Replay tab: data directory, filename fields, focus-grid
+        fields, and "Load".
+        """
         self.replay_datadir_edit = QtWidgets.QLineEdit('.')
         self.replay_browse_button = QtWidgets.QPushButton('Browse…')
         self.replay_browse_button.clicked.connect(self._on_browse_clicked)
@@ -302,20 +349,16 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         self.replay_load_button = QtWidgets.QPushButton('Load')
         self.replay_load_button.clicked.connect(self.startRequested.emit)
-        button_row = QtWidgets.QHBoxLayout()
-        button_row.addWidget(self.replay_load_button)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(datadir_form)
         layout.addLayout(_two_column_row(filename_rows, focus_rows))
         layout.addStretch(1)
-        layout.addLayout(button_row)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        layout.addLayout(_button_row(self.replay_load_button))
+        return _tab_widget(layout)
 
     def _build_log_tab(self):
+        """Build the Log tab: the status line, step line, and scrolling history."""
         # Word wrap is essential here, not cosmetic: a long message (e.g.
         # a failure listing several missing file paths) in an unwrapped
         # QLabel reports its *entire single-line* width as the label's
@@ -328,18 +371,19 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.step_label.setWordWrap(True)
         self.log_widget = QtWidgets.QPlainTextEdit()
         self.log_widget.setReadOnly(True)
+        # A QPlainTextEdit grows without bound by default, appending
+        # one line at a time all session -- capping it here is what
+        # keeps a very long run from slowly consuming ever more memory.
         self.log_widget.setMaximumBlockCount(500)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.status_label)
         layout.addWidget(self.step_label)
         layout.addWidget(self.log_widget)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        return _tab_widget(layout)
 
     def _build_options_tab(self):
+        """Build the Options tab: currently just the "remember settings" checkbox."""
         # Meant to grow as more app-wide (as opposed to per-sequence)
         # preferences become useful -- currently just the one checkbox.
         self.remember_settings_checkbox = QtWidgets.QCheckBox(
@@ -348,12 +392,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.remember_settings_checkbox)
         layout.addStretch(1)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        return _tab_widget(layout)
 
     def _build_help_tab(self):
+        """Build the Help tab: a single block of short, rich-text usage reminders."""
         text = (
             '<b>Single</b> — take one exposure at the given focus. '
             'Defaults to the most recent fitted best focus, so acquiring '
@@ -375,16 +417,16 @@ class FocusControlPanel(QtWidgets.QWidget):
         )
         label = QtWidgets.QLabel(text)
         label.setWordWrap(True)
+        # A QLabel treats its text as plain text by default -- this is
+        # what makes it interpret the <b>/<br> tags above as HTML markup
+        # instead of displaying them as literal characters.
         label.setTextFormat(QtCore.Qt.TextFormat.RichText)
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(label)
         layout.addStretch(1)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
+        return _tab_widget(layout)
 
     # -- public API used by the Controller ---------------------------------
 
@@ -595,6 +637,11 @@ class FocusControlPanel(QtWidgets.QWidget):
     # -- internals ----------------------------------------------------------
 
     def _on_browse_clicked(self):
+        """
+        Slot for `replay_browse_button`'s ``clicked``: open the native
+        OS directory picker and, unless the user cancels (signaled by
+        an empty string, not `None`), fill it into `replay_datadir_edit`.
+        """
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, 'Select archive directory', self.replay_datadir_edit.text())
         if directory:

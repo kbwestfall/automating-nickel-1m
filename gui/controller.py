@@ -40,6 +40,15 @@ class Controller(QtCore.QObject):
         # sequence is loaded.
         self._standalone_sequence = None
 
+        # This is Qt's signal/slot mechanism, the backbone of how every
+        # View talks to this Controller: each `connect()` call below
+        # says "whenever this Signal is emitted (e.g.
+        # `window.control_panel.startRequested.emit()`, from a button's
+        # `clicked` handler), call this plain Python method (the
+        # 'slot')." The View never calls `self.start_sequence()`
+        # directly -- it only knows how to `.emit()` its own signals, so
+        # it stays usable even if what eventually happens in response
+        # (or whether anything does) changes.
         window.control_panel.startRequested.connect(self.start_sequence)
         window.control_panel.stopRequested.connect(self.stop)
         window.control_panel.takeSingleExposureRequested.connect(self.take_single_exposure)
@@ -86,6 +95,7 @@ class Controller(QtCore.QObject):
         self._start_worker(self.sequence, mode='step', exp_kwargs=exp_kwargs)
 
     def _build_archive_sequence(self, config):
+        """Build a `focus.ArchiveFocusSequence` from the Replay tab's ``config``, or raise."""
         # GridFocusSequence is only used here for its focus-value
         # arithmetic (matches focus.py's own CLI archive-mode path); it
         # never touches hardware since ktl isn't connected for an archive
@@ -164,6 +174,11 @@ class Controller(QtCore.QObject):
     # -- internals ------------------------------------------------------------
 
     def _start_worker(self, sequence, mode, exp_kwargs=None, focus_value=None):
+        """
+        Create a `SequenceWorker` for ``sequence``, connect its signals
+        to this Controller's ``_on_*`` handlers, and start it running on
+        its own background thread (see `SequenceWorker.run`).
+        """
         self.worker = SequenceWorker(sequence, method=self.method, mode=mode,
                                       exp_kwargs=exp_kwargs, focus_value=focus_value)
         self.worker.stepComplete.connect(self._on_step_complete)
@@ -175,12 +190,17 @@ class Controller(QtCore.QObject):
         self.worker.start()
 
     def _on_step_complete(self, result):
+        """
+        Handle one `focus.StepResult` from the worker's
+        `SequenceWorker.stepComplete` signal: update the image/curve
+        panels and the Log tab's step display.
+        """
+        is_reanalyze = self.worker is not None and self.worker.mode == 'reanalyze'
         reanalyzing_standalone = (
-            self.worker is not None and self.worker.mode == 'reanalyze'
-            and self._standalone_sequence is not None
+            is_reanalyze and self._standalone_sequence is not None
             and self.worker.sequence is self._standalone_sequence
         )
-        if self.worker is not None and self.worker.mode == 'reanalyze':
+        if is_reanalyze:
             self.window.image_panel.update_result(result)
             if not reanalyzing_standalone:
                 # The curve was already cleared in reanalyze(), so each
@@ -199,12 +219,19 @@ class Controller(QtCore.QObject):
         self.window.control_panel.update_step(result, total_expected=total)
 
     def _on_sequence_finished(self, best_focus, best_fwhm):
+        """Handle `SequenceWorker.sequenceFinished`: report the fitted result."""
         self.window.control_panel.show_best_focus(best_focus, best_fwhm)
 
     def _on_sequence_failed(self, message):
+        """Handle `SequenceWorker.sequenceFailed`: report the failure message."""
         self.window.control_panel.show_failure(message)
 
     def _on_single_exposure_finished(self, result):
+        """
+        Handle `SequenceWorker.singleExposureFinished`: display the
+        exposure, seed `_standalone_sequence`'s bookkeeping with it (so
+        `reanalyze()` has something to work with), and report it.
+        """
         self.window.image_panel.add_result(result)
         seq = self._standalone_sequence
         seq.observed_focus.append(result.focus_value)
@@ -216,15 +243,28 @@ class Controller(QtCore.QObject):
         self.window.control_panel.show_single_exposure_result(result)
 
     def _on_worker_finished(self):
+        """
+        Handle `SequenceWorker.finished` (a signal every `QThread`
+        provides automatically, emitted once :func:`~SequenceWorker.run`
+        returns): release the worker and restore hardware exclusivity.
+        """
         if self.worker is not None:
+            # QThread.wait() blocks (briefly) until the OS thread has
+            # actually terminated. `finished` already means `run()` has
+            # returned, so this is just tidying up bookkeeping, not
+            # waiting for real work -- but it's the documented, correct
+            # way to confirm a QThread is truly done before discarding
+            # it.
             self.worker.wait()
         self.worker = None
         self._set_running(False)
 
     def _on_source_selected(self, x, y):
+        """Handle `ImagePanel.sourceSelected`: mark that source, then reanalyze against it."""
         self.set_method((x, y))
         self.reanalyze()
 
     def _set_running(self, running):
+        """Propagate the hardware-exclusivity state to the View (§4.3)."""
         self.window.control_panel.set_running(running)
         self.window.image_panel.set_selection_enabled(not running)

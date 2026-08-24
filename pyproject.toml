@@ -1,0 +1,130 @@
+[project]
+name = "nickel_focus"
+dynamic = ["version"]
+authors = [
+    { name = "Kyle Westfall", email = "westfall@ucolick.org" },
+    { name = "Scott Hakoda", email = "scotthakoda@gmail.com"},
+]
+license = {file = "LICENSE.rst"}
+description = "Acquisition and Focusing Tools for the Nickel Telescope at Lick Observatory"
+keywords = [
+    "astronomy",
+    "UCO",
+    "Lick",
+    "telescope",
+    "operations",
+]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: User Interfaces",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+requires-python = ">=3.11,<3.15"
+dependencies = [ 
+    "astropy>=7.0",
+    "IPython>=8.0.0",
+    "matplotlib>=3.7",
+    "numpy>=2.4.1",
+    "photutils>3.0",
+    "scipy>=1.9",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PySide6>6.10",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-astropy",
+    "tox",
+    "pytest-qt",
+]
+#docs = [
+#    "sphinx>6",
+#    "docutils<0.22",
+#    "sphinx-automodapi",
+#    "sphinx-design",
+#    "sphinx_rtd_theme==3.0.0",
+#    "sphinx-autodoc-typehints>3.2",
+#]
+dev = [
+    "PySide6>6.10",
+    "pytest>=7.0.0",
+    "pytest-astropy",
+    "tox",
+    "pytest-qt",
+]
+
+[project.urls]
+Repository = "https://github.com/kbwestfall/automating-nickel-1m"
+#Documentation = ""
+
+[project.scripts]
+
+nickel_focus_gui = "nickel_focus.scripts.gui:FocusGUI.entry_point"
+
+[build-system]
+requires = [
+    "setuptools",
+    "setuptools_scm",
+    "oldest-supported-numpy",
+    "cython>=0.29.14"
+]
+build-backend = 'setuptools.build_meta'
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools_scm]
+version_file = "nickel_focus/pkg/version.py"
+
+[tool.pytest.ini_options]
+minversion = 7.0
+testpaths = [
+    "nickel_focus",
+]
+
+[tool.coverage]
+
+    [tool.coverage.run]
+        omit = [
+            "nickel_focus/_astropy_init*",
+            "nickel_focus/conftest.py",
+            "nickel_focus/*setup_package*",
+            "nickel_focus/tests/*",
+            "nickel_focus/*/tests/*",
+            "nickel_focus/extern/*",
+            "nickel_focus/version*",
+            "*/nickel_focus/_astropy_init*",
+            "*/nickel_focus/conftest.py",
+            "*/nickel_focus/*setup_package*",
+            "*/nickel_focus/tests/*",
+            "*/nickel_focus/*/tests/*",
+            "*/nickel_focus/extern/*",
+            "*/nickel_focus/version*",
+        ]
+
+    [tool.coverage.report]
+        exclude_lines = [
+            "pragma: no cover",
+            "except ImportError",
+            "raise AssertionError",
+            "raise NotImplementedError",
+            "'def main(.*):'",
+            "pragma: py{ignore_python_version}",
+            "def _ipython_key_completions_",
+        ]
+

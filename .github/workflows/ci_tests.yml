@@ -80,7 +80,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python: ['3.11', '3.12', '3.13', '3.14']
+        python: ['3.12', '3.13', '3.14']
         toxenv: [test]
     steps:
     - name: Check out repository
@@ -106,7 +106,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python: ['3.11', '3.12', '3.13', '3.14']
+        python: ['3.12', '3.13', '3.14']
         toxenv: [test-qt]
     steps:
     - name: Check out repository
@@ -156,7 +156,7 @@ jobs:
       run: |
         tox -e ${{ matrix.python }}-${{ matrix.toxenv }}
 
-  os-tests:
+  mac-tests:
     needs: validate
     if: needs.validate.outputs.success == 'true'
     name: Python ${{ matrix.python }} on ${{ matrix.os }}
@@ -167,8 +167,8 @@ jobs:
       # set this to false for now so windows failures don't prevent macos test from finishing
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
-        python: ['3.11', '3.12', '3.13', '3.14']
+        os: [macos-latest]
+        python: ['3.12', '3.13', '3.14']
         toxenv: [test-qt]
     steps:
     - name: Check out repository

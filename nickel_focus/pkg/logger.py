@@ -1,7 +1,7 @@
 """
 Logging system
 
-Implementation heavily references loggers from astropy, pypeit, and sdsstools.
+Implementation heavily references loggers from astropy, sdsstools, and pypeit.
 """
 
 import copy

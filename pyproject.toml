@@ -35,18 +35,20 @@ dependencies = [
     "IPython>=8.0.0",
     "matplotlib>=3.7",
     "numpy>=2.4.1",
-    "photutils>3.0",
+    "photutils>=3.0",
     "scipy>=1.9",
 ]
 
 [project.optional-dependencies]
-gui = [
-    "PySide6>6.10",
-]
 test = [
     "pytest>=7.0.0",
     "pytest-astropy",
     "tox",
+]
+gui = [
+    "PySide6>6.10",
+]
+gui_test = [
     "pytest-qt",
 ]
 #docs = [
@@ -58,11 +60,7 @@ test = [
 #    "sphinx-autodoc-typehints>3.2",
 #]
 dev = [
-    "PySide6>6.10",
-    "pytest>=7.0.0",
-    "pytest-astropy",
-    "tox",
-    "pytest-qt",
+    "nickel_focus[test,gui,gui_test]",
 ]
 
 [project.urls]
@@ -76,7 +74,7 @@ nickel_focus_gui = "nickel_focus.scripts.focus_gui:NickelFocusGUI.entry_point"
 
 [build-system]
 requires = [
-    "setuptools",
+    "setuptools>=64",
     "setuptools_scm",
     "oldest-supported-numpy",
     "cython>=0.29.14"

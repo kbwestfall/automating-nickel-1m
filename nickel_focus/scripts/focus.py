@@ -115,6 +115,8 @@ class NickelFocus(scriptbase.ScriptBase):
 
         from nickel_focus import focus
 
+        cls.init_log(args)
+
         # Set the read speed
         _speed = args.speed
 #        if _speed == 'Fast':

@@ -7,7 +7,7 @@ class NickelFocus(scriptbase.ScriptBase):
     @classmethod
     def get_parser(cls, width=None):
         parser = super().get_parser(
-            description='Automated focus measurement for the 1m Nickel Telescope.', width=width
+            description='Automated focus CLI script for the 1m Nickel Telescope.', width=width
         )
         parser.add_argument(
             'focus', nargs='+', type=float, help=(

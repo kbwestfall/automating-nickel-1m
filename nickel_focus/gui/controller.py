@@ -5,9 +5,9 @@ Model (`focus.FocusSequence` subclasses, via
 
 See GUI_DESIGN.md §4.3.
 """
-import focus
-from gui.model.sequence_worker import SequenceWorker
-from gui.qt import QtCore
+from nickel_focus import focus
+from nickel_focus.gui.model.sequence_worker import SequenceWorker
+from nickel_focus.gui.qt import QtCore
 
 
 class Controller(QtCore.QObject):

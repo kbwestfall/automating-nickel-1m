@@ -2,33 +2,24 @@
 Shared pytest configuration and fixtures for the Nickel automation test
 suite.
 
-Adds ``scripts/`` to :obj:`sys.path` so that ``focus``, ``photometry``, and
-``quadratic`` import the same way they import each other today (a flat
-namespace, matching how they run at the telescope), and forces a
-non-interactive matplotlib backend before anything imports :mod:`focus`
-(which imports :mod:`matplotlib.pyplot`), so tests never require a
-display.
+Forces a non-interactive matplotlib backend before anything imports
+:mod:`nickel_focus.focus` (which imports :mod:`matplotlib.pyplot`), so
+tests never require a display.
 
 Per the project's testing strategy, everything here is expected to run
 without the ``ktl`` package installed: fixtures only ever produce data for
-:class:`focus.ArchiveFocusSequence`, which never touches
-:class:`focus.Focus`/:class:`focus.Exposure` hardware.
+:class:`nickel_focus.focus.ArchiveFocusSequence`, which never touches
+:class:`nickel_focus.focus.Focus`/:class:`nickel_focus.focus.Exposure`
+hardware.
 """
-import sys
-from pathlib import Path
-
 import matplotlib
 matplotlib.use('Agg')
-
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / 'scripts'
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import numpy as np
 import pytest
 from astropy.io import fits
 
-import focus
+from nickel_focus import focus
 from fake_hardware import FakeFocus, FakeExposure
 
 

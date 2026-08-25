@@ -1,19 +1,16 @@
 """
-End-to-end test of :func:`focus.main`'s archive/replay path
-(``--obsnum``/``--datadir``/``--prefix``/``--suffix``), exercised without
-any ``ktl`` connection.
+End-to-end test of :class:`nickel_focus.scripts.focus.NickelFocus`'s
+archive/replay path (``--obsnum``/``--datadir``/``--prefix``/``--suffix``),
+exercised without any ``ktl`` connection.
 """
-import sys
-
 import pytest
 from astropy.table import Table
 
-import focus
+from nickel_focus.scripts.focus import NickelFocus
 
 
-def test_cli_archive_mode_runs_end_to_end(focus_sweep, capsys, monkeypatch):
+def test_cli_archive_mode_runs_end_to_end(focus_sweep, capsys):
     argv = [
-        'focus.py',
         str(focus_sweep['focus_values'][0]), '5',
         '-n', str(len(focus_sweep['focus_values'])),
         '--obsnum', str(focus_sweep['obsnum']),
@@ -22,9 +19,8 @@ def test_cli_archive_mode_runs_end_to_end(focus_sweep, capsys, monkeypatch):
         '--suffix', focus_sweep['suffix'],
         '--no-plot',
     ]
-    monkeypatch.setattr(sys, 'argv', argv)
 
-    focus.main()
+    NickelFocus.main(NickelFocus.parse_args(argv))
 
     captured = capsys.readouterr()
     assert 'Best focus:' in captured.out, 'CLI should print the fitted best focus'
@@ -33,10 +29,9 @@ def test_cli_archive_mode_runs_end_to_end(focus_sweep, capsys, monkeypatch):
         'no output file was requested, so nothing should be written'
 
 
-def test_cli_writes_output_file_when_requested(focus_sweep, capsys, monkeypatch, tmp_path):
+def test_cli_writes_output_file_when_requested(focus_sweep, capsys, tmp_path):
     ofile = tmp_path / 'focus_data.ecsv'
     argv = [
-        'focus.py',
         str(focus_sweep['focus_values'][0]), '5',
         '-n', str(len(focus_sweep['focus_values'])),
         '--obsnum', str(focus_sweep['obsnum']),
@@ -46,9 +41,8 @@ def test_cli_writes_output_file_when_requested(focus_sweep, capsys, monkeypatch,
         '--no-plot',
         '--ofile', str(ofile),
     ]
-    monkeypatch.setattr(sys, 'argv', argv)
 
-    focus.main()
+    NickelFocus.main(NickelFocus.parse_args(argv))
 
     captured = capsys.readouterr()
     assert f'Wrote focus data to {ofile}' in captured.out, \

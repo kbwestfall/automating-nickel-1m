@@ -5,8 +5,8 @@ import pytest
 from matplotlib.backend_bases import KeyEvent, MouseEvent
 from matplotlib.colors import to_rgba
 
-import focus
-from gui.views.image_panel import ImagePanel
+from nickel_focus import focus
+from nickel_focus.gui.views.image_panel import ImagePanel
 
 
 def _step_results(focus_sweep):

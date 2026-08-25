@@ -7,8 +7,8 @@ import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-import quadratic
-from gui.qt import QtWidgets
+from nickel_focus import quadratic
+from nickel_focus.gui.qt import QtWidgets
 
 
 class FocusCurvePanel(QtWidgets.QWidget):

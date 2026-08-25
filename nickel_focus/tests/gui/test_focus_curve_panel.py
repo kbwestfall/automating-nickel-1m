@@ -3,8 +3,8 @@ import dataclasses
 
 import pytest
 
-import focus
-from gui.views.focus_curve_panel import FocusCurvePanel
+from nickel_focus import focus
+from nickel_focus.gui.views.focus_curve_panel import FocusCurvePanel
 
 
 def _step_results(focus_sweep):

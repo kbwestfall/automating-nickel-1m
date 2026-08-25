@@ -9,7 +9,7 @@ Controller's job.
 """
 from pathlib import Path
 
-from gui.qt import QtCore, QtWidgets
+from nickel_focus.gui.qt import QtCore, QtWidgets
 
 
 def _int_spin(minimum, maximum, value):

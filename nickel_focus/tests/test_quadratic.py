@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-import quadratic
+from nickel_focus import quadratic
 
 
 def test_fit_quadratic_recovers_known_coefficients():

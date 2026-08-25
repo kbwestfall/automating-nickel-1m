@@ -1,19 +1,19 @@
 """
-End-to-end smoke test for the GUI entry point (`gui.main`), plus a
-GUI/Model equivalence check: the whole point of the `step()` generator
-refactor (GUI_DESIGN.md §2) is that the CLI and the GUI drive the same
-underlying `focus.FocusSequence` code, so this confirms the GUI's
-`Controller` produces the identical fit as calling
-`FocusSequence.execute()` directly -- the same call the CLI's `main()`
-ultimately makes -- rather than re-testing `focus.main()` itself (already
-covered by `test_focus_cli.py`).
+End-to-end smoke test for the GUI entry point
+(`nickel_focus.gui.launcher`), plus a GUI/Model equivalence check: the
+whole point of the `step()` generator refactor (GUI_DESIGN.md §2) is that
+the CLI and the GUI drive the same underlying `focus.FocusSequence` code,
+so this confirms the GUI's `Controller` produces the identical fit as
+calling `FocusSequence.execute()` directly -- the same call the CLI's
+`main()` ultimately makes -- rather than re-testing `focus.main()` itself
+(already covered by `test_focus_cli.py`).
 """
 import pytest
 
-import focus
-import gui.main
-from gui.controller import Controller
-from gui.qt import QtCore
+from nickel_focus import focus
+from nickel_focus.gui import launcher
+from nickel_focus.gui.controller import Controller
+from nickel_focus.gui.qt import QtCore
 
 
 def _wait_for_worker(controller, timeout_ms=5000):
@@ -39,10 +39,10 @@ def _configure_replay_tab(panel, focus_sweep):
 
 
 def test_app_opens_and_shows_without_error(qapp):
-    app = gui.main.build_app()
+    app = launcher.build_app()
     assert app is qapp, 'build_app() should reuse the existing QApplication, not create a second one'
 
-    window = gui.main.build_window()
+    window = launcher.build_window()
     controller = Controller(window)
     window.show()
     qapp.processEvents()
@@ -67,7 +67,7 @@ def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
     expected_best_focus, expected_best_fwhm = direct_seq.execute(
         goto=False, plot=False, method='brightest')
 
-    window = gui.main.build_window()
+    window = launcher.build_window()
     controller = Controller(window)
     _configure_replay_tab(window.control_panel, focus_sweep)
 

@@ -1,9 +1,9 @@
 """Tests for :mod:`gui.views.focus_control_panel`."""
 from pathlib import Path
 
-import focus
-from gui.qt import QtWidgets
-from gui.views.focus_control_panel import FocusControlPanel
+from nickel_focus import focus
+from nickel_focus.gui.qt import QtWidgets
+from nickel_focus.gui.views.focus_control_panel import FocusControlPanel
 
 
 def _step_result(focus_sweep, index=0):

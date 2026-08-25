@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import focus
-from photometry import image_quality
+from nickel_focus import focus
+from nickel_focus.photometry import image_quality
 
 
 def _make_sequence(focus_sweep):

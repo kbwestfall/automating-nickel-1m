@@ -3,10 +3,10 @@ import types
 
 import pytest
 
-import focus
-from gui.qt import QtCore
-from gui.views.main_window import MainWindow
-from gui.controller import Controller
+from nickel_focus import focus
+from nickel_focus.gui.qt import QtCore
+from nickel_focus.gui.views.main_window import MainWindow
+from nickel_focus.gui.controller import Controller
 
 
 def _configure_replay_tab(panel, focus_sweep):

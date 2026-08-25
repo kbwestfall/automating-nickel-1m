@@ -18,11 +18,11 @@ class NickelFocusGUI(scriptbase.ScriptBase):
         Qt event loop until the user quits.
         """
 
+        from nickel_focus.gui import launcher
         from nickel_focus.gui.controller import Controller
-        from nickel_focus.gui import app
 
-        app = app.build_app()
-        window = app.build_window()
+        app = launcher.build_app()
+        window = launcher.build_window()
         # `controller` looks unused (hence the noqa), but it must stay alive
         # for as long as the window does: PySide6 only keeps a signal
         # connection working while *something* in Python still holds a

@@ -13,7 +13,7 @@ from astropy.visualization import (
     AsinhStretch,
 )
 
-from gui.qt import QtCore, QtWidgets
+from nickel_focus.gui.qt import QtCore, QtWidgets
 
 
 class ImagePanel(QtWidgets.QWidget):

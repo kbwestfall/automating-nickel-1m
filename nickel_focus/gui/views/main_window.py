@@ -3,10 +3,10 @@ Top-level window laying out the three panels.
 
 See GUI_DESIGN.md §5.1.
 """
-from gui.qt import QtCore, QtWidgets
-from gui.views.image_panel import ImagePanel
-from gui.views.focus_curve_panel import FocusCurvePanel
-from gui.views.focus_control_panel import FocusControlPanel
+from nickel_focus.gui.qt import QtCore, QtWidgets
+from nickel_focus.gui.views.image_panel import ImagePanel
+from nickel_focus.gui.views.focus_curve_panel import FocusCurvePanel
+from nickel_focus.gui.views.focus_control_panel import FocusControlPanel
 
 
 class MainWindow(QtWidgets.QMainWindow):

@@ -14,7 +14,7 @@ which can only be checked at the telescope.
 """
 import pytest
 
-import focus
+from nickel_focus import focus
 
 
 def test_hardware_is_really_injected(fake_hardware):

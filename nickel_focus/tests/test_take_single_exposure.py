@@ -7,7 +7,7 @@ See claude/GUI_IMPLEMENTATION.md, Phase 3 sub-phase 2.
 """
 import pytest
 
-import focus
+from nickel_focus import focus
 
 
 def test_take_single_exposure_requires_hardware(focus_sweep):

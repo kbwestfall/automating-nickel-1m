@@ -8,7 +8,7 @@ running a sequence directly on the GUI's event-loop thread would freeze
 the whole interface. `SequenceWorker` runs it here instead and reports
 progress back via Qt signals.
 """
-from gui.qt import QtCore
+from nickel_focus.gui.qt import QtCore
 
 
 class SequenceWorker(QtCore.QThread):

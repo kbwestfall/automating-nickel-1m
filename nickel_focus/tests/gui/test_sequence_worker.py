@@ -1,9 +1,9 @@
 """Tests for :mod:`gui.model.sequence_worker`."""
 import pytest
 
-import focus
-from gui.qt import QtCore
-from gui.model.sequence_worker import SequenceWorker
+from nickel_focus import focus
+from nickel_focus.gui.qt import QtCore
+from nickel_focus.gui.model.sequence_worker import SequenceWorker
 
 
 def _make_sequence(focus_sweep):

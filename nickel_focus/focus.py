@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import warnings
 
-from astropy.table import Table
 from astropy.visualization import ImageNormalize, ZScaleInterval, LinearStretch
 from IPython import embed
 from matplotlib import pyplot, patches

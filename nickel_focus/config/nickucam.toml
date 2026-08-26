@@ -1,0 +1,67 @@
+# Telescope services
+[telescope]
+    service = "nickelpoco"
+[telescope.pocstop]
+    # Controls the overall movement of the telescope mechanisms
+    keyword = "POCSTOP"
+[telescope.secpa]
+    # Actual secondary position
+    keyword = "POCSECPA"
+[telescope.secpd]
+    # Desired secondary position
+    keyword = "POCSECPD"
+[telescope.seclk]
+    # Controls the secondary locking mechanism
+    keyword = "POCSECLK"
+
+
+# Unsure about:
+#   - scratchdir: are RECORDDIR and SCRATCHDIR the same for the UCAM?
+#   - prefix: I think this is right; i.e., OUTFILE is just the prefix not the full file name
+#   - expresult: Was this saved by the UCAM?
+#   - expbin: The old code did not use this.
+
+# Camera services
+[camera]
+    service = "nickucam"
+[camera.exprec]
+    # Boolean flag that image should be recorded
+    keyword = "RECORD"
+[camera.scratchdir]
+    # Directory for scratch images
+    keyword = "OUTDIR"
+[camera.recorddir]
+    # Directory for recorded images
+    keyword = "OUTDIR"
+[camera.prefix]
+    # Image name prefix (e.g., 'n')
+    keyword = "OUTFILE"
+[camera.obsnum]
+    # Number for *next* image
+    keyword = "OBSNUM"
+[camera.suffix]
+    # Recorded image file suffix (e.g., 'fits')
+    keyword = "RECORD_SUFFIX"
+#[camera.expresult]
+#    # Path to most recently recorded exposure
+#    service = "nscicam
+#    keyword = "EXPRESULT
+[camera.expspeed]
+    keyword = "READSPEED"
+    options = [ "Slow", "Fast" ]
+#[camera.expbin] 
+#    service = "nscicam"
+#    keyword = "BINNING"
+#    options = [ "1,1", "2,2", "4,4" ]
+[camera.expstate]
+    # State of the camera exposures
+    keyword = "EVENT"
+    ready = "ControllerReady"
+    start = "ExposureBegin"
+[camera.expstart]
+    # Service used to start an exposure
+    keyword = "START"
+    start = "Yes"
+[camera.exptime]
+    # Integration time
+    keyword = "EXPOSURE"

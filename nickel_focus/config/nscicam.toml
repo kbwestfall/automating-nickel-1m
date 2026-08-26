@@ -1,0 +1,60 @@
+# Telescope services
+[telescope]
+    service = "nickelpoco"
+[telescope.pocstop]
+    # Controls the overall movement of the telescope mechanisms
+    keyword = "POCSTOP"
+[telescope.secpa]
+    # Actual secondary position
+    keyword = "POCSECPA"
+[telescope.secpd]
+    # Desired secondary position
+    keyword = "POCSECPD"
+[telescope.seclk]
+    # Controls the secondary locking mechanism
+    keyword = "POCSECLK"
+
+# Camera services
+[camera]
+    service = "nscicam"
+[camera.exprec]
+    # Boolean flag that image should be recorded
+    keyword = "RECORD"
+[camera.scratchdir]
+    # Directory for scratch images
+    keyword = "SCRATCHDIR"
+[camera.recorddir]
+    # Directory for recorded images
+    keyword = "RECORDDIR"
+[camera.prefix]
+    # Image name prefix (e.g., 'n')
+    keyword = "FITSPREFIX"
+[camera.obsnum]
+    # Number for *next* image
+    keyword = "OBSNUM"
+[camera.suffix]
+    # Recorded image file suffix (e.g., 'fits')
+    keyword = "FITSSUFFIX"
+[camera.expresult]
+    # Path to most recently recorded exposure
+    keyword = "EXPRESULT"
+[camera.expspeed]
+    # Exposure read speed and options
+    keyword = "AMPCONF"
+    options = ["0.05MHz", "1.0MHz", "2.0MHz", "3.0MHz"]
+[camera.expbin] 
+    # On-chip binning keyword and options
+    keyword = "BINNING"
+    options = [ "1,1", "2,2", "4,4" ]
+[camera.expstate]
+    # State of the camera exposures
+    keyword = "EXPSTATE"
+    ready = "Ready"
+    start = "Start"
+[camera.expstart]
+    # Service used to start an exposure
+    keyword = "EXPOSE"
+    start = "StartX"
+[camera.exptime]
+    # Integration time
+    keyword = "EXPOSURE"

@@ -68,9 +68,10 @@ specific wrinkle:
 `gui/qt.py` exists so exactly one module fails, with one clear message, if
 PySide6 isn't installed -- every other `gui` module imports Qt classes from
 here (`from gui.qt import QtWidgets`) rather than importing PySide6
-directly. `scripts/` never imports `gui.qt` and must never need to: the
-base `requirements.txt` is enough to run the CLI with no Qt involved,
-`requirements-gui.txt` adds the one extra dependency the GUI needs.
+directly. `scripts/` never imports `gui.qt` and must never need to:
+installing the base package is enough to run the CLI with no Qt involved,
+and the `gui` extra in `pyproject.toml` adds the one extra dependency the
+GUI needs.
 
 Views hold no reference to each other or to the Controller. All
 cross-panel communication (e.g. a new exposure updating both the image
@@ -148,11 +149,10 @@ view's methods directly.
 ## 4. Usage
 
 ```
-python -m gui.main
+nickel_focus_gui
 ```
 
-Requires PySide6 (`pip install -r requirements-gui.txt`, in addition to
-the base `requirements.txt`). Configure a sequence on the Single, Grid,
+Requires PySide6 (`pip install .[gui]`). Configure a sequence on the Single, Grid,
 Auto, or Replay tab and press Acquire/Load; watch progress on the image
 panel, focus curve, and Log tab; press Interrupt to stop a running
 Grid/Auto sequence between steps. See the in-app Help tab for a short

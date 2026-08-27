@@ -20,7 +20,8 @@ import pytest
 from astropy.io import fits
 
 from nickel_focus import focus
-from fake_hardware import FakeFocus, FakeExposure
+from nickel_focus import slew
+from fake_hardware import FakeExposure, FakeFocus, FakeTelescopePointing
 
 
 def gaussian_frame(fwhm, amplitude=8000., background=200., noise_sigma=5.,
@@ -169,3 +170,30 @@ def fake_hardware(tmp_path, monkeypatch):
         'focus': fake_focus,
         'directory': tmp_path,
     }
+
+
+@pytest.fixture
+def fake_telescope(monkeypatch):
+    """
+    Monkeypatch ``slew.NickelTelescopePointing`` so that
+    :class:`nickel_focus.scripts.slew_to_nearest.NickelSlewToNearest` can
+    be run with no real ``ktl`` connection or telescope hardware.
+
+    Parameters
+    ----------
+    monkeypatch
+        The built-in pytest fixture used to patch
+        ``slew.NickelTelescopePointing``.
+
+    Returns
+    -------
+    fake_hardware.FakeTelescopePointing
+        The fake telescope-pointing object substituted in for
+        `slew.NickelTelescopePointing`, so a test can inspect
+        ``fake_telescope.slew_calls`` or set ``fake_telescope.ra``/
+        ``fake_telescope.dec``/the failure-mode flags before calling
+        into code that constructs `slew.NickelTelescopePointing`.
+    """
+    fake = FakeTelescopePointing()
+    monkeypatch.setattr(slew, 'NickelTelescopePointing', lambda: fake)
+    return fake

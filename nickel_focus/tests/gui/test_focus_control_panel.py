@@ -455,6 +455,20 @@ def test_show_slew_result_updates_status(qapp):
     assert panel.log_widget.toPlainText().strip(), 'the slew result should also be logged'
 
 
+def test_minimum_height_excluding_help_ignores_the_tallest_page(qapp):
+    panel = FocusControlPanel()
+
+    height = panel.minimum_height_excluding_help()
+
+    assert height < panel.minimumSizeHint().height(), \
+        'excluding Help should give a smaller floor than the panel as a whole'
+    other_tabs = (panel.slew_tab, panel.single_tab, panel.grid_tab, panel.auto_tab,
+                  panel.replay_tab, panel.log_tab, panel.options_tab)
+    for tab in other_tabs:
+        assert height >= tab.minimumSizeHint().height(), \
+            'the floor should be tall enough for every tab except Help'
+
+
 def test_help_tab_has_reminder_text(qapp):
     panel = FocusControlPanel()
     labels = panel.help_tab.findChildren(QtWidgets.QLabel)

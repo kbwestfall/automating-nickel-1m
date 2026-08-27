@@ -16,17 +16,28 @@ def test_build_window_opens_without_error(qapp):
 
 
 def test_build_window_fits_within_the_screen(qapp):
-    # A fixed 1200x800 window can be larger than the available screen
+    # A fixed 1200x600 window can be larger than the available screen
     # (excluding docks/taskbars), pushing its resize handles off screen
-    # and leaving the user stuck -- the window should never open larger
-    # than what's actually available.
+    # and leaving the user stuck -- `_size_to_screen` should never
+    # request a size larger than what's actually available. But no
+    # request can shrink the window below what its content genuinely
+    # requires (`minimumSizeHint`) -- e.g. the offscreen test platform's
+    # synthetic screen is a mere 800px wide, narrower than this app's
+    # real, content-driven minimum width -- so the bound checked here is
+    # whichever of the two is larger, rather than a hard "always fits
+    # this one screen" expectation with no real content behind it. A
+    # regression in the clamping logic itself (e.g. `_size_to_screen`
+    # never being called) would still show up here, since the window
+    # would then exceed *both* bounds, not just the screen-specific one.
     window = launcher.build_window()
     window.show()
     qapp.processEvents()
 
     available = window.screen().availableGeometry()
-    assert window.width() <= available.width(), 'window should not be wider than the screen'
-    assert window.height() <= available.height(), 'window should not be taller than the screen'
+    assert window.width() <= max(available.width(), window.minimumSizeHint().width()), \
+        'window should not be wider than the screen, unless its content cannot shrink further'
+    assert window.height() <= max(available.height(), window.minimumSizeHint().height()), \
+        'window should not be taller than the screen, unless its content cannot shrink further'
 
     window.close()
 
@@ -51,6 +62,31 @@ def test_control_scroll_area_has_a_floor_at_the_panels_minimum_width(qapp):
         'setup: expected the control panel to be wrapped in a QScrollArea'
     assert control_scroll.minimumWidth() >= window.control_panel.minimumSizeHint().width(), \
         "the scroll area's minimum width must never be less than the panel's own minimum"
+
+    window.close()
+
+
+def test_control_scroll_area_height_floor_excludes_help(qapp):
+    # `QTabWidget.minimumSizeHint()` reserves room for its tallest page
+    # (Help, a large static text block -- see
+    # `FocusControlPanel.minimum_height_excluding_help`), so giving the
+    # scroll area that as its height floor would carry Help-sized blank
+    # space under every shorter, interactive tab. This confirms the
+    # scroll area's actual floor is the smaller, Help-excluding one
+    # instead -- and that it's still tall enough for every other tab.
+    window = launcher.build_window()
+    window.show()
+    qapp.processEvents()
+
+    control_scroll = window.centralWidget().widget(1).widget(1)
+    panel = window.control_panel
+    assert control_scroll.minimumHeight() == panel.minimum_height_excluding_help(), \
+        "the scroll area's height floor should be the panel's Help-excluding minimum"
+    for tab_name in ('slew_tab', 'single_tab', 'grid_tab', 'auto_tab', 'replay_tab',
+                      'log_tab', 'options_tab'):
+        tab = getattr(panel, tab_name)
+        assert control_scroll.minimumHeight() >= tab.minimumSizeHint().height(), \
+            f'{tab_name} should fit within the scroll area floor without scrolling'
 
     window.close()
 

@@ -294,9 +294,10 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _build_slew_tab(self):
         """
-        Build the Slew tab: current/target RA-Dec and "Move to Target"
-        on the left; starlist file/browse, an object-name search string,
-        and the three "Find nearest..." buttons on the right.
+        Build the Slew tab: current/target RA-Dec on the left;
+        starlist file/browse, an object-name search string, and "Move to
+        Target" directly beside the three "Find nearest..." buttons on
+        the right.
         """
         # Short "RA:"/"Dec:" field labels, not "Current RA:"/"Target RA:"
         # etc. -- those are wide enough (with two side-by-side columns
@@ -316,10 +317,6 @@ class FocusControlPanel(QtWidgets.QWidget):
             [('RA:', self.slew_target_ra_edit)],
             [('Dec:', self.slew_target_dec_edit)],
         )
-        self.slew_move_button = QtWidgets.QPushButton('Move to Target')
-        self.slew_move_button.clicked.connect(
-            lambda: self.moveToTargetRequested.emit(
-                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()))
 
         left = QtWidgets.QVBoxLayout()
         left.addWidget(QtWidgets.QLabel('Current position:'))
@@ -327,7 +324,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         left.addWidget(QtWidgets.QLabel('Target:'))
         left.addLayout(target_row)
         left.addStretch(1)
-        left.addLayout(_button_row(self.slew_move_button))
 
         self.slew_file_edit = QtWidgets.QLineEdit('')
         self.slew_browse_button = QtWidgets.QPushButton('Browse…')
@@ -342,6 +338,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         search_form = QtWidgets.QFormLayout()
         search_form.addRow('Search:', self.slew_search_edit)
 
+        self.slew_move_button = QtWidgets.QPushButton('Move to Target')
+        self.slew_move_button.clicked.connect(
+            lambda: self.moveToTargetRequested.emit(
+                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()))
         self.slew_find_object_button = QtWidgets.QPushButton('Find nearest object')
         self.slew_find_object_button.clicked.connect(
             lambda: self.findNearestObjectRequested.emit(
@@ -351,12 +351,24 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.slew_find_focus_button = QtWidgets.QPushButton('Find nearest focus star')
         self.slew_find_focus_button.clicked.connect(self.findNearestFocusRequested.emit)
 
+        # "Move to Target" sits directly to the left of the stack of
+        # three "Find nearest..." buttons, rather than under the RA/Dec
+        # fields on the left -- it acts on whatever is currently in the
+        # target fields, whether typed in directly or just filled in by
+        # one of those three buttons, so it reads more naturally as part
+        # of this action group than as a fourth row under the fields.
+        find_buttons = QtWidgets.QVBoxLayout()
+        find_buttons.addWidget(self.slew_find_object_button)
+        find_buttons.addWidget(self.slew_find_pointing_button)
+        find_buttons.addWidget(self.slew_find_focus_button)
+        move_and_find_row = QtWidgets.QHBoxLayout()
+        move_and_find_row.addWidget(self.slew_move_button)
+        move_and_find_row.addLayout(find_buttons)
+
         right = QtWidgets.QVBoxLayout()
         right.addLayout(file_form)
         right.addLayout(search_form)
-        right.addWidget(self.slew_find_object_button)
-        right.addWidget(self.slew_find_pointing_button)
-        right.addWidget(self.slew_find_focus_button)
+        right.addLayout(move_and_find_row)
         right.addStretch(1)
 
         layout = QtWidgets.QHBoxLayout()
@@ -546,7 +558,38 @@ class FocusControlPanel(QtWidgets.QWidget):
         layout.addStretch(1)
         return _tab_widget(layout)
 
-    # -- public API used by the Controller ---------------------------------
+    # -- public API used by the Controller/MainWindow -----------------------
+
+    def minimum_height_excluding_help(self):
+        """
+        The tallest minimum height among every tab page except Help,
+        plus the tab bar and this widget's own layout margins -- i.e.
+        how tall this panel needs to be for every *interactive* tab to
+        display without scrolling.
+
+        Help is excluded on purpose: it's a large block of static
+        reference text, and it happens to be taller than every other
+        tab combined with the tab bar (`QTabWidget.minimumSizeHint`
+        always reserves room for its tallest page, Help included, which
+        otherwise forces this panel to be far taller than the six
+        shorter, interactive tabs ever need). `MainWindow` uses this to
+        give the control-panel scroll area a shorter floor than that,
+        so Help alone gains a scrollbar when selected in a constrained
+        window rather than every other tab carrying blank space to
+        accommodate it.
+
+        Returns
+        -------
+        :obj:`int`
+            Minimum height, in pixels, sufficient for every tab page
+            except Help.
+        """
+        other_tabs = [self.slew_tab, self.single_tab, self.grid_tab, self.auto_tab,
+                      self.replay_tab, self.log_tab, self.options_tab]
+        tallest_other = max(tab.minimumSizeHint().height() for tab in other_tabs)
+        tab_bar_height = self.tabs.tabBar().sizeHint().height()
+        outer_margin = self.minimumSizeHint().height() - self.tabs.minimumSizeHint().height()
+        return tallest_other + tab_bar_height + outer_margin
 
     def get_sequence_type(self):
         """

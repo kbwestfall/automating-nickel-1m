@@ -77,6 +77,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # code path never triggers. The small buffer accounts for the
         # vertical scrollbar's own width once one appears.
         control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width() + 20)
+        # `QTabWidget.minimumSizeHint()` always reserves room for its
+        # tallest page (Help, a large block of static reference text --
+        # see `FocusControlPanel.minimum_height_excluding_help`), so
+        # without this the scroll area's floor -- and thus its default
+        # share of `right`'s vertical space below -- would be Help-sized
+        # even while a much shorter tab like Single or Grid is showing.
+        # Selecting Help in a short enough window now gets it its own
+        # scrollbar instead, the same tradeoff already made for width.
+        control_scroll.setMinimumHeight(self.control_panel.minimum_height_excluding_help())
 
         # QSplitter arranges its child widgets in a row or column with a
         # user-draggable handle between each pair, unlike a plain layout
@@ -88,6 +97,24 @@ class MainWindow(QtWidgets.QMainWindow):
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         right.addWidget(self.curve_panel)
         right.addWidget(control_scroll)
+        # Give any extra vertical space (window taller than both panes'
+        # combined floor) to the curve plot, not the control panel --
+        # the tabs only ever need their own floor, set just above, while
+        # a bigger focus curve is actually useful. A stretch factor only
+        # governs *extra* space beyond each widget's minimum, so
+        # control_scroll still grows on its own if a taller tab (or the
+        # user dragging the handle) needs more than that floor.
+        right.setStretchFactor(0, 1)
+        right.setStretchFactor(1, 0)
+        # Stretch factors alone only govern *later* resizes -- a
+        # splitter's very first layout instead defaults to giving each
+        # child a share proportional to its own `sizeHint()`, which
+        # would still hand the control panel most of the window here.
+        # An explicit initial split, giving the control panel just its
+        # new floor and the curve panel everything else (a size larger
+        # than any real window, clamped down to whatever's actually
+        # available), is what actually makes that floor the default.
+        right.setSizes([1000000, control_scroll.minimumHeight()])
 
         central = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         central.addWidget(self.image_panel)

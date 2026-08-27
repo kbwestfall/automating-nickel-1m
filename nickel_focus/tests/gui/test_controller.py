@@ -31,6 +31,23 @@ def _wait_for_worker(controller, timeout_ms=5000):
     loop.exec()
 
 
+def _wait_for_slew_worker(controller, timeout_ms=5000):
+    worker = controller.slew_worker
+    if worker is None:
+        return
+    loop = QtCore.QEventLoop()
+    worker.finished.connect(loop.quit)
+    QtCore.QTimer.singleShot(timeout_ms, loop.quit)
+    loop.exec()
+
+
+def _write_starlist(tmp_path, lines):
+    """Write a small starlist file for a test to point the Slew tab's file field at."""
+    path = tmp_path / 'stars.txt'
+    path.write_text('\n'.join(lines) + '\n')
+    return path
+
+
 def _make_controller(focus_sweep):
     window = MainWindow()
     controller = Controller(window)
@@ -299,3 +316,169 @@ def test_start_sequence_discards_standalone_sequence_state(qapp, fake_hardware):
     assert controller._standalone_sequence is None, \
         'starting a new sequence should discard standalone single-exposure state'
     _wait_for_worker(controller)
+
+
+def test_controller_without_ktl_shows_placeholder_current_position(qapp):
+    # No fake_telescope fixture here: this dev machine has no ktl, so
+    # `telescope` should end up None and the live display should show a
+    # clear placeholder rather than stale/bogus coordinates.
+    window = MainWindow()
+    controller = Controller(window)
+
+    assert controller.telescope is None, 'setup: no ktl connection is available'
+    assert window.control_panel.slew_current_ra_label.text() == '—'
+    assert window.control_panel.slew_current_dec_label.text() == '—'
+
+
+def test_controller_polls_current_position_from_fake_telescope(qapp, fake_telescope):
+    fake_telescope.ra, fake_telescope.dec = 5.5, 30.25
+
+    window = MainWindow()
+    Controller(window)
+
+    assert window.control_panel.slew_current_ra_label.text() == '05:30:00.00', \
+        'the current-position display should be seeded from the telescope on construction'
+    assert window.control_panel.slew_current_dec_label.text() == '+30:15:00.00'
+
+
+def test_move_to_target_runs_against_fake_telescope(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.move_to_target('05:30:00', '+20:15:00')
+    _wait_for_slew_worker(controller)
+
+    assert controller.slew_worker is None, 'the slew worker should be cleared once finished'
+    assert len(fake_telescope.slew_calls) == 1, \
+        'the telescope should have been commanded to slew once'
+    commanded_ra, commanded_dec = fake_telescope.slew_calls[0]
+    assert commanded_ra.to_string(unit='hourangle', sep=':') == '5:30:00', \
+        'the telescope should be commanded to the entered target RA'
+    assert 'complete' in window.control_panel.status_label.text().lower(), \
+        'a successful move should be reported'
+
+
+def test_move_to_target_reports_telescope_failure(qapp, fake_telescope):
+    fake_telescope.tracking_on = False
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.move_to_target('05:30:00', '+20:15:00')
+    _wait_for_slew_worker(controller)
+
+    assert controller.slew_worker is None, 'the slew worker should be cleared once finished'
+    assert 'Tracking is disabled' in window.control_panel.status_label.text(), \
+        'the telescope failure message should be reported'
+
+
+def test_move_to_target_reports_a_parse_failure_for_bad_coordinates(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.move_to_target('not a coordinate', '+20:15:00')
+
+    assert controller.slew_worker is None, 'a bad target should never start a slew worker'
+    assert 'Could not parse target coordinates' in window.control_panel.status_label.text()
+
+
+def test_move_to_target_without_ktl_reports_clear_failure(qapp):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.move_to_target('05:30:00', '+20:15:00')
+
+    assert controller.slew_worker is None, 'no worker should start without a ktl connection'
+    assert 'no ktl connection' in window.control_panel.status_label.text().lower()
+
+
+def test_move_to_target_is_a_noop_while_something_is_running(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.worker = types.SimpleNamespace()  # pretend a focus sequence is running
+
+    controller.move_to_target('05:30:00', '+20:15:00')
+
+    assert controller.slew_worker is None, \
+        'a move request should be ignored while a focus sequence is running'
+    assert fake_telescope.slew_calls == [], 'the telescope should never have been commanded'
+
+
+def test_start_sequence_is_a_noop_while_slewing(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+    controller.slew_worker = types.SimpleNamespace()  # pretend a slew is running
+    panel = window.control_panel
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+    panel.grid_nstep_spin.setValue(5)
+
+    controller.start_sequence()
+
+    assert controller.sequence is None, \
+        'a focus sequence should be ignored while the telescope is slewing'
+
+
+def test_find_nearest_pointing_populates_target_fields(qapp, fake_telescope):
+    fake_telescope.ra, fake_telescope.dec = 0.5, 29.75  # near the packaged Pointing00 entry
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.find_nearest_pointing()
+
+    assert window.control_panel.slew_target_ra_edit.text() != '', \
+        'the target RA field should be populated with the found target'
+    assert 'Pointing' in window.control_panel.status_label.text(), \
+        'the found target name should be reported'
+
+
+def test_find_nearest_focus_populates_target_fields(qapp, fake_telescope):
+    fake_telescope.ra, fake_telescope.dec = 0.5, 28.1  # near the packaged Focusing00 entry
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.find_nearest_focus()
+
+    assert window.control_panel.slew_target_ra_edit.text() != '', \
+        'the target RA field should be populated with the found target'
+    assert 'Focusing' in window.control_panel.status_label.text(), \
+        'the found target name should be reported'
+
+
+def test_find_nearest_object_requires_a_file(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+
+    with pytest.raises(ValueError, match='starlist file must be provided'):
+        controller.find_nearest_object('', '')
+
+
+def test_find_nearest_object_searches_the_given_file(qapp, fake_telescope, tmp_path):
+    path = _write_starlist(tmp_path, [
+        'StarA 01:00:00 +10:00:00 2000.0',
+        'StarB 13:00:00 -20:00:00 2000.0',
+    ])
+    fake_telescope.ra, fake_telescope.dec = 1.0, 10.0
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.find_nearest_object(str(path), '')
+
+    assert 'StarA' in window.control_panel.status_label.text(), \
+        'the nearest target in the given file should be found and reported'
+
+
+def test_find_nearest_object_reports_a_missing_file(qapp, fake_telescope):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.find_nearest_object('/does/not/exist.txt', '')
+
+    assert 'Could not find nearest target' in window.control_panel.status_label.text()
+
+
+def test_find_nearest_without_ktl_reports_clear_failure(qapp):
+    window = MainWindow()
+    controller = Controller(window)
+
+    controller.find_nearest_pointing()
+
+    assert 'no ktl connection' in window.control_panel.status_label.text().lower()

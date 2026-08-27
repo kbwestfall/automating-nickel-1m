@@ -21,7 +21,7 @@ from astropy.io import fits
 
 from nickel_focus import focus
 from nickel_focus import slew
-from fake_hardware import FakeExposure, FakeFocus, FakeTelescopePointing
+from nickel_focus.tests.fake_hardware import FakeExposure, FakeFocus, FakeTelescopePointing
 
 
 def gaussian_frame(fwhm, amplitude=8000., background=200., noise_sigma=5.,

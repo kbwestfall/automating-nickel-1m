@@ -14,7 +14,8 @@ def _step_result(focus_sweep, index=0):
 def test_tabs_exist_in_the_requested_order(qapp):
     panel = FocusControlPanel()
     titles = [panel.tabs.tabText(i) for i in range(panel.tabs.count())]
-    assert titles == ['Single', 'Grid', 'Auto', 'Replay', 'Log', 'Options', 'Help']
+    assert titles == ['Slew', 'Single', 'Grid', 'Auto', 'Replay', 'Log', 'Options', 'Help'], \
+        'tabs should appear in the documented order, with Slew first'
 
 
 def test_number_entry_boxes_have_no_increment_buttons(qapp):
@@ -150,6 +151,10 @@ def test_each_tab_has_the_requested_buttons(qapp):
     def button_texts(tab):
         return sorted(b.text() for b in tab.findChildren(QtWidgets.QPushButton))
 
+    assert button_texts(panel.slew_tab) == sorted([
+        'Browse…', 'Move to Target', 'Find nearest object',
+        'Find nearest pointing star', 'Find nearest focus star',
+    ]), 'the Slew tab should have its file-browse, move, and three find-nearest buttons'
     assert button_texts(panel.single_tab) == ['Acquire']
     assert button_texts(panel.grid_tab) == ['Acquire', 'Interrupt']
     assert button_texts(panel.auto_tab) == ['Acquire', 'Interrupt']
@@ -214,21 +219,68 @@ def test_replay_tab_load_emits_start_requested(qapp):
     assert starts == [True], 'Load should emit startRequested'
 
 
+def test_slew_move_button_emits_move_to_target_requested(qapp):
+    panel = FocusControlPanel()
+    panel.slew_target_ra_edit.setText('05:30:00')
+    panel.slew_target_dec_edit.setText('+20:15:00')
+    moves = []
+    panel.moveToTargetRequested.connect(lambda ra, dec: moves.append((ra, dec)))
+
+    panel.slew_move_button.click()
+
+    assert moves == [('05:30:00', '+20:15:00')], \
+        'Move to Target should emit the current target RA/Dec field text'
+
+
+def test_slew_find_object_button_emits_file_and_search_text(qapp):
+    panel = FocusControlPanel()
+    panel.slew_file_edit.setText('/some/stars.txt')
+    panel.slew_search_edit.setText('Pointing')
+    requests = []
+    panel.findNearestObjectRequested.connect(lambda file, search: requests.append((file, search)))
+
+    panel.slew_find_object_button.click()
+
+    assert requests == [('/some/stars.txt', 'Pointing')], \
+        'Find nearest object should emit the current file/search field text'
+
+
+def test_slew_find_pointing_and_focus_buttons_emit_their_signals(qapp):
+    panel = FocusControlPanel()
+    pointing_requests, focus_requests = [], []
+    panel.findNearestPointingRequested.connect(lambda: pointing_requests.append(True))
+    panel.findNearestFocusRequested.connect(lambda: focus_requests.append(True))
+
+    panel.slew_find_pointing_button.click()
+    panel.slew_find_focus_button.click()
+
+    assert pointing_requests == [True], 'Find nearest pointing star should emit its own signal'
+    assert focus_requests == [True], 'Find nearest focus star should emit its own signal'
+
+
 def test_set_running_locks_config_widgets_and_acquire_buttons(qapp):
     panel = FocusControlPanel()
 
     panel.set_running(True)
     assert not panel.grid_start_spin.isEnabled(), 'config fields should be locked while running'
+    assert not panel.slew_target_ra_edit.isEnabled(), \
+        'the Slew tab target field should be locked while running'
     for button in (panel.single_acquire_button, panel.grid_acquire_button,
-                   panel.auto_acquire_button, panel.replay_load_button):
+                   panel.auto_acquire_button, panel.replay_load_button,
+                   panel.slew_move_button, panel.slew_find_object_button,
+                   panel.slew_find_pointing_button, panel.slew_find_focus_button):
         assert not button.isEnabled(), f'{button.text()} should be disabled while running'
     for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
         assert button.isEnabled(), f'{button.text()} should be enabled while running'
 
     panel.set_running(False)
     assert panel.grid_start_spin.isEnabled(), 'config fields should unlock once stopped'
+    assert panel.slew_target_ra_edit.isEnabled(), \
+        'the Slew tab target field should unlock once stopped'
     for button in (panel.single_acquire_button, panel.grid_acquire_button,
-                   panel.auto_acquire_button, panel.replay_load_button):
+                   panel.auto_acquire_button, panel.replay_load_button,
+                   panel.slew_move_button, panel.slew_find_object_button,
+                   panel.slew_find_pointing_button, panel.slew_find_focus_button):
         assert button.isEnabled(), f'{button.text()} should be re-enabled once stopped'
     for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
         assert not button.isEnabled(), f'{button.text()} should be disabled once stopped'
@@ -356,12 +408,59 @@ def test_browse_button_updates_datadir(qapp, monkeypatch):
     assert panel.replay_datadir_edit.text() == '/some/chosen/dir', 'canceling should not clear the field'
 
 
+def test_slew_browse_button_updates_file_edit(qapp, monkeypatch):
+    panel = FocusControlPanel()
+
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getOpenFileName',
+                         lambda *a, **k: ('/some/stars.txt', ''))
+    panel._on_slew_browse_clicked()
+    assert panel.slew_file_edit.text() == '/some/stars.txt'
+
+    # Canceling the dialog (empty string) should leave the field alone.
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getOpenFileName', lambda *a, **k: ('', ''))
+    panel._on_slew_browse_clicked()
+    assert panel.slew_file_edit.text() == '/some/stars.txt', 'canceling should not clear the field'
+
+
+def test_set_current_position_updates_labels(qapp):
+    panel = FocusControlPanel()
+
+    panel.set_current_position('05:30:00.00', '+20:15:00.00')
+
+    assert panel.slew_current_ra_label.text() == '05:30:00.00', \
+        'the current-RA label should show exactly what was passed in'
+    assert panel.slew_current_dec_label.text() == '+20:15:00.00', \
+        'the current-Dec label should show exactly what was passed in'
+
+
+def test_show_nearest_target_populates_target_fields_and_status(qapp):
+    panel = FocusControlPanel()
+
+    panel.show_nearest_target('Pointing00', '00:30:07.29', '+29:45:06.20')
+
+    assert panel.slew_target_ra_edit.text() == '00:30:07.29', \
+        'the target RA field should be populated with the found target'
+    assert panel.slew_target_dec_edit.text() == '+29:45:06.20', \
+        'the target Dec field should be populated with the found target'
+    assert 'Pointing00' in panel.status_label.text(), 'status should report the target name'
+    assert panel.log_widget.toPlainText().strip(), 'the found target should also be logged'
+
+
+def test_show_slew_result_updates_status(qapp):
+    panel = FocusControlPanel()
+
+    panel.show_slew_result('Move to target complete.')
+
+    assert panel.status_label.text() == 'Move to target complete.'
+    assert panel.log_widget.toPlainText().strip(), 'the slew result should also be logged'
+
+
 def test_help_tab_has_reminder_text(qapp):
     panel = FocusControlPanel()
     labels = panel.help_tab.findChildren(QtWidgets.QLabel)
     assert labels, 'the Help tab should contain some descriptive text'
     text = ' '.join(label.text() for label in labels)
-    for keyword in ('Single', 'Grid', 'Auto', 'Replay', 'Log'):
+    for keyword in ('Slew', 'Single', 'Grid', 'Auto', 'Replay', 'Log'):
         assert keyword in text, f'Help text should mention {keyword}'
 
 

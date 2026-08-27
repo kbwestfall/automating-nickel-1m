@@ -110,18 +110,32 @@ class FocusControlPanel(QtWidgets.QWidget):
     Sequence configuration/action tabs -- plus live status/history on
     the Log tab and short usage reminders on the Help tab.
 
-    One tab per action -- Single, Grid, Auto, Replay -- each showing only
-    the fields relevant to it, with exposure parameters and the focus
-    value(s) that define the sequence laid out in two side-by-side
-    columns (see :func:`_two_column_row`), and its own acquisition
-    button(s) at the bottom: Single has "Acquire"; Grid and Auto have
-    "Acquire" and "Interrupt"; Replay has "Load". Log and Help have no
-    buttons at all. Because a `QTabWidget` only lets the user interact
-    with the currently visible page, each button unambiguously means
-    "do this tab's action" -- there's no need to track which tab is
-    active to decide what a click means, only to decide what
+    One tab per action -- Slew, Single, Grid, Auto, Replay -- each
+    showing only the fields relevant to it, with exposure parameters and
+    the focus value(s) that define the sequence laid out in two
+    side-by-side columns (see :func:`_two_column_row`), and its own
+    acquisition button(s) at the bottom: Single has "Acquire"; Grid and
+    Auto have "Acquire" and "Interrupt"; Replay has "Load". Log and Help
+    have no buttons at all. Because a `QTabWidget` only lets the user
+    interact with the currently visible page, each button unambiguously
+    means "do this tab's action" -- there's no need to track which tab
+    is active to decide what a click means, only to decide what
     :func:`get_sequence_type`/:func:`get_sequence_config` should return
     once a click has already happened.
+
+    The Slew tab (first in the list) is a small control panel around
+    `slew.NickelTelescopePointing`/`slew.find_nearest_target`, mirroring
+    `scripts/slew_to_nearest.py`: a live "current position" display and
+    a manually-editable RA/Dec target with its own "Move to Target"
+    button on the left; a starlist file/browse field, an object-name
+    search string, and the three "Find nearest..." buttons (which
+    populate the target fields rather than moving the telescope
+    themselves) on the right. Unlike the other tabs, it has no
+    `get_*_config` counterpart -- each button emits its own request
+    signal with exactly the text fields it needs, since there is no
+    single "the currently active tab's config" to read (this tab is
+    never in competition with Single/Grid/Auto/Replay for what
+    `startRequested` means).
 
     The Single tab doubles as "move to best focus": its focus field
     defaults to the most recent fitted best focus (via
@@ -157,14 +171,37 @@ class FocusControlPanel(QtWidgets.QWidget):
         Emitted when Grid/Auto's "Interrupt" is clicked.
     takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
         Emitted with a focus value when Single's "Acquire" is clicked.
+    moveToTargetRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted with ``(ra_text, dec_text)`` when the Slew tab's "Move to
+        Target" is clicked; the Controller should parse these and call
+        `slew.NickelTelescopePointing.slew_to`.
+    findNearestObjectRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted with ``(file_text, search_text)`` when the Slew tab's
+        "Find nearest object" is clicked -- either may be an empty
+        string, meaning "use the default" (see
+        `slew.find_nearest_target`).
+    findNearestPointingRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted when the Slew tab's "Find nearest pointing star" is
+        clicked; the Controller should search the packaged default
+        catalog with ``obj_search_str='Pointing'``, ignoring whatever is
+        currently in the file/search fields.
+    findNearestFocusRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted when the Slew tab's "Find nearest focus star" is
+        clicked; like ``findNearestPointingRequested``, but with
+        ``obj_search_str='Focusing'``.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
     takeSingleExposureRequested = QtCore.Signal(float)
+    moveToTargetRequested = QtCore.Signal(str, str)
+    findNearestObjectRequested = QtCore.Signal(str, str)
+    findNearestPointingRequested = QtCore.Signal()
+    findNearestFocusRequested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.slew_tab = self._build_slew_tab()
         self.single_tab = self._build_single_tab()
         self.grid_tab = self._build_grid_tab()
         self.auto_tab = self._build_auto_tab()
@@ -181,6 +218,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         # isn't lost when you switch away -- they're just not painted or
         # interactive until their tab is selected again.
         self.tabs = QtWidgets.QTabWidget()
+        self.tabs.addTab(self.slew_tab, 'Slew')
         self.tabs.addTab(self.single_tab, 'Single')
         self.tabs.addTab(self.grid_tab, 'Grid')
         self.tabs.addTab(self.auto_tab, 'Auto')
@@ -196,6 +234,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         # bar itself is deliberately never disabled, so the Log tab
         # stays reachable while a sequence runs.
         self._config_widgets = [
+            self.slew_target_ra_edit, self.slew_target_dec_edit, self.slew_file_edit,
+            self.slew_browse_button, self.slew_search_edit,
             self.single_focus_spin, self.single_exptime_spin, self.single_speed_combo,
             self.single_binning_combo,
             self.grid_start_spin, self.grid_step_spin, self.grid_nstep_spin,
@@ -206,9 +246,11 @@ class FocusControlPanel(QtWidgets.QWidget):
             self.replay_suffix_edit, self.replay_obsnum_spin, self.replay_start_spin,
             self.replay_step_spin, self.replay_nstep_spin,
         ]
-        # The "go" buttons on the four actionable tabs, disabled while
+        # The "go" buttons on the five actionable tabs, disabled while
         # anything is running.
         self._acquire_buttons = [
+            self.slew_move_button, self.slew_find_object_button,
+            self.slew_find_pointing_button, self.slew_find_focus_button,
             self.single_acquire_button, self.grid_acquire_button,
             self.auto_acquire_button, self.replay_load_button,
         ]
@@ -249,6 +291,78 @@ class FocusControlPanel(QtWidgets.QWidget):
         interrupt_button.setEnabled(False)
         interrupt_button.clicked.connect(self.stopRequested.emit)
         return _button_row(acquire_button, interrupt_button), acquire_button, interrupt_button
+
+    def _build_slew_tab(self):
+        """
+        Build the Slew tab: current/target RA-Dec and "Move to Target"
+        on the left; starlist file/browse, an object-name search string,
+        and the three "Find nearest..." buttons on the right.
+        """
+        # Short "RA:"/"Dec:" field labels, not "Current RA:"/"Target RA:"
+        # etc. -- those are wide enough (with two side-by-side columns
+        # per row) to noticeably widen this tab beyond every other one;
+        # a short section header above each row disambiguates instead,
+        # at a fraction of the width cost (GUI_DESIGN.md's §9-phase-5
+        # scroll-area floor otherwise has to grow to match).
+        self.slew_current_ra_label = QtWidgets.QLabel('—')
+        self.slew_current_dec_label = QtWidgets.QLabel('—')
+        self.slew_target_ra_edit = QtWidgets.QLineEdit()
+        self.slew_target_dec_edit = QtWidgets.QLineEdit()
+        current_row = _two_column_row(
+            [('RA:', self.slew_current_ra_label)],
+            [('Dec:', self.slew_current_dec_label)],
+        )
+        target_row = _two_column_row(
+            [('RA:', self.slew_target_ra_edit)],
+            [('Dec:', self.slew_target_dec_edit)],
+        )
+        self.slew_move_button = QtWidgets.QPushButton('Move to Target')
+        self.slew_move_button.clicked.connect(
+            lambda: self.moveToTargetRequested.emit(
+                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()))
+
+        left = QtWidgets.QVBoxLayout()
+        left.addWidget(QtWidgets.QLabel('Current position:'))
+        left.addLayout(current_row)
+        left.addWidget(QtWidgets.QLabel('Target:'))
+        left.addLayout(target_row)
+        left.addStretch(1)
+        left.addLayout(_button_row(self.slew_move_button))
+
+        self.slew_file_edit = QtWidgets.QLineEdit('')
+        self.slew_browse_button = QtWidgets.QPushButton('Browse…')
+        self.slew_browse_button.clicked.connect(self._on_slew_browse_clicked)
+        file_row = QtWidgets.QHBoxLayout()
+        file_row.addWidget(self.slew_file_edit, 1)
+        file_row.addWidget(self.slew_browse_button)
+        file_form = QtWidgets.QFormLayout()
+        file_form.addRow('Starlist:', file_row)
+
+        self.slew_search_edit = QtWidgets.QLineEdit('')
+        search_form = QtWidgets.QFormLayout()
+        search_form.addRow('Search:', self.slew_search_edit)
+
+        self.slew_find_object_button = QtWidgets.QPushButton('Find nearest object')
+        self.slew_find_object_button.clicked.connect(
+            lambda: self.findNearestObjectRequested.emit(
+                self.slew_file_edit.text(), self.slew_search_edit.text()))
+        self.slew_find_pointing_button = QtWidgets.QPushButton('Find nearest pointing star')
+        self.slew_find_pointing_button.clicked.connect(self.findNearestPointingRequested.emit)
+        self.slew_find_focus_button = QtWidgets.QPushButton('Find nearest focus star')
+        self.slew_find_focus_button.clicked.connect(self.findNearestFocusRequested.emit)
+
+        right = QtWidgets.QVBoxLayout()
+        right.addLayout(file_form)
+        right.addLayout(search_form)
+        right.addWidget(self.slew_find_object_button)
+        right.addWidget(self.slew_find_pointing_button)
+        right.addWidget(self.slew_find_focus_button)
+        right.addStretch(1)
+
+        layout = QtWidgets.QHBoxLayout()
+        layout.addLayout(left, 1)
+        layout.addLayout(right, 1)
+        return _tab_widget(layout)
 
     def _build_single_tab(self):
         """Build the Single tab: a focus value, exposure settings, and "Acquire"."""
@@ -397,6 +511,10 @@ class FocusControlPanel(QtWidgets.QWidget):
     def _build_help_tab(self):
         """Build the Help tab: a single block of short, rich-text usage reminders."""
         text = (
+            '<b>Slew</b> — move the telescope to a target. Enter RA/Dec '
+            'directly, or use "Find nearest..." to search a starlist '
+            '(the packaged pointing/focus catalog by default) and fill '
+            'them in, then press "Move to Target."<br><br>'
             '<b>Single</b> — take one exposure at the given focus. '
             'Defaults to the most recent fitted best focus, so acquiring '
             'it as-is moves to best focus; change the value first to '
@@ -547,6 +665,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         covering different fields.
         """
         return {
+            'slew/file': self.slew_file_edit,
+            'slew/search': self.slew_search_edit,
             'single/exptime': self.single_exptime_spin,
             'single/speed': self.single_speed_combo,
             'single/binning': self.single_binning_combo,
@@ -604,6 +724,50 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.step_label.setText(text)
         self.log_widget.appendPlainText(text)
 
+    def set_current_position(self, ra_text, dec_text):
+        """
+        Update the Slew tab's live "current position" display.
+
+        Parameters
+        ----------
+        ra_text : :obj:`str`
+            The telescope's current right ascension, already formatted
+            for display (e.g. ``'05:30:00'``) -- formatting an `Angle`
+            is the Controller's job, not this passive view's.
+        dec_text : :obj:`str`
+            The telescope's current declination, formatted the same way.
+        """
+        self.slew_current_ra_label.setText(ra_text)
+        self.slew_current_dec_label.setText(dec_text)
+
+    def show_nearest_target(self, name, ra_text, dec_text):
+        """
+        Populate the Slew tab's target RA/Dec fields with a found
+        nearest target, and report it (mirrors
+        `scripts/slew_to_nearest.py`'s printed message).
+
+        Parameters
+        ----------
+        name : :obj:`str`
+            The nearest target's name.
+        ra_text : :obj:`str`
+            The nearest target's right ascension, already formatted for
+            display.
+        dec_text : :obj:`str`
+            The nearest target's declination, already formatted for
+            display.
+        """
+        self.slew_target_ra_edit.setText(ra_text)
+        self.slew_target_dec_edit.setText(dec_text)
+        text = f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})'
+        self.status_label.setText(text)
+        self.log_widget.appendPlainText(text)
+
+    def show_slew_result(self, message):
+        """Report a completed "Move to Target" slew (e.g., from `SlewWorker.slewFinished`)."""
+        self.status_label.setText(message)
+        self.log_widget.appendPlainText(message)
+
     def show_best_focus(self, best_focus, best_fwhm):
         """
         Report a completed sequence's fitted result, and set it as the
@@ -644,5 +808,17 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, 'Select archive directory', self.replay_datadir_edit.text())
-        if directory:
+        if directory != '':
             self.replay_datadir_edit.setText(directory)
+
+    def _on_slew_browse_clicked(self):
+        """
+        Slot for `slew_browse_button`'s ``clicked``: open the native OS
+        file picker and, unless the user cancels (signaled by an empty
+        string, not `None`), fill the selected path into
+        `slew_file_edit`.
+        """
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Select starlist file', self.slew_file_edit.text())
+        if path != '':
+            self.slew_file_edit.setText(path)

@@ -1,12 +1,17 @@
 """
 Wires the View (`gui.views.main_window.MainWindow` and its panels) to the
 Model (`focus.FocusSequence` subclasses, via
-`gui.model.sequence_worker.SequenceWorker`).
+`gui.model.sequence_worker.SequenceWorker`; and
+`slew.NickelTelescopePointing`, via `gui.model.slew_worker.SlewWorker`).
 
 See GUI_DESIGN.md §4.3.
 """
+from astropy.coordinates import SkyCoord
+
 from nickel_focus import focus
+from nickel_focus import slew
 from nickel_focus.gui.model.sequence_worker import SequenceWorker
+from nickel_focus.gui.model.slew_worker import SlewWorker
 from nickel_focus.gui.qt import QtCore
 
 
@@ -23,6 +28,15 @@ class Controller(QtCore.QObject):
     Replay), reanalysis, and the Single tab (which also serves as "move
     to best focus" -- see `gui.views.focus_control_panel.FocusControlPanel`)
     are wired up.
+
+    Also owns the `slew.NickelTelescopePointing` handle used by the Slew
+    tab: `move_to_target` (a slew, via `SlewWorker`) participates in the
+    same hardware-exclusivity state as a focus sequence -- the telescope
+    shouldn't move while it's mid-exposure, or vice versa -- while
+    `find_nearest_object`/`find_nearest_pointing`/`find_nearest_focus`
+    (a single fast ktl read plus a starlist search, not a move) do not.
+    A `~PySide6.QtCore.QTimer` polls the telescope's current position
+    for the tab's live display regardless of what else is running.
     """
 
     def __init__(self, window, parent=None):
@@ -31,6 +45,7 @@ class Controller(QtCore.QObject):
         self.sequence = None        # the current focus.FocusSequence, or None
         self.worker = None          # the SequenceWorker currently running, or None
         self.method = 'brightest'   # the photometry method currently in effect
+        self.slew_worker = None     # the SlewWorker currently running, or None
 
         # The throwaway `focus.FocusSequence` used only to take/reanalyze
         # a standalone Single-tab exposure (its hardware handles, not its
@@ -39,6 +54,17 @@ class Controller(QtCore.QObject):
         # source selection, §5.6) can run against it even though no real
         # sequence is loaded.
         self._standalone_sequence = None
+
+        # The telescope-pointing handle backing the Slew tab. Like
+        # `focus.FocusSequence`'s `_focus`/`_exposure`, this is `None`
+        # when no ktl connection is available (`NickelTelescopePointing`
+        # raises `RuntimeError` in that case) -- every method below that
+        # uses it checks for `None` first and reports a clear failure
+        # instead.
+        try:
+            self.telescope = slew.NickelTelescopePointing()
+        except RuntimeError:
+            self.telescope = None
 
         # This is Qt's signal/slot mechanism, the backbone of how every
         # View talks to this Controller: each `connect()` call below
@@ -52,7 +78,23 @@ class Controller(QtCore.QObject):
         window.control_panel.startRequested.connect(self.start_sequence)
         window.control_panel.stopRequested.connect(self.stop)
         window.control_panel.takeSingleExposureRequested.connect(self.take_single_exposure)
+        window.control_panel.moveToTargetRequested.connect(self.move_to_target)
+        window.control_panel.findNearestObjectRequested.connect(self.find_nearest_object)
+        window.control_panel.findNearestPointingRequested.connect(self.find_nearest_pointing)
+        window.control_panel.findNearestFocusRequested.connect(self.find_nearest_focus)
         window.image_panel.sourceSelected.connect(self._on_source_selected)
+
+        # Milliseconds, not seconds: a `QTimer` interval is always in ms.
+        # Reading `telescope.current` is one quick ktl-cache read, not a
+        # move -- safe (and useful) to keep polling no matter what else,
+        # if anything, is running.
+        self._position_timer = QtCore.QTimer(self)
+        self._position_timer.timeout.connect(self._update_current_position)
+        if self.telescope is None:
+            self.window.control_panel.set_current_position('—', '—')
+        else:
+            self._update_current_position()
+            self._position_timer.start(1000)
 
         self._set_running(False)
 
@@ -60,7 +102,7 @@ class Controller(QtCore.QObject):
 
     def start_sequence(self):
         """Build a sequence from the control panel's configuration and run it."""
-        if self.worker is not None:
+        if self.worker is not None or self.slew_worker is not None:
             return  # hardware exclusivity: something is already running
 
         sequence_type = self.window.control_panel.get_sequence_type()
@@ -120,7 +162,8 @@ class Controller(QtCore.QObject):
         loaded yet" case).
         """
         target = self.sequence if self.sequence is not None else self._standalone_sequence
-        if self.worker is not None or target is None or not target.exposures:
+        if (self.worker is not None or self.slew_worker is not None or target is None
+                or not target.exposures):
             return
         if target is self.sequence:
             # Clear the curve immediately rather than letting old points
@@ -140,7 +183,7 @@ class Controller(QtCore.QObject):
         Uses a throwaway `focus.FocusSequence` for its hardware handles,
         independent of any loaded `sequence`.
         """
-        if self.worker is not None:
+        if self.worker is not None or self.slew_worker is not None:
             return  # hardware exclusivity: something is already running
         standalone = focus.FocusSequence()
         if standalone._focus is None or standalone._exposure is None:
@@ -171,7 +214,118 @@ class Controller(QtCore.QObject):
         """
         self.method = method
 
+    def move_to_target(self, ra_text, dec_text):
+        """
+        Slew the telescope to the Slew tab's target RA/Dec -- on a
+        background thread (`SlewWorker`), since
+        `slew.NickelTelescopePointing.slew_to` can block for up to five
+        minutes waiting for the telescope to arrive.
+
+        Parameters
+        ----------
+        ra_text : :obj:`str`
+            Target right ascension, as entered in the Slew tab's target
+            RA field (a bare sexagesimal string, e.g. ``'05:30:00'``).
+        dec_text : :obj:`str`
+            Target declination, entered the same way (e.g.
+            ``'+20:15:00'``).
+        """
+        if self.worker is not None or self.slew_worker is not None:
+            return  # hardware exclusivity: something is already running
+        if self.telescope is None:
+            self.window.control_panel.show_failure(
+                'Could not move to target: no ktl connection is available.')
+            return
+        try:
+            target = SkyCoord(ra=ra_text, dec=dec_text, unit=('hourangle', 'deg'))
+        except ValueError as e:
+            self.window.control_panel.show_failure(f'Could not parse target coordinates: {e}')
+            return
+
+        self.slew_worker = SlewWorker(self.telescope, target.ra, target.dec)
+        self.slew_worker.slewFinished.connect(self._on_slew_finished)
+        self.slew_worker.slewFailed.connect(self._on_slew_failed)
+        self.slew_worker.finished.connect(self._on_slew_worker_finished)
+        self._set_running(True)
+        self.slew_worker.start()
+
+    def find_nearest_object(self, file_text, search_text):
+        """
+        Handle the Slew tab's "Find nearest object" button: search
+        ``file_text`` for the target nearest the telescope's current
+        position, restricted to names containing ``search_text``
+        (unrestricted if empty).
+
+        Parameters
+        ----------
+        file_text : :obj:`str`
+            Path to a starlist file entered in the Slew tab's file
+            field. Unlike `find_nearest_pointing`/`find_nearest_focus`,
+            there is no default here -- use one of those two for the
+            packaged catalog.
+        search_text : :obj:`str`
+            Object-name search string entered in the Slew tab's search
+            field, or an empty string to consider every target in the
+            file.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``file_text`` is empty.
+        """
+        if file_text == '':
+            raise ValueError('A starlist file must be provided to find the nearest object.')
+        search = None if search_text == '' else search_text
+        self._find_nearest(search, file=file_text)
+
+    def find_nearest_pointing(self):
+        """
+        Handle the Slew tab's "Find nearest pointing star" button:
+        search the packaged default catalog for the nearest target whose
+        name contains ``'Pointing'``, ignoring whatever is currently in
+        the Slew tab's file/search fields (matching
+        ``slew_to_nearest.py -s Pointing`` with no ``-f``).
+        """
+        self._find_nearest('Pointing')
+
+    def find_nearest_focus(self):
+        """
+        Handle the Slew tab's "Find nearest focus star" button: like
+        `find_nearest_pointing`, but for names containing ``'Focusing'``
+        (matching ``slew_to_nearest.py -s Focusing`` with no ``-f``).
+        """
+        self._find_nearest('Focusing')
+
     # -- internals ------------------------------------------------------------
+
+    def _find_nearest(self, obj_search_str, file=None):
+        """
+        Shared implementation for `find_nearest_object`/
+        `find_nearest_pointing`/`find_nearest_focus`: locate the nearest
+        target and populate/report it on the Slew tab, or report a clear
+        failure.
+
+        Parameters
+        ----------
+        obj_search_str
+            Forwarded to `slew.find_nearest_target`.
+        file
+            Forwarded to `slew.find_nearest_target`; ``None`` (the
+            default) searches the packaged default catalog.
+        """
+        if self.telescope is None:
+            self.window.control_panel.show_failure(
+                'Could not find nearest target: no ktl connection is available.')
+            return
+        try:
+            name, ra, dec = slew.find_nearest_target(
+                self.telescope.current, obj_search_str=obj_search_str, file=file)
+        except (ValueError, FileNotFoundError) as e:
+            self.window.control_panel.show_failure(f'Could not find nearest target: {e}')
+            return
+        ra_text = ra.to_string(unit='hourangle', sep=':', pad=True, precision=2)
+        dec_text = dec.to_string(unit='deg', sep=':', pad=True, alwayssign=True, precision=2)
+        self.window.control_panel.show_nearest_target(name, ra_text, dec_text)
 
     def _start_worker(self, sequence, mode, exp_kwargs=None, focus_value=None):
         """
@@ -263,6 +417,43 @@ class Controller(QtCore.QObject):
         """Handle `ImagePanel.sourceSelected`: mark that source, then reanalyze against it."""
         self.set_method((x, y))
         self.reanalyze()
+
+    def _on_slew_finished(self):
+        """Handle `SlewWorker.slewFinished`: report that the telescope reached its target."""
+        self.window.control_panel.show_slew_result('Move to target complete.')
+
+    def _on_slew_failed(self, message):
+        """Handle `SlewWorker.slewFailed`: report the failure message."""
+        self.window.control_panel.show_failure(message)
+
+    def _on_slew_worker_finished(self):
+        """
+        Handle `SlewWorker.finished` (a signal every `QThread` provides
+        automatically, emitted once :func:`~SlewWorker.run` returns):
+        release the worker and restore hardware exclusivity. See
+        `_on_worker_finished` for why `wait()` is called here.
+        """
+        if self.slew_worker is not None:
+            self.slew_worker.wait()
+        self.slew_worker = None
+        self._set_running(False)
+
+    def _update_current_position(self):
+        """
+        Poll `telescope.current` and push the formatted result to the
+        Slew tab's live "current position" display. A no-op if
+        `telescope` is ``None`` (see the class docstring); the
+        `~PySide6.QtCore.QTimer` driving this is never started in that
+        case, but this also guards the one direct call made from
+        `__init__` before that timer's first tick.
+        """
+        if self.telescope is None:
+            return
+        current = self.telescope.current
+        ra_text = current.ra.to_string(unit='hourangle', sep=':', pad=True, precision=2)
+        dec_text = current.dec.to_string(unit='deg', sep=':', pad=True, alwayssign=True,
+                                          precision=2)
+        self.window.control_panel.set_current_position(ra_text, dec_text)
 
     def _set_running(self, running):
         """Propagate the hardware-exclusivity state to the View (§4.3)."""

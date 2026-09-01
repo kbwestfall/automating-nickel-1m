@@ -2,7 +2,7 @@
 The `QThread` engine that drives a `slew.NickelTelescopePointing.slew_to`
 call off the GUI thread.
 
-See `gui.model.sequence_worker.SequenceWorker`'s module docstring: every
+See `gui.model.focus_worker.FocusWorker`'s module docstring: every
 hardware call here is blocking, and `slew_to` can wait up to five minutes
 for the telescope to reach its target, so running it directly on the
 GUI's event-loop thread would freeze the whole interface.
@@ -54,7 +54,7 @@ class SlewWorker(QtCore.QThread):
         """
         `QThread`'s entry point: runs ``telescope.slew_to(ra, dec)`` on
         the background thread started by `start`. See
-        `~gui.model.sequence_worker.SequenceWorker.run` for why emitting
+        `~gui.model.focus_worker.FocusWorker.run` for why emitting
         signals from here is still safe to connect to GUI-thread slots.
         """
         try:

@@ -11,7 +11,7 @@ def _run_and_collect(worker, timeout_ms=5000):
     Start ``worker``, pump the event loop until it finishes, and return
     the lists of ``(slewFinished, slewFailed)`` payloads it emitted.
 
-    See `test_sequence_worker._run_and_collect` for why a
+    See `test_focus_worker._run_and_collect` for why a
     ``DirectConnection`` is used here.
     """
     finished, failed = [], []

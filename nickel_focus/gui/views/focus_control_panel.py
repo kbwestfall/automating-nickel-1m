@@ -4,7 +4,7 @@ Focus-sequence configuration and controls.
 See GUI_DESIGN.md §5.4 and claude/GUI_IMPLEMENTATION.md's Phase 4 for the
 tabbed redesign. This view only exposes configuration and emits signals
 for requested actions; it never constructs a `focus.FocusSequence` or
-talks to `gui.model.sequence_worker.SequenceWorker` itself -- that's the
+talks to `gui.model.focus_worker.FocusWorker` itself -- that's the
 Controller's job.
 """
 from pathlib import Path
@@ -204,8 +204,8 @@ class FocusControlPanel(QtWidgets.QWidget):
     currently visible page, each button unambiguously means "do this
     tab's action" -- there's no need to track which tab is active to
     decide what a click means, only to decide what
-    :func:`get_sequence_type`/:func:`get_sequence_config` should return
-    once a click has already happened.
+    :func:`get_focus_sequence_type`/:func:`get_focus_sequence_config`
+    should return once a click has already happened.
 
     The Slew tab (first in the list) is a small control panel around
     `slew.NickelTelescopePointing`/`slew.find_nearest_target`, mirroring
@@ -248,8 +248,9 @@ class FocusControlPanel(QtWidgets.QWidget):
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Acquire" or Replay's "Load" is
-        clicked; the Controller should read :func:`get_sequence_type`
-        and :func:`get_sequence_config` (and :func:`get_exposure_config`
+        clicked; the Controller should read
+        :func:`get_focus_sequence_type` and
+        :func:`get_focus_sequence_config` (and :func:`get_exposure_config`
         for Grid/Auto) to build and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Interrupt" is clicked.
@@ -753,7 +754,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         # actual rendered tab: a couple of pixels was all it took).
         return tallest_other + tab_bar_height + 4
 
-    def get_sequence_type(self):
+    def get_focus_sequence_type(self):
         """
         The sequence type for the currently active tab, as ``'grid'``,
         ``'automated'``, or ``'archive'`` -- or ``None`` if Single, Log,
@@ -769,7 +770,7 @@ class FocusControlPanel(QtWidgets.QWidget):
             return 'archive'
         return None
 
-    def get_sequence_config(self):
+    def get_focus_sequence_config(self):
         """
         Return the currently active tab's configuration as a
         :obj:`dict`. Only includes keys relevant to that tab -- e.g. a
@@ -993,7 +994,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.log_widget.appendPlainText(text)
 
     def show_failure(self, message):
-        """Display a sequence failure (e.g., from `SequenceWorker.sequenceFailed`)."""
+        """Display a sequence failure (e.g., from `FocusWorker.focusSequenceFailed`)."""
         self.status_label.setText(message)
         self.log_widget.appendPlainText(f'ERROR: {message}')
 

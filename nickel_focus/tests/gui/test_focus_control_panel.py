@@ -50,44 +50,44 @@ def test_focus_value_entries_are_integers(qapp):
         assert isinstance(spin_box, QtWidgets.QSpinBox), f'{spin_box} should be an integer entry'
 
 
-def test_get_sequence_type(qapp):
+def test_get_focus_sequence_type(qapp):
     panel = FocusControlPanel()
 
     panel.tabs.setCurrentWidget(panel.single_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
     panel.tabs.setCurrentWidget(panel.grid_tab)
-    assert panel.get_sequence_type() == 'grid'
+    assert panel.get_focus_sequence_type() == 'grid'
     panel.tabs.setCurrentWidget(panel.auto_tab)
-    assert panel.get_sequence_type() == 'automated'
+    assert panel.get_focus_sequence_type() == 'automated'
     panel.tabs.setCurrentWidget(panel.replay_tab)
-    assert panel.get_sequence_type() == 'archive'
+    assert panel.get_focus_sequence_type() == 'archive'
     panel.tabs.setCurrentWidget(panel.log_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
     panel.tabs.setCurrentWidget(panel.help_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
 
 
-def test_get_sequence_config_for_grid(qapp):
+def test_get_focus_sequence_config_for_grid(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.grid_tab)
     panel.grid_start_spin.setValue(300)
     panel.grid_step_spin.setValue(2)
     panel.grid_nstep_spin.setValue(7)
 
-    assert panel.get_sequence_config() == {'start': 300, 'step': 2, 'nstep': 7}
+    assert panel.get_focus_sequence_config() == {'start': 300, 'step': 2, 'nstep': 7}
 
 
-def test_get_sequence_config_for_auto(qapp):
+def test_get_focus_sequence_config_for_auto(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.auto_tab)
     panel.auto_start_spin.setValue(310)
     panel.auto_step_spin.setValue(3)
     panel.auto_maxsteps_spin.setValue(9)
 
-    assert panel.get_sequence_config() == {'start': 310, 'step': 3, 'maxsteps': 9}
+    assert panel.get_focus_sequence_config() == {'start': 310, 'step': 3, 'maxsteps': 9}
 
 
-def test_get_sequence_config_for_replay(qapp):
+def test_get_focus_sequence_config_for_replay(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.replay_tab)
     panel.replay_datadir_edit.setText('/tmp/some/dir')
@@ -98,7 +98,7 @@ def test_get_sequence_config_for_replay(qapp):
     panel.replay_step_spin.setValue(2)
     panel.replay_nstep_spin.setValue(7)
 
-    assert panel.get_sequence_config() == {
+    assert panel.get_focus_sequence_config() == {
         'datadir': Path('/tmp/some/dir'),
         'prefix': 'x',
         'suffix': '.fit',
@@ -109,11 +109,11 @@ def test_get_sequence_config_for_replay(qapp):
     }
 
 
-def test_get_sequence_config_is_empty_outside_grid_auto_replay(qapp):
+def test_get_focus_sequence_config_is_empty_outside_grid_auto_replay(qapp):
     panel = FocusControlPanel()
     for tab in (panel.single_tab, panel.log_tab, panel.help_tab):
         panel.tabs.setCurrentWidget(tab)
-        assert panel.get_sequence_config() == {}
+        assert panel.get_focus_sequence_config() == {}
 
 
 def test_get_exposure_config_for_single_grid_auto(qapp):

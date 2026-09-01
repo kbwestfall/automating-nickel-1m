@@ -6,11 +6,13 @@ Forces a non-interactive matplotlib backend before anything imports
 :mod:`nickel_focus.focus` (which imports :mod:`matplotlib.pyplot`), so
 tests never require a display.
 
-Per the project's testing strategy, everything here is expected to run
-without the ``ktl`` package installed: fixtures only ever produce data for
-:class:`nickel_focus.focus.ArchiveFocusSequence`, which never touches
-:class:`nickel_focus.focus.Focus`/:class:`nickel_focus.focus.Exposure`
-hardware.
+Per the project's testing strategy, this suite must never touch real
+telescope/camera hardware via ``ktl``, regardless of whether the ``ktl``
+package happens to be installed in the environment running the tests --
+see the autouse :func:`no_ktl` fixture below, which forces
+:mod:`nickel_focus.focus`/:mod:`nickel_focus.slew`'s ``ktl`` references to
+``None`` for every test unless overridden by :func:`fake_hardware`/
+:func:`fake_telescope`.
 """
 import matplotlib
 matplotlib.use('Agg')
@@ -22,6 +24,32 @@ from astropy.io import fits
 from nickel_focus import focus
 from nickel_focus import slew
 from nickel_focus.tests.fake_hardware import FakeExposure, FakeFocus, FakeTelescopePointing
+
+
+@pytest.fixture(autouse=True)
+def no_ktl(monkeypatch):
+    """
+    Force ``focus.ktl``/``slew.ktl`` to ``None`` for every test, regardless
+    of whether the real ``ktl`` package happens to be importable in the
+    environment running the suite.
+
+    ``focus.Focus``/``focus.Exposure``/``slew.NickelTelescopePointing`` all
+    check ``ktl is None`` in their constructors and raise ``RuntimeError``
+    before ever calling ``ktl.cache(...)``, so patching it to ``None`` here
+    guarantees no test can reach real hardware -- not just the tests that
+    explicitly check the "no ktl connection" behavior, but also, e.g.,
+    every :class:`~nickel_focus.focus.ArchiveFocusSequence`-based test,
+    whose parent ``FocusSequence.__init__`` would otherwise construct a
+    real ``Focus``/``Exposure`` whenever real ``ktl`` happens to be
+    present.
+
+    Being autouse, this runs (and applies) before any other fixture a test
+    requests; :func:`fake_hardware`/:func:`fake_telescope` patch
+    ``focus.ktl``/``slew.NickelTelescopePointing`` again afterward, to
+    inject fake hardware instead.
+    """
+    monkeypatch.setattr(focus, 'ktl', None)
+    monkeypatch.setattr(slew, 'ktl', None)
 
 
 def gaussian_frame(fwhm, amplitude=8000., background=200., noise_sigma=5.,

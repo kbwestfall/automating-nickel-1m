@@ -897,6 +897,31 @@ class FocusControlPanel(QtWidgets.QWidget):
             'replay/nstep': self.replay_nstep_spin,
         }
 
+    def set_hardware_tabs_enabled(self, enabled):
+        """
+        Enable or disable the four tabs that need a live ``ktl``
+        connection to do anything (Slew, Single, Grid, Auto) -- called
+        once from `Controller.__init__` (see there for how ``enabled``
+        is decided). This is a one-time, ``ktl``-availability toggle,
+        independent of :func:`set_running`'s per-action running state.
+
+        Disabling a tab via
+        `~PySide6.QtWidgets.QTabWidget.setTabEnabled` grays it out and
+        disables every widget on it, so it stays visible but can't be
+        clicked into or interacted with; the Replay tab -- the only one
+        that works with no ``ktl`` connection at all -- is left alone,
+        and becomes the tab shown when the window first opens.
+
+        Parameters
+        ----------
+        enabled : :obj:`bool`
+            Whether the four ``ktl``-driven tabs should be enabled.
+        """
+        for tab in (self.slew_tab, self.single_tab, self.grid_tab, self.auto_tab):
+            self.tabs.setTabEnabled(self.tabs.indexOf(tab), enabled)
+        if not enabled:
+            self.tabs.setCurrentWidget(self.replay_tab)
+
     def set_running(self, running):
         """Toggle widget states for whether an action is currently running."""
         for widget in self._config_widgets:

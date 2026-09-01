@@ -76,19 +76,19 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
         grown_source_mask = binary_dilation(sources.data_masked, structure=structure)
         # Get the background and add it to the total
         bkg += sigma_clipped_stats(_data, sigma=3.0, mask=grown_source_mask)[1]
-        log.info(f'Updated background: {bkg:.1f}')
+        log.debug(f'Updated background: {bkg:.1f}')
 
         # Calculate the median of the threshold image
         med_threshold = np.median(threshold)
         if previous_threshold is None or \
                 not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol):
-            log.info(f'Updated threshold: {med_threshold:.1f}')
+            log.debug(f'Updated threshold: {med_threshold:.1f}')
             # This is the first iteration
             previous_threshold = med_threshold
             continue
 
         # Converged
-        log.info(f'Source detection converged after {iteration+1} iterations')
+        log.debug(f'Source detection converged after {iteration+1} iterations')
         break
 
     return bkg, sources

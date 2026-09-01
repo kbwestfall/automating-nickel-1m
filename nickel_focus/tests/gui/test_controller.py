@@ -560,26 +560,19 @@ def test_repeated_controller_construction_does_not_leak_handlers(qapp):
         'constructing a new Controller must remove any handler a previous one added'
 
 
-def test_focus_sequence_failure_logs_error(qapp, caplog):
+def test_fail_logs_error_and_shows_failure(qapp, caplog):
+    # _fail() is the single consolidated handler for FocusWorker.focusSequenceFailed,
+    # SlewWorker.slewFailed, and every other failure path in this class.
     window = MainWindow()
     controller = Controller(window)
 
     with caplog.at_level(logging.INFO, logger='nickel_focus'):
-        controller._on_focus_sequence_failed('boom')
+        controller._fail('boom')
 
     assert any(r.levelname == 'ERROR' and 'boom' in r.getMessage() for r in caplog.records), \
-        'a sequence failure should be logged as an error'
-
-
-def test_slew_failure_logs_error(qapp, caplog):
-    window = MainWindow()
-    controller = Controller(window)
-
-    with caplog.at_level(logging.INFO, logger='nickel_focus'):
-        controller._on_slew_failed('boom')
-
-    assert any(r.levelname == 'ERROR' and 'boom' in r.getMessage() for r in caplog.records), \
-        'a slew failure should be logged as an error'
+        'a failure should be logged as an error'
+    assert window.control_panel.status_label.text() == 'boom', \
+        'a failure should also be shown as the current status'
 
 
 def test_slew_finished_logs_info(qapp, caplog):
@@ -652,7 +645,7 @@ def test_log_tab_reflects_worker_signal_end_to_end(qapp):
     window = MainWindow()
     controller = Controller(window)  # noqa: F841 (kept alive)
 
-    controller._on_focus_sequence_failed('total failure')
+    controller._fail('total failure')
     QtCore.QCoreApplication.processEvents()
 
     assert 'total failure' in window.control_panel.log_widget.toPlainText(), \

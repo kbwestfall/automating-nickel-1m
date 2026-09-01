@@ -501,3 +501,64 @@ tab is wired to real `logging` output (Phases 1-2), and the `print()` →
 (Phases 3-4), including the two bugs this work surfaced along the way
 (the logger-level gate never being opened, and dead `verbose`
 parameters/flags in `focus.py`/`photometry.py`/`scripts/focus.py`).
+
+### Post-Phase-4 cleanup (2026-09-01)
+
+Three small consolidation/cleanup requests handled after the four phases
+landed, plus one user-made correction along the way:
+
+- **`photometry.py`**: `find_sources`'s three diagnostic messages
+  ("Updated background", "Updated threshold", "Source detection
+  converged") were briefly changed to `log.info(...)` outside this
+  session, then reverted back to `log.debug(...)` by the user themselves
+  -- confirmed the revert restored exactly the original Phase 3 state
+  (verified via `pytest nickel_focus/tests/test_photometry.py`, all
+  passing). `evaluate_sources`'s two `log.info(...)` messages ("Number of
+  sources detected", "Evaluating source with label") were a separate,
+  deliberate choice and were left untouched.
+- **Consolidated the repeated `log.error(message); show_failure(message)`
+  pattern**: added `Controller._fail(message)` (`gui/controller.py`),
+  replacing 9 call sites across `start_focus_sequence`,
+  `take_single_exposure`, `move_to_target`, `_find_nearest`, and two
+  now-removed wrapper methods -- collapsing 3 of those sites that
+  previously built the same f-string twice (once for `log.error`, once
+  for `show_failure`) into a single call.
+- **Removed `_on_focus_sequence_failed`/`_on_slew_failed`**: once both
+  were pure pass-throughs to `_fail`, they were deleted and
+  `FocusWorker.focusSequenceFailed`/`SlewWorker.slewFailed` connected
+  directly to `self._fail` instead (`_fail`'s `(self, message)` signature
+  already matches both signals). Updated `tests/gui/test_controller.py`
+  to match: collapsed `test_focus_sequence_failure_logs_error` and
+  `test_slew_failure_logs_error` (which had become duplicates of each
+  other, both just exercising `_fail`) into one
+  `test_fail_logs_error_and_shows_failure`, and pointed
+  `test_log_tab_reflects_worker_signal_end_to_end` at `_fail` directly.
+- **Consolidated the repeated "filter-and-remove handlers by type" loop**:
+  added `NickelFocusLogger.remove_handlers_of_type(handler_type)`
+  (`pkg/logger.py`) -- no return value, since neither call site
+  (`gui/controller.py`'s `Controller.__init__`,
+  `tests/gui/conftest.py`'s `_remove_qt_log_handlers` fixture) needed the
+  removed handlers back.
+- **Removed "verify old functionality was removed" test assertions**:
+  reviewed the full test suite for tests checking the *absence* of
+  pre-migration behavior rather than genuine ongoing behavior. Found one
+  cluster, all in `tests/gui/test_focus_control_panel.py`: six tests
+  carried an identical `assert panel.log_widget.toPlainText() == ''`
+  assertion (a Phase 2 migration artifact, confirming the view no longer
+  appends to the log itself). Dropped just that assertion from each,
+  keeping their genuine positive-behavior checks (label/status/spinbox
+  content), and renamed three tests whose names described the now-removed
+  check (`test_update_step_updates_label_and_leaves_log_untouched` →
+  `test_update_step_updates_label`,
+  `test_show_single_exposure_result_updates_status_only` →
+  `test_show_single_exposure_result_updates_status`,
+  `test_show_failure_updates_status_only` →
+  `test_show_failure_updates_status`). Left alone: the one
+  `log_widget.toPlainText() == ''` assertion in
+  `test_reset_clears_status_and_log` (tests `reset()`'s real, current
+  behavior, not removed old behavior), and a few superficially similar
+  tests elsewhere (`test_find_sources_silent_at_info_level`,
+  `test_gui_formatter_has_no_color_escape_codes`,
+  `test_reset_does_not_touch_the_single_tab_default`) that document
+  genuine specs of the new system or are unrelated to this migration.
+- Full suite: `223 passed` (`pytest nickel_focus/tests`).

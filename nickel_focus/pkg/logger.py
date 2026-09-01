@@ -367,6 +367,20 @@ class NickelFocusLogger(logging.Logger):
         if self.fh in self.warnings_logger.handlers:
             self.warnings_logger.removeHandler(self.fh)
 
+    def remove_handlers_of_type(self, handler_type):
+        """
+        Remove every attached handler that is an instance of ``handler_type``.
+
+        Parameters
+        ----------
+        handler_type : type
+            The `logging.Handler` subclass to remove; every attached
+            handler for which ``isinstance(handler, handler_type)`` is
+            true is removed.
+        """
+        for h in [h for h in self.handlers if isinstance(h, handler_type)]:
+            self.removeHandler(h)
+
 
 # NOTE: If we allow warning and exception capture to be optional, remember to
 # add them as parameters here as well.

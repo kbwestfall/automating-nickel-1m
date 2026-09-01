@@ -33,8 +33,7 @@ def _remove_qt_log_handlers():
     pointing at a destroyed window never lingers into a later test module.
     """
     yield
-    for handler in [h for h in log.handlers if isinstance(h, QtLogHandler)]:
-        log.removeHandler(handler)
+    log.remove_handlers_of_type(QtLogHandler)
 
 
 @pytest.fixture(autouse=True)

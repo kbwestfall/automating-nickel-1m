@@ -72,8 +72,7 @@ class Controller(QtCore.QObject):
         # adding its own -- otherwise a stale handler pointing at a
         # since-destroyed log_widget accumulates each time a Controller is
         # (re)constructed.
-        for handler in [h for h in log.handlers if isinstance(h, QtLogHandler)]:
-            log.removeHandler(handler)
+        log.remove_handlers_of_type(QtLogHandler)
         self._log_handler = QtLogHandler(self)
         self._log_handler.setFormatter(GuiFormatter())
         self._log_handler.setLevel(logging.INFO)
@@ -165,17 +164,14 @@ class Controller(QtCore.QObject):
                 focus_sequence = focus.AutomatedFocusSequence(config['start'], config['step'],
                                                                maxsteps=config['maxsteps'])
         except Exception as e:
-            log.error(f'Could not start sequence: {e}')
-            self.window.control_panel.show_failure(f'Could not start sequence: {e}')
+            self._fail(f'Could not start sequence: {e}')
             return
 
         if focus_sequence_type != 'archive' and (
                 focus_sequence._focus is None or focus_sequence._exposure is None):
-            message = (
+            self._fail(
                 'Could not start sequence: no ktl connection is available for a live sequence.'
             )
-            log.error(message)
-            self.window.control_panel.show_failure(message)
             return
 
         self.focus_sequence = focus_sequence
@@ -240,9 +236,7 @@ class Controller(QtCore.QObject):
             return  # hardware exclusivity: something is already running
         standalone = focus.FocusSequence()
         if standalone._focus is None or standalone._exposure is None:
-            message = 'Could not take single exposure: no ktl connection is available.'
-            log.error(message)
-            self.window.control_panel.show_failure(message)
+            self._fail('Could not take single exposure: no ktl connection is available.')
             return
         self._standalone_focus_sequence = standalone
         exp_kwargs = self.window.control_panel.get_exposure_config()
@@ -287,20 +281,17 @@ class Controller(QtCore.QObject):
         if self.focus_worker is not None or self.slew_worker is not None:
             return  # hardware exclusivity: something is already running
         if self.telescope is None:
-            message = 'Could not move to target: no ktl connection is available.'
-            log.error(message)
-            self.window.control_panel.show_failure(message)
+            self._fail('Could not move to target: no ktl connection is available.')
             return
         try:
             target = SkyCoord(ra=ra_text, dec=dec_text, unit=('hourangle', 'deg'))
         except ValueError as e:
-            log.error(f'Could not parse target coordinates: {e}')
-            self.window.control_panel.show_failure(f'Could not parse target coordinates: {e}')
+            self._fail(f'Could not parse target coordinates: {e}')
             return
 
         self.slew_worker = SlewWorker(self.telescope, target.ra, target.dec)
         self.slew_worker.slewFinished.connect(self._on_slew_finished)
-        self.slew_worker.slewFailed.connect(self._on_slew_failed)
+        self.slew_worker.slewFailed.connect(self._fail)
         self.slew_worker.finished.connect(self._on_slew_worker_finished)
         self._set_running(True)
         self.slew_worker.start()
@@ -354,6 +345,11 @@ class Controller(QtCore.QObject):
 
     # -- internals ------------------------------------------------------------
 
+    def _fail(self, message):
+        """Log `message` as an error and report it as a failure on the Log tab."""
+        log.error(message)
+        self.window.control_panel.show_failure(message)
+
     def _find_nearest(self, obj_search_str, file=None):
         """
         Shared implementation for `find_nearest_object`/
@@ -370,16 +366,13 @@ class Controller(QtCore.QObject):
             default) searches the packaged default catalog.
         """
         if self.telescope is None:
-            message = 'Could not find nearest target: no ktl connection is available.'
-            log.error(message)
-            self.window.control_panel.show_failure(message)
+            self._fail('Could not find nearest target: no ktl connection is available.')
             return
         try:
             name, ra, dec = slew.find_nearest_target(
                 self.telescope.current, obj_search_str=obj_search_str, file=file)
         except (ValueError, FileNotFoundError) as e:
-            log.error(f'Could not find nearest target: {e}')
-            self.window.control_panel.show_failure(f'Could not find nearest target: {e}')
+            self._fail(f'Could not find nearest target: {e}')
             return
         ra_text = ra.to_string(unit='hourangle', sep=':', pad=True, precision=2)
         dec_text = dec.to_string(unit='deg', sep=':', pad=True, alwayssign=True, precision=2)
@@ -396,7 +389,7 @@ class Controller(QtCore.QObject):
                                          exp_kwargs=exp_kwargs, focus_value=focus_value)
         self.focus_worker.stepComplete.connect(self._on_step_complete)
         self.focus_worker.focusSequenceFinished.connect(self._on_focus_sequence_finished)
-        self.focus_worker.focusSequenceFailed.connect(self._on_focus_sequence_failed)
+        self.focus_worker.focusSequenceFailed.connect(self._fail)
         self.focus_worker.singleExposureFinished.connect(self._on_single_exposure_finished)
         self.focus_worker.finished.connect(self._on_focus_worker_finished)
         self._set_running(True)
@@ -444,11 +437,6 @@ class Controller(QtCore.QObject):
         log.info(f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
         self.window.control_panel.show_best_focus(best_focus, best_fwhm)
 
-    def _on_focus_sequence_failed(self, message):
-        """Handle `FocusWorker.focusSequenceFailed`: report the failure message."""
-        log.error(message)
-        self.window.control_panel.show_failure(message)
-
     def _on_single_exposure_finished(self, result):
         """
         Handle `FocusWorker.singleExposureFinished`: display the
@@ -493,11 +481,6 @@ class Controller(QtCore.QObject):
         """Handle `SlewWorker.slewFinished`: report that the telescope reached its target."""
         log.info('Move to target complete.')
         self.window.control_panel.show_slew_result('Move to target complete.')
-
-    def _on_slew_failed(self, message):
-        """Handle `SlewWorker.slewFailed`: report the failure message."""
-        log.error(message)
-        self.window.control_panel.show_failure(message)
 
     def _on_slew_worker_finished(self):
         """

@@ -393,3 +393,58 @@ Implemented as planned, no changes to the plan itself:
   test per call site added above, plus
   `test_log_tab_reflects_worker_signal_end_to_end`.
 - Full suite: `217 passed` (`pytest nickel_focus/tests`).
+
+### Phase 3 — done (2026-09-01)
+
+Implemented largely as planned, with a few resolutions/scope adjustments
+made along the way (flagged individually below) and two planned tests
+dropped at the user's request:
+
+- `focus.py` (`Focus.set_to`, `Exposure.expose`): all 6 `print()` calls
+  → `log.info(...)`. Added `from nickel_focus import log`.
+- `photometry.py`: the `verbose=`-gated diagnostics in `find_sources`
+  → `log.debug(...)` (unconditional); the two `"Warning: ..."` branches in
+  `evaluate_shape` → `log.warning(...)`. Dropped the now-redundant
+  `verbose` parameter from `find_sources`, `evaluate_shape`,
+  `evaluate_sources`, `image_quality`. Added `from nickel_focus import log`.
+- **Scope addition, done at the user's request**: while removing
+  `evaluate_sources`'s `verbose` parameter, its two `if verbose:
+  warnings.warn(...)` guards needed *some* resolution (the parameter they
+  gated no longer exists). Initially planned to just drop the `if verbose:`
+  guard and leave `warnings.warn`; the user asked for `log.warning(...)`
+  instead. Applied that consistently to all `warnings.warn` calls actually
+  touched by this migration: all 3 in `photometry.py` (`evaluate_sources`)
+  and, for the same consistency, the 2 plain (non-verbose-gated)
+  `warnings.warn` calls already in `focus.py` (`FocusPlot.add_stamp`,
+  `AutomatedFocusSequence.step_focus`) — nothing else in the codebase uses
+  `warnings.warn` (checked via grep). Removed the now-unused `import
+  warnings` from both files.
+- **Resolution**: `focus.py:559`'s separate `FocusSequence.execute(verbose=True,
+  ...)` parameter turned out to be dead code -- never referenced in the
+  method body, never passed by any caller (checked via grep). Dropped it
+  outright rather than wiring it to anything.
+- Manually verified the level-gating end-to-end (not just that the calls
+  exist): `log.init(level=logging.DEBUG)` then `log.init(level=logging.INFO)`
+  around the same `find_sources(...)` call shows the debug diagnostics
+  appear (with full `file:func:line` context, since `DebugStreamFormatter`
+  kicks in at that level) and then vanish completely -- confirming the
+  Phase 1 logger-level fix and this phase's migration compose correctly,
+  i.e. `-v 2`-equivalent actually surfaces detail that was previously
+  unreachable at any verbosity.
+- Added `tests/test_photometry.py` (new) with `caplog`-based tests for the
+  `find_sources` debug messages (present at DEBUG, absent at INFO) and the
+  `evaluate_shape` warning branches (degenerate/dissimilar sigma). Added
+  `tests/test_focus.py` (new) with a minimal fake `ktl` module (just enough
+  to drive `Focus.set_to()`'s golden path and its "already at position"
+  early-return) to verify its migrated messages log at INFO -- this was
+  more work than anticipated, since every existing test fixture replaces
+  `focus.Focus` wholesale (`FakeFocus`) rather than exercising its real
+  implementation against a faked `ktl`; this is the first test to do the
+  latter. Deliberately did not build an equivalent fake for
+  `Exposure.expose()`'s one migrated line -- verified manually instead
+  (see above) -- to keep this new test-infrastructure investment scoped to
+  what the plan actually asked for.
+- Two planned tests dropped at the user's explicit request (not needed):
+  `test_verbose_parameter_removed` (photometry) and a test confirming
+  `execute()` dropped its `verbose` parameter.
+- Full suite: `223 passed` (`pytest nickel_focus/tests`).

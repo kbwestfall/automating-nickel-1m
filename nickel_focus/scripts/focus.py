@@ -93,10 +93,6 @@ class NickelFocus(scriptbase.ScriptBase):
             help='Only print the current exposure configuration and focus'
         )
         parser.add_argument(
-            '--verbose', action='store_true',
-            help='Enable verbose output for debugging'
-        )
-        parser.add_argument(
             '--no-plot', action='store_true',
             help='Disable the live focus-sequence plot.'
         )
@@ -114,6 +110,7 @@ class NickelFocus(scriptbase.ScriptBase):
         import numpy as np
 
         from nickel_focus import focus
+        from nickel_focus import log
 
         cls.init_log(args)
 
@@ -177,8 +174,8 @@ class NickelFocus(scriptbase.ScriptBase):
             goto=False, method='brightest', record=True, speed=_speed, exptime=args.exptime,
             binning=args.binning, plot=not args.no_plot
         )
-        print(f'Best focus: {best_focus:.1f}')
-        print(f'Expected sigma: {best_img_quality:.1f} pixels')
+        log.info(f'Best focus: {best_focus:.1f}')
+        log.info(f'Expected sigma: {best_img_quality:.1f} pixels')
 
         if args.ofile is not None:
             # Outlier status is recomputed the same way step() does it live:
@@ -194,7 +191,7 @@ class NickelFocus(scriptbase.ScriptBase):
                 'OUTLIER': outlier,
             })
             tbl.write(args.ofile, format='ecsv', overwrite=True)
-            print(f'Wrote focus data to {args.ofile}')
+            log.info(f'Wrote focus data to {args.ofile}')
 
         if seq.plot is not None:
             pyplot.ioff()

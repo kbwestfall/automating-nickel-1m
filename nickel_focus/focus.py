@@ -1,7 +1,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-import warnings
 
 from astropy.visualization import ImageNormalize, ZScaleInterval, LinearStretch
 from IPython import embed
@@ -9,6 +8,7 @@ from matplotlib import pyplot, patches
 import numpy as np
 
 from nickel_focus import ktl
+from nickel_focus import log
 from nickel_focus.photometry import image_quality
 from nickel_focus import quadratic
 
@@ -82,25 +82,25 @@ class Focus:
 
         # Check if the focus is already at the requested position.
         if abs(float(self.secpd.read()) - focus_value) < .1:
-            print(f'POCSECPD already set to {focus_value}. No change needed.')
+            log.info(f'POCSECPD already set to {focus_value}. No change needed.')
             return
 
-        # Change the focus       
-        print('Unlocking secondary')
+        # Change the focus
+        log.info('Unlocking secondary')
         self.seclk.write('off')
         self.seclk.read()
 
-        print(f'Actual position: {self.secpa.read()}')
+        log.info(f'Actual position: {self.secpa.read()}')
         self.secpd.write(focus_value)
-        print(f'Desired position: {self.secpd.read()}')
+        log.info(f'Desired position: {self.secpd.read()}')
 
         if not self.seclk.waitFor('== on', timeout=30):
             # TODO: Explicitly set the lock to on?
 #            self.seclk.write('on')
 #            self.seclk.read()
             raise ValueError("POCSECLK did not turn on. Focus change failed.")
-            
-        print(f"Successfully changed focus to {focus_value}")
+
+        log.info(f"Successfully changed focus to {focus_value}")
 
 
 class ExposurePath:
@@ -212,7 +212,7 @@ class Exposure:
 
         # Then wait for it to be ready again
         if self.expstate.waitFor('== Ready', timeout=round(float(self.cfg.exptime) + 90.)):
-            print('Exposure completed successfully')
+            log.info('Exposure completed successfully')
         else:
             raise ValueError('Exposure EXPSTATE=Ready not detected within timeout')
         
@@ -286,7 +286,7 @@ class FocusPlot:
         """Show the source stamp for the index-th exposure taken so far."""
         row, col = divmod(index, self.ncols)
         if row >= self.nrows:
-            warnings.warn(f'No plot space left for stamp {index}; skipping.')
+            log.warning(f'No plot space left for stamp {index}; skipping.')
             return
         ax = self.stamp_axes[row, col]
         ax.clear()
@@ -556,7 +556,7 @@ class FocusSequence:
             is_outlier=False,
         )
 
-    def execute(self, verbose=True, goto=True, method='brightest', plot=True, **exp_kwargs):
+    def execute(self, goto=True, method='brightest', plot=True, **exp_kwargs):
 
         if self._exposure is not None:
             self._exposure.cfg.configure(**exp_kwargs)
@@ -676,7 +676,7 @@ class AutomatedFocusSequence(FocusSequence):
         elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
-                warnings.warn(
+                log.warning(
                     f'Number of steps to fulfill sequence ({self.last}) is more than the '
                     f'maximum number of steps requested ({self.maxsteps}).')
             next_focus = self.observed_focus[-1] + self.direction * self.step_size

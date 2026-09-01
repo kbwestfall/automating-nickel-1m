@@ -1,5 +1,3 @@
-import warnings
-
 from astropy.io import fits
 from astropy import table
 from astropy.stats import SigmaClip, sigma_clipped_stats
@@ -7,6 +5,8 @@ from IPython import embed
 import numpy as np
 from photutils import segmentation
 from scipy.ndimage import binary_dilation
+
+from nickel_focus import log
 
 # detect threshold
 # use threshold to detect sources
@@ -24,7 +24,7 @@ from scipy.ndimage import binary_dilation
 # return fwhm of that source
 
 
-def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01, verbose=False):
+def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
     """
     Find sources in an image.
 
@@ -49,8 +49,6 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01, verbose=Fa
     rtol : :obj:`float`, optional
         Relative tolerance used to test for convergence of the detection
         threshold.  See `numpy.isclose`.
-    verbose : :obj:`bool`, optional
-        Print progress
 
     Returns
     -------
@@ -78,28 +76,25 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01, verbose=Fa
         grown_source_mask = binary_dilation(sources.data_masked, structure=structure)
         # Get the background and add it to the total
         bkg += sigma_clipped_stats(_data, sigma=3.0, mask=grown_source_mask)[1]
-        if verbose:
-            print(f'Updated background: {bkg:.1f}')
+        log.debug(f'Updated background: {bkg:.1f}')
 
         # Calculate the median of the threshold image
         med_threshold = np.median(threshold)
         if previous_threshold is None or \
                 not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol):
-            if verbose:
-                print(f'Updated threshold: {med_threshold:.1f}')
+            log.debug(f'Updated threshold: {med_threshold:.1f}')
             # This is the first iteration
             previous_threshold = med_threshold
             continue
 
         # Converged
-        if verbose:
-            print(f'Source detection converged after {iteration+1} iterations')
+        log.debug(f'Source detection converged after {iteration+1} iterations')
         break
 
     return bkg, sources
 
 
-def evaluate_shape(data, source_mask, verbose=False):
+def evaluate_shape(data, source_mask):
 
     source_data = data * source_mask
     M0 = np.sum(source_data)
@@ -118,13 +113,11 @@ def evaluate_shape(data, source_mask, verbose=False):
     sigma_x = np.sqrt(M2_x - M1_x**2)
     sigma_y = np.sqrt(M2_y - M1_y**2)
 
-    if verbose:
-        print(f"M0: {M0}; M1: {M1_x:.2f}, {M1_y:.2f}; M2: {M2_x:.2f}, {M2_y:.2f}")
-        print(f"Sigma_x: {sigma_x:.10e}, Sigma_y: {sigma_y:.10e}")
+    log.debug(f"M0: {M0}; M1: {M1_x:.2f}, {M1_y:.2f}; M2: {M2_x:.2f}, {M2_y:.2f}")
+    log.debug(f"Sigma_x: {sigma_x:.10e}, Sigma_y: {sigma_y:.10e}")
 
     if sigma_x <= 1e-8 or sigma_y <= 1e-8:
-        if verbose:
-            print("Warning: sigma_x or sigma_y is too small, cannot compute FWHM accurately.\n")
+        log.warning('sigma_x or sigma_y is too small, cannot compute FWHM accurately.')
 
         shape = {
             'M0': 0,
@@ -133,8 +126,7 @@ def evaluate_shape(data, source_mask, verbose=False):
         }
         return shape
     elif min(sigma_x, sigma_y) / max(sigma_x, sigma_y) < 0.5:
-        if verbose:
-            print("Warning: sigma_x and sigma_y are too different, cannot compute FWHM accurately.\n")
+        log.warning('sigma_x and sigma_y are too different, cannot compute FWHM accurately.')
         shape = {
             'M0': 0,
             'Centroid': (M1_x, M1_y),
@@ -208,7 +200,7 @@ def empty_source_table(length):
     ])
 
 
-def evaluate_sources(data, sources, verbose=False):
+def evaluate_sources(data, sources):
     """
     Provided a source segmentation image, measure the first 3 moments of all
     sources.
@@ -219,8 +211,6 @@ def evaluate_sources(data, sources, verbose=False):
         Background subtracted, raw image data
     sources : `photutils.segmentation.core.SegmentationImage`
         Source segmentation image.
-    verbose : :obj:`bool`, optional
-        Print progress messages
 
     Returns
     -------
@@ -232,8 +222,7 @@ def evaluate_sources(data, sources, verbose=False):
             - SIGX : dispersion along X (column)
             - SIGY : dispersion along Y (row)
     """
-    if verbose:
-        print(f"Number of sources detected: {sources.n_labels}\n")
+    log.info(f"Number of sources detected: {sources.n_labels}")
     if sources.n_labels == 0:
         raise ValueError('No sources found.')
 
@@ -243,22 +232,20 @@ def evaluate_sources(data, sources, verbose=False):
     # For each source, get the total flux, and the 1st and 2nd moments along each axis.
     src_data = empty_source_table(sources.n_labels)
     for i, source in enumerate(sources.segments):
-        if verbose:
-            print(f"Evaluating source with label {source.label}")
+        log.info(f"Evaluating source with label {source.label}")
         src_data['ID'][i] = source.label
         indx = sources.data == source.label
         if np.sum(indx) == 0:
-            warnings.warn(f'No data assocated with source {source.label}')
+            log.warning(f'No data assocated with source {source.label}')
         src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i], \
             src_data['SIGX'][i], src_data['SIGY'][i] \
                 = moment2d(img_x[indx], img_y[indx], data[indx])
 
-    # Check if sources are real        
+    # Check if sources are real
     #   - Bad sigma measurements
     small_sources = (src_data['SIGX'] < 1e-8) |  (src_data['SIGY'] < 1e-8)
     if np.any(small_sources):
-        if verbose:
-            warnings.warn(f'Removing {np.sum(small_sources)} sources with errantly small widths.')
+        log.warning(f'Removing {np.sum(small_sources)} sources with errantly small widths.')
         src_data = src_data[np.logical_not(small_sources)]
 
     if len(src_data) == 0:
@@ -267,8 +254,7 @@ def evaluate_sources(data, sources, verbose=False):
     axis_ratio = src_data['SIGX'] / src_data['SIGY']
     ellip_sources = (axis_ratio < 0.5) | (axis_ratio > 2)
     if np.any(ellip_sources):
-        if verbose:
-            warnings.warn(f'Removing {np.sum(small_sources)} sources with large ellipticity.')
+        log.warning(f'Removing {np.sum(small_sources)} sources with large ellipticity.')
         src_data = src_data[np.logical_not(ellip_sources)]
 
     if len(src_data) == 0:
@@ -277,7 +263,7 @@ def evaluate_sources(data, sources, verbose=False):
     return src_data
 
 
-def image_quality(fits_file, method='brightest', verbose=False):
+def image_quality(fits_file, method='brightest'):
     """
     Evaluate the image quality of the provided data.
 
@@ -296,8 +282,6 @@ def image_quality(fits_file, method='brightest', verbose=False):
 
             - :obj:`tuple`: Provide a tuple with coordinates and use the source
               closest to the provides coordinates.
-    verbose : :obj:`bool`, optional
-        Print status messages
 
     Returns
     -------
@@ -317,7 +301,7 @@ def image_quality(fits_file, method='brightest', verbose=False):
     with fits.open(fits_file) as hdu:
         data = hdu[0].data.astype(float)
     bkg, sources = find_sources(data)
-    src_data = evaluate_sources(data-bkg, sources, verbose=verbose)
+    src_data = evaluate_sources(data-bkg, sources)
 
     if method == 'brightest':
         target_source = np.argmax(src_data['CNTS'])

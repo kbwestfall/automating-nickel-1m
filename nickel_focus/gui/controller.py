@@ -6,13 +6,18 @@ Model (`focus.FocusSequence` subclasses, via
 
 See GUI_DESIGN.md §4.3.
 """
+import logging
+
 from astropy.coordinates import SkyCoord
 
 from nickel_focus import focus
+from nickel_focus import log
 from nickel_focus import slew
+from nickel_focus.gui.log_handler import QtLogHandler
 from nickel_focus.gui.model.focus_worker import FocusWorker
 from nickel_focus.gui.model.slew_worker import SlewWorker
 from nickel_focus.gui.qt import QtCore
+from nickel_focus.pkg.logger import GuiFormatter
 
 
 class Controller(QtCore.QObject):
@@ -61,6 +66,19 @@ class Controller(QtCore.QObject):
     def __init__(self, window, parent=None, force_enable_hardware_tabs=False):
         super().__init__(parent)
         self.window = window
+
+        # `log` is a module-level singleton, not per-Controller, so a new
+        # Controller must remove any handler a previous one added before
+        # adding its own -- otherwise a stale handler pointing at a
+        # since-destroyed log_widget accumulates each time a Controller is
+        # (re)constructed.
+        log.remove_handlers_of_type(QtLogHandler)
+        self._log_handler = QtLogHandler(self)
+        self._log_handler.setFormatter(GuiFormatter())
+        self._log_handler.setLevel(logging.INFO)
+        self._log_handler.record_logged.connect(window.control_panel.append_log_line)
+        log.addHandler(self._log_handler)
+
         self.focus_sequence = None  # the current focus.FocusSequence, or None
         self.focus_worker = None    # the FocusWorker currently running, or None
         self.method = 'brightest'   # the photometry method currently in effect
@@ -146,13 +164,14 @@ class Controller(QtCore.QObject):
                 focus_sequence = focus.AutomatedFocusSequence(config['start'], config['step'],
                                                                maxsteps=config['maxsteps'])
         except Exception as e:
-            self.window.control_panel.show_failure(f'Could not start sequence: {e}')
+            self._fail(f'Could not start sequence: {e}')
             return
 
         if focus_sequence_type != 'archive' and (
                 focus_sequence._focus is None or focus_sequence._exposure is None):
-            self.window.control_panel.show_failure(
-                'Could not start sequence: no ktl connection is available for a live sequence.')
+            self._fail(
+                'Could not start sequence: no ktl connection is available for a live sequence.'
+            )
             return
 
         self.focus_sequence = focus_sequence
@@ -217,8 +236,7 @@ class Controller(QtCore.QObject):
             return  # hardware exclusivity: something is already running
         standalone = focus.FocusSequence()
         if standalone._focus is None or standalone._exposure is None:
-            self.window.control_panel.show_failure(
-                'Could not take single exposure: no ktl connection is available.')
+            self._fail('Could not take single exposure: no ktl connection is available.')
             return
         self._standalone_focus_sequence = standalone
         exp_kwargs = self.window.control_panel.get_exposure_config()
@@ -263,18 +281,17 @@ class Controller(QtCore.QObject):
         if self.focus_worker is not None or self.slew_worker is not None:
             return  # hardware exclusivity: something is already running
         if self.telescope is None:
-            self.window.control_panel.show_failure(
-                'Could not move to target: no ktl connection is available.')
+            self._fail('Could not move to target: no ktl connection is available.')
             return
         try:
             target = SkyCoord(ra=ra_text, dec=dec_text, unit=('hourangle', 'deg'))
         except ValueError as e:
-            self.window.control_panel.show_failure(f'Could not parse target coordinates: {e}')
+            self._fail(f'Could not parse target coordinates: {e}')
             return
 
         self.slew_worker = SlewWorker(self.telescope, target.ra, target.dec)
         self.slew_worker.slewFinished.connect(self._on_slew_finished)
-        self.slew_worker.slewFailed.connect(self._on_slew_failed)
+        self.slew_worker.slewFailed.connect(self._fail)
         self.slew_worker.finished.connect(self._on_slew_worker_finished)
         self._set_running(True)
         self.slew_worker.start()
@@ -328,6 +345,11 @@ class Controller(QtCore.QObject):
 
     # -- internals ------------------------------------------------------------
 
+    def _fail(self, message):
+        """Log `message` as an error and report it as a failure on the Log tab."""
+        log.error(message)
+        self.window.control_panel.show_failure(message)
+
     def _find_nearest(self, obj_search_str, file=None):
         """
         Shared implementation for `find_nearest_object`/
@@ -344,17 +366,17 @@ class Controller(QtCore.QObject):
             default) searches the packaged default catalog.
         """
         if self.telescope is None:
-            self.window.control_panel.show_failure(
-                'Could not find nearest target: no ktl connection is available.')
+            self._fail('Could not find nearest target: no ktl connection is available.')
             return
         try:
             name, ra, dec = slew.find_nearest_target(
                 self.telescope.current, obj_search_str=obj_search_str, file=file)
         except (ValueError, FileNotFoundError) as e:
-            self.window.control_panel.show_failure(f'Could not find nearest target: {e}')
+            self._fail(f'Could not find nearest target: {e}')
             return
         ra_text = ra.to_string(unit='hourangle', sep=':', pad=True, precision=2)
         dec_text = dec.to_string(unit='deg', sep=':', pad=True, alwayssign=True, precision=2)
+        log.info(f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})')
         self.window.control_panel.show_nearest_target(name, ra_text, dec_text)
 
     def _start_focus_worker(self, focus_sequence, mode, exp_kwargs=None, focus_value=None):
@@ -367,7 +389,7 @@ class Controller(QtCore.QObject):
                                          exp_kwargs=exp_kwargs, focus_value=focus_value)
         self.focus_worker.stepComplete.connect(self._on_step_complete)
         self.focus_worker.focusSequenceFinished.connect(self._on_focus_sequence_finished)
-        self.focus_worker.focusSequenceFailed.connect(self._on_focus_sequence_failed)
+        self.focus_worker.focusSequenceFailed.connect(self._fail)
         self.focus_worker.singleExposureFinished.connect(self._on_single_exposure_finished)
         self.focus_worker.finished.connect(self._on_focus_worker_finished)
         self._set_running(True)
@@ -400,15 +422,20 @@ class Controller(QtCore.QObject):
             self.window.curve_panel.add_result(result)
 
         total = self.focus_sequence.expected_steps if self.focus_sequence is not None else None
+        step_text = f'Step {result.index + 1}'
+        if total:
+            step_text += f'/{total}'
+        step_text += (f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
+                      f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
+        if result.is_outlier:
+            step_text += '  [outlier]'
+        log.info(step_text)
         self.window.control_panel.update_step(result, total_expected=total)
 
     def _on_focus_sequence_finished(self, best_focus, best_fwhm):
         """Handle `FocusWorker.focusSequenceFinished`: report the fitted result."""
+        log.info(f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
         self.window.control_panel.show_best_focus(best_focus, best_fwhm)
-
-    def _on_focus_sequence_failed(self, message):
-        """Handle `FocusWorker.focusSequenceFailed`: report the failure message."""
-        self.window.control_panel.show_failure(message)
 
     def _on_single_exposure_finished(self, result):
         """
@@ -424,6 +451,8 @@ class Controller(QtCore.QObject):
         seq.source_stamps.append(result.stamp)
         seq.centroids.append(result.centroid)
         seq.step_iter = 1
+        log.info(f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
+                 f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
         self.window.control_panel.show_single_exposure_result(result)
 
     def _on_focus_worker_finished(self):
@@ -450,11 +479,8 @@ class Controller(QtCore.QObject):
 
     def _on_slew_finished(self):
         """Handle `SlewWorker.slewFinished`: report that the telescope reached its target."""
+        log.info('Move to target complete.')
         self.window.control_panel.show_slew_result('Move to target complete.')
-
-    def _on_slew_failed(self, message):
-        """Handle `SlewWorker.slewFailed`: report the failure message."""
-        self.window.control_panel.show_failure(message)
 
     def _on_slew_worker_finished(self):
         """

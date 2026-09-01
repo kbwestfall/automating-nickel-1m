@@ -1,9 +1,14 @@
 """Tests for :mod:`gui.controller`."""
+import logging
+from pathlib import Path
 import types
 
+import numpy as np
 import pytest
 
 from nickel_focus import focus
+from nickel_focus import log
+from nickel_focus.gui.log_handler import QtLogHandler
 from nickel_focus.gui.qt import QtCore
 from nickel_focus.gui.views.main_window import MainWindow
 from nickel_focus.gui.controller import Controller
@@ -39,6 +44,14 @@ def _wait_for_slew_worker(controller, timeout_ms=5000):
     worker.finished.connect(loop.quit)
     QtCore.QTimer.singleShot(timeout_ms, loop.quit)
     loop.exec()
+
+
+def _make_step_result(index=0, focus_value=350., fwhm=3.2, centroid=(12.3, 45.6),
+                       is_outlier=False):
+    return focus.StepResult(
+        index=index, focus_value=focus_value, exposure=Path('n2000.fits'), fwhm=fwhm,
+        frame=np.zeros((4, 4)), stamp=np.zeros((2, 2)), centroid=centroid,
+        is_outlier=is_outlier)
 
 
 def _write_starlist(tmp_path, lines):
@@ -523,3 +536,117 @@ def test_find_nearest_without_ktl_reports_clear_failure(qapp):
     controller.find_nearest_pointing()
 
     assert 'no ktl connection' in window.control_panel.status_label.text().lower()
+
+
+def test_log_records_appear_in_log_tab(qapp):
+    window = MainWindow()
+    controller = Controller(window)  # noqa: F841 (kept alive; see Controller's own note on this)
+
+    log.info('hello from the logger')
+    QtCore.QCoreApplication.processEvents()
+
+    assert 'hello from the logger' in window.control_panel.log_widget.toPlainText(), \
+        'a log.info() call should be delivered into the Log tab'
+
+
+def test_repeated_controller_construction_does_not_leak_handlers(qapp):
+    first_window = MainWindow()
+    first_controller = Controller(first_window)  # noqa: F841 (kept alive)
+    second_window = MainWindow()
+    second_controller = Controller(second_window)  # noqa: F841 (kept alive)
+
+    qt_handlers = [h for h in log.handlers if isinstance(h, QtLogHandler)]
+    assert len(qt_handlers) == 1, \
+        'constructing a new Controller must remove any handler a previous one added'
+
+
+def test_fail_logs_error_and_shows_failure(qapp, caplog):
+    # _fail() is the single consolidated handler for FocusWorker.focusSequenceFailed,
+    # SlewWorker.slewFailed, and every other failure path in this class.
+    window = MainWindow()
+    controller = Controller(window)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller._fail('boom')
+
+    assert any(r.levelname == 'ERROR' and 'boom' in r.getMessage() for r in caplog.records), \
+        'a failure should be logged as an error'
+    assert window.control_panel.status_label.text() == 'boom', \
+        'a failure should also be shown as the current status'
+
+
+def test_slew_finished_logs_info(qapp, caplog):
+    window = MainWindow()
+    controller = Controller(window)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller._on_slew_finished()
+
+    assert any(
+        r.levelname == 'INFO' and 'complete' in r.getMessage() for r in caplog.records
+    ), 'a completed slew should be logged at info level'
+
+
+def test_focus_sequence_finished_logs_info(qapp, caplog):
+    window = MainWindow()
+    controller = Controller(window)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller._on_focus_sequence_finished(356.6, 3.3)
+
+    assert any(
+        r.levelname == 'INFO' and '356.6' in r.getMessage() for r in caplog.records
+    ), 'a finished sequence should log its best-focus result at info level'
+
+
+def test_single_exposure_finished_logs_info(qapp, caplog):
+    window = MainWindow()
+    controller = Controller(window)
+    controller._standalone_focus_sequence = types.SimpleNamespace(
+        observed_focus=[], exposures=[], img_quality=[], source_stamps=[], centroids=[],
+        step_iter=0)
+    result = _make_step_result(focus_value=356.)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller._on_single_exposure_finished(result)
+
+    assert any(
+        r.levelname == 'INFO' and '356' in r.getMessage() for r in caplog.records
+    ), 'a completed single exposure should be logged at info level'
+
+
+def test_find_nearest_target_logs_info(qapp, caplog, fake_telescope):
+    fake_telescope.ra, fake_telescope.dec = 0.5, 29.75  # near the packaged Pointing00 entry
+    window = MainWindow()
+    controller = Controller(window)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller.find_nearest_pointing()
+
+    assert any(
+        r.levelname == 'INFO' and 'Pointing' in r.getMessage() for r in caplog.records
+    ), 'a found target should be logged at info level'
+
+
+def test_step_complete_logs_info(qapp, caplog):
+    window = MainWindow()
+    controller = Controller(window)
+    result = _make_step_result(index=1, focus_value=356.)
+
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        controller._on_step_complete(result)
+
+    assert any(
+        r.levelname == 'INFO' and 'Step 2' in r.getMessage() for r in caplog.records
+    ), 'each completed step should be logged at info level'
+
+
+def test_log_tab_reflects_worker_signal_end_to_end(qapp):
+    window = MainWindow()
+    controller = Controller(window)  # noqa: F841 (kept alive)
+
+    controller._fail('total failure')
+    QtCore.QCoreApplication.processEvents()
+
+    assert 'total failure' in window.control_panel.log_widget.toPlainText(), \
+        'a worker failure should reach the Log tab via Controller -> log.error() -> QtLogHandler'

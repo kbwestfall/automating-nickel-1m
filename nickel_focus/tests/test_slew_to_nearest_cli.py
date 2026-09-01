@@ -4,6 +4,8 @@ End-to-end test of
 exercised without any ``ktl`` connection or telescope hardware (see the
 ``fake_telescope`` fixture in ``conftest.py``).
 """
+import logging
+
 from astropy.coordinates import SkyCoord
 import pytest
 
@@ -35,16 +37,18 @@ def _write_starlist(tmp_path, lines):
     return path
 
 
-def test_cli_dry_run_does_not_move_the_telescope(fake_telescope, tmp_path, capsys):
+def test_cli_dry_run_does_not_move_the_telescope(fake_telescope, tmp_path, caplog):
     path = _write_starlist(tmp_path, ['StarA 01:00:00 +10:00:00 2000.0'])
     fake_telescope.ra, fake_telescope.dec = 1.0, 10.0
 
-    NickelSlewToNearest.main(
-        NickelSlewToNearest.parse_args(['-f', str(path), '--dry_run'])
-    )
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        NickelSlewToNearest.main(
+            NickelSlewToNearest.parse_args(['-f', str(path), '--dry_run'])
+        )
 
-    captured = capsys.readouterr()
-    assert 'Nearest object is: StarA' in captured.out, 'CLI should report the nearest target'
+    messages = [r.getMessage() for r in caplog.records if r.name == 'nickel_focus']
+    assert any('Nearest object is: StarA' in m for m in messages), \
+        'CLI should log the nearest target'
     assert fake_telescope.slew_calls == [], 'dry-run mode should never command a slew'
 
 
@@ -71,19 +75,20 @@ def test_cli_slews_to_the_nearest_target(fake_telescope, tmp_path):
     )
 
 
-def test_cli_search_string_selects_matching_target(fake_telescope, tmp_path, capsys):
+def test_cli_search_string_selects_matching_target(fake_telescope, tmp_path, caplog):
     path = _write_starlist(tmp_path, [
         'Pointing01 05:00:00 +30:00:00 2000.0',
         'Focusing01 05:00:00 +30:00:00 2000.0',
     ])
     fake_telescope.ra, fake_telescope.dec = 5.0, 30.0
 
-    NickelSlewToNearest.main(
-        NickelSlewToNearest.parse_args(['-f', str(path), '-s', 'Focusing', '--dry_run'])
-    )
+    with caplog.at_level(logging.INFO, logger='nickel_focus'):
+        NickelSlewToNearest.main(
+            NickelSlewToNearest.parse_args(['-f', str(path), '-s', 'Focusing', '--dry_run'])
+        )
 
-    captured = capsys.readouterr()
-    assert 'Nearest object is: Focusing01' in captured.out, (
+    messages = [r.getMessage() for r in caplog.records if r.name == 'nickel_focus']
+    assert any('Nearest object is: Focusing01' in m for m in messages), (
         '--search should restrict the candidate list to matching names, even though '
         'Pointing01 is an equally close non-match'
     )

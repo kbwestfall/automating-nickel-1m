@@ -36,7 +36,7 @@ class NickelFocusGUI(scriptbase.ScriptBase):
         window.show()
         # QApplication.exec() starts Qt's event loop: it blocks here,
         # dispatching mouse clicks, key presses, timers, and cross-thread
-        # signal deliveries (e.g. from SequenceWorker) to the right widgets
+        # signal deliveries (e.g. from FocusWorker) to the right widgets
         # one at a time, until the application quits (e.g. the last window
         # closes). Nothing in this GUI runs unless this loop is running --
         # that's true of every Qt application, not just this one.

@@ -70,6 +70,7 @@ Repository = "https://github.com/kbwestfall/automating-nickel-1m"
 
 nickel_focus = "nickel_focus.scripts.focus:NickelFocus.entry_point"
 nickel_focus_gui = "nickel_focus.scripts.focus_gui:NickelFocusGUI.entry_point"
+nickel_slew_to_nearest = "nickel_focus.scripts.slew_to_nearest:NickelSlewToNearest.entry_point"
 
 [build-system]
 requires = [

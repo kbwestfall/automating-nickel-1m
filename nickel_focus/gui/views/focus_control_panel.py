@@ -4,7 +4,7 @@ Focus-sequence configuration and controls.
 See GUI_DESIGN.md §5.4 and claude/GUI_IMPLEMENTATION.md's Phase 4 for the
 tabbed redesign. This view only exposes configuration and emits signals
 for requested actions; it never constructs a `focus.FocusSequence` or
-talks to `gui.model.sequence_worker.SequenceWorker` itself -- that's the
+talks to `gui.model.focus_worker.FocusWorker` itself -- that's the
 Controller's job.
 """
 from pathlib import Path
@@ -40,7 +40,7 @@ def _exposure_field_rows():
     tuple
         ``(rows, exptime_spin, speed_combo, binning_combo)``, where
         ``rows`` is a list of ``(label, widget)`` pairs suitable for
-        :func:`_two_column_row`.
+        :func:`_group_box`.
     """
     exptime_spin = _float_spin(0.1, 600., 5.)
     speed_combo = QtWidgets.QComboBox()
@@ -85,6 +85,56 @@ def _two_column_row(left_rows, right_rows):
     return row
 
 
+def _tighten_margins(widget):
+    """
+    Shrink ``widget``'s layout margins and inter-row spacing from the
+    style's defaults (11px margins, 6px spacing -- sized to comfortably
+    fit a titled group box's title, and to keep rows from ever looking
+    crowded even when a form has just one or two of them) down to a
+    tighter 6px/2px -- used throughout this tab's group boxes and tab
+    pages to cut down on unused white space, most of which was that
+    default padding repeated on every box and between every row rather
+    than anything the content itself needed.
+
+    Parameters
+    ----------
+    widget : :class:`~PySide6.QtWidgets.QWidget`
+        The widget whose layout's margins/spacing should be tightened;
+        must already have a layout set.
+    """
+    layout = widget.layout()
+    layout.setContentsMargins(6, 6, 6, 6)
+    layout.setSpacing(2)
+
+
+def _group_box(rows):
+    """
+    A titleless :class:`~PySide6.QtWidgets.QGroupBox` containing ``rows``
+    laid out as a :class:`~PySide6.QtWidgets.QFormLayout` -- the border
+    alone groups the fields, the same untitled convention used by the
+    Slew tab's sub-panels (see `FocusControlPanel._build_slew_tab`'s
+    docstring for why no title is needed there).
+
+    Parameters
+    ----------
+    rows : list
+        ``(label, field)`` pairs, in the order they should appear;
+        ``field`` may be a widget or a layout (a
+        :class:`~PySide6.QtWidgets.QFormLayout` row accepts either).
+
+    Returns
+    -------
+    :class:`~PySide6.QtWidgets.QGroupBox`
+    """
+    form = QtWidgets.QFormLayout()
+    for label, field in rows:
+        form.addRow(label, field)
+    group = QtWidgets.QGroupBox()
+    group.setLayout(form)
+    _tighten_margins(group)
+    return group
+
+
 def _button_row(*buttons):
     """A :class:`~PySide6.QtWidgets.QHBoxLayout` containing each of ``buttons``, in order."""
     row = QtWidgets.QHBoxLayout()
@@ -93,16 +143,46 @@ def _button_row(*buttons):
     return row
 
 
+def _add_centered_label(layout, text):
+    """
+    Add a :class:`~PySide6.QtWidgets.QLabel` to ``layout``, horizontally
+    centered over whatever ``layout`` holds below it, rather than
+    stretched to its full width or left-aligned.
+
+    Parameters
+    ----------
+    layout : :class:`~PySide6.QtWidgets.QBoxLayout`
+        The layout to add the label to.
+    text : :obj:`str`
+        The label's text.
+    """
+    layout.addWidget(QtWidgets.QLabel(text), alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+
 def _tab_widget(layout):
     """
-    Wrap ``layout`` in a bare :class:`~PySide6.QtWidgets.QWidget`, ready
-    to hand to :func:`~PySide6.QtWidgets.QTabWidget.addTab` -- a tab
-    page must be an actual widget, not a layout by itself, so every
+    Wrap ``layout`` in a scrollable page, ready to hand to
+    :func:`~PySide6.QtWidgets.QTabWidget.addTab` -- every
     ``_build_*_tab`` method below ends by returning this.
+
+    Scrollable (rather than a bare :class:`~PySide6.QtWidgets.QWidget`)
+    so a tab whose content doesn't fit the available height scrolls
+    internally, keeping the tab bar itself fixed in place instead of
+    scrolling out of view along with everything else -- `MainWindow` no
+    longer needs to size its own control-panel area around the tallest
+    page (Help) for exactly this reason. The frame is turned off since
+    the surrounding `QTabWidget` already visually frames each page;
+    without this, a page would show two nested borders.
     """
     widget = QtWidgets.QWidget()
     widget.setLayout(layout)
-    return widget
+    _tighten_margins(widget)
+
+    scroll = QtWidgets.QScrollArea()
+    scroll.setWidget(widget)
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    return scroll
 
 
 class FocusControlPanel(QtWidgets.QWidget):
@@ -110,18 +190,36 @@ class FocusControlPanel(QtWidgets.QWidget):
     Sequence configuration/action tabs -- plus live status/history on
     the Log tab and short usage reminders on the Help tab.
 
-    One tab per action -- Single, Grid, Auto, Replay -- each showing only
-    the fields relevant to it, with exposure parameters and the focus
-    value(s) that define the sequence laid out in two side-by-side
-    columns (see :func:`_two_column_row`), and its own acquisition
-    button(s) at the bottom: Single has "Acquire"; Grid and Auto have
-    "Acquire" and "Interrupt"; Replay has "Load". Log and Help have no
-    buttons at all. Because a `QTabWidget` only lets the user interact
-    with the currently visible page, each button unambiguously means
-    "do this tab's action" -- there's no need to track which tab is
-    active to decide what a click means, only to decide what
-    :func:`get_sequence_type`/:func:`get_sequence_config` should return
-    once a click has already happened.
+    One tab per action -- Slew, Single, Grid, Auto, Replay -- each
+    showing only the fields relevant to it. Single/Grid/Auto/Replay each
+    lay their fields out as two side-by-side, titleless
+    :class:`~PySide6.QtWidgets.QGroupBox` sub-panels (see
+    :func:`_group_box`) -- exposure parameters (or, for Replay,
+    on-disk file input) on the left, the focus value(s) that define the
+    sequence on the right -- with its own acquisition button(s) below
+    both, spanning the full tab width rather than belonging to either
+    sub-panel: Single has "Acquire"; Grid and Auto have "Acquire" and
+    "Interrupt"; Replay has "Load". Log and Help have no buttons at all.
+    Because a `QTabWidget` only lets the user interact with the
+    currently visible page, each button unambiguously means "do this
+    tab's action" -- there's no need to track which tab is active to
+    decide what a click means, only to decide what
+    :func:`get_focus_sequence_type`/:func:`get_focus_sequence_config`
+    should return once a click has already happened.
+
+    The Slew tab (first in the list) is a small control panel around
+    `slew.NickelTelescopePointing`/`slew.find_nearest_target`, mirroring
+    `scripts/slew_to_nearest.py`: a live "current position" display and
+    a manually-editable RA/Dec target with its own "Move to Target"
+    button on the left; a starlist file/browse field, an object-name
+    search string, and the three "Find nearest..." buttons (which
+    populate the target fields rather than moving the telescope
+    themselves) on the right. Unlike the other tabs, it has no
+    `get_*_config` counterpart -- each button emits its own request
+    signal with exactly the text fields it needs, since there is no
+    single "the currently active tab's config" to read (this tab is
+    never in competition with Single/Grid/Auto/Replay for what
+    `startRequested` means).
 
     The Single tab doubles as "move to best focus": its focus field
     defaults to the most recent fitted best focus (via
@@ -150,21 +248,45 @@ class FocusControlPanel(QtWidgets.QWidget):
     ----------
     startRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Acquire" or Replay's "Load" is
-        clicked; the Controller should read :func:`get_sequence_type`
-        and :func:`get_sequence_config` (and :func:`get_exposure_config`
+        clicked; the Controller should read
+        :func:`get_focus_sequence_type` and
+        :func:`get_focus_sequence_config` (and :func:`get_exposure_config`
         for Grid/Auto) to build and run the sequence.
     stopRequested : :class:`~PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Interrupt" is clicked.
     takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
         Emitted with a focus value when Single's "Acquire" is clicked.
+    moveToTargetRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted with ``(ra_text, dec_text)`` when the Slew tab's "Move to
+        Target" is clicked; the Controller should parse these and call
+        `slew.NickelTelescopePointing.slew_to`.
+    findNearestObjectRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted with ``(file_text, search_text)`` when the Slew tab's
+        "Find nearest object" is clicked -- either may be an empty
+        string, meaning "use the default" (see
+        `slew.find_nearest_target`).
+    findNearestPointingRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted when the Slew tab's "Find nearest pointing star" is
+        clicked; the Controller should search the packaged default
+        catalog with ``obj_search_str='Pointing'``, ignoring whatever is
+        currently in the file/search fields.
+    findNearestFocusRequested : :class:`~PySide6.QtCore.Signal`
+        Emitted when the Slew tab's "Find nearest focus star" is
+        clicked; like ``findNearestPointingRequested``, but with
+        ``obj_search_str='Focusing'``.
     """
     startRequested = QtCore.Signal()
     stopRequested = QtCore.Signal()
     takeSingleExposureRequested = QtCore.Signal(float)
+    moveToTargetRequested = QtCore.Signal(str, str)
+    findNearestObjectRequested = QtCore.Signal(str, str)
+    findNearestPointingRequested = QtCore.Signal()
+    findNearestFocusRequested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.slew_tab = self._build_slew_tab()
         self.single_tab = self._build_single_tab()
         self.grid_tab = self._build_grid_tab()
         self.auto_tab = self._build_auto_tab()
@@ -181,6 +303,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         # isn't lost when you switch away -- they're just not painted or
         # interactive until their tab is selected again.
         self.tabs = QtWidgets.QTabWidget()
+        self.tabs.addTab(self.slew_tab, 'Slew')
         self.tabs.addTab(self.single_tab, 'Single')
         self.tabs.addTab(self.grid_tab, 'Grid')
         self.tabs.addTab(self.auto_tab, 'Auto')
@@ -196,6 +319,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         # bar itself is deliberately never disabled, so the Log tab
         # stays reachable while a sequence runs.
         self._config_widgets = [
+            self.slew_target_ra_edit, self.slew_target_dec_edit, self.slew_file_edit,
+            self.slew_browse_button, self.slew_search_edit,
             self.single_focus_spin, self.single_exptime_spin, self.single_speed_combo,
             self.single_binning_combo,
             self.grid_start_spin, self.grid_step_spin, self.grid_nstep_spin,
@@ -206,9 +331,11 @@ class FocusControlPanel(QtWidgets.QWidget):
             self.replay_suffix_edit, self.replay_obsnum_spin, self.replay_start_spin,
             self.replay_step_spin, self.replay_nstep_spin,
         ]
-        # The "go" buttons on the four actionable tabs, disabled while
+        # The "go" buttons on the five actionable tabs, disabled while
         # anything is running.
         self._acquire_buttons = [
+            self.slew_move_button, self.slew_find_object_button,
+            self.slew_find_pointing_button, self.slew_find_focus_button,
             self.single_acquire_button, self.grid_acquire_button,
             self.auto_acquire_button, self.replay_load_button,
         ]
@@ -220,6 +347,7 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.tabs)
+        layout.setContentsMargins(0, 0, 0, 0)
 
     # -- widget construction ----------------------------------------------
 
@@ -250,8 +378,131 @@ class FocusControlPanel(QtWidgets.QWidget):
         interrupt_button.clicked.connect(self.stopRequested.emit)
         return _button_row(acquire_button, interrupt_button), acquire_button, interrupt_button
 
+    def _build_slew_tab(self):
+        """
+        Build the Slew tab as two untitled `~PySide6.QtWidgets.QGroupBox`
+        sub-panels: current/target RA-Dec and "Move to Target" on the
+        left, starlist file/browse, a target-name search pattern, and a
+        single row of three "Find nearest ..." buttons ("Object",
+        "Pointing *", "Focusing *" -- ``*`` standing in for "star") on
+        the right. Unlike every other tab here (deliberately flat since
+        the tab title alone says what its fields are for -- see
+        claude/GUI_IMPLEMENTATION.md's Phase 4), Slew covers two
+        distinct sub-workflows that its one tab title can't itself
+        disambiguate, which is what makes the extra grouping worth its
+        cost here specifically; each panel's own content (a coordinate
+        pair vs. a search field and buttons) already identifies its
+        purpose, so neither needs its own title on top of that border.
+        """
+        # Short "RA:"/"Dec:" field labels, not "Current RA:"/"Target RA:"
+        # etc. -- those are wide enough (with two side-by-side columns
+        # per row) to noticeably widen this tab beyond every other one;
+        # a short section header above each row disambiguates instead,
+        # at a fraction of the width cost (GUI_DESIGN.md's §9-phase-5
+        # scroll-area floor otherwise has to grow to match).
+        self.slew_current_ra_label = QtWidgets.QLabel('—')
+        self.slew_current_dec_label = QtWidgets.QLabel('—')
+        self.slew_target_ra_edit = QtWidgets.QLineEdit()
+        self.slew_target_dec_edit = QtWidgets.QLineEdit()
+        # Wide enough for a full sexagesimal value (e.g. '+00:00:00.0')
+        # to show without scrolling -- a bare default QLineEdit is only
+        # wide enough for a few characters. `sizeHint()` on a QLineEdit
+        # already containing that text turned out to reserve much more
+        # than the text itself needs (a fixed, style-dependent margin,
+        # not something proportional to the text); the font metrics'
+        # bare advance for the text plus a small fixed pad is tighter
+        # and still leaves room to spare (confirmed against
+        # `cursorRect()` with the text entered).
+        coord_width = (
+            self.slew_target_ra_edit.fontMetrics().horizontalAdvance('+00:00:00.0') + 10
+        )
+        self.slew_target_ra_edit.setMinimumWidth(coord_width)
+        self.slew_target_dec_edit.setMinimumWidth(coord_width)
+        current_row = _two_column_row(
+            [('RA:', self.slew_current_ra_label)],
+            [('Dec:', self.slew_current_dec_label)],
+        )
+        target_row = _two_column_row(
+            [('RA:', self.slew_target_ra_edit)],
+            [('Dec:', self.slew_target_dec_edit)],
+        )
+        self.slew_move_button = QtWidgets.QPushButton('Move to Target')
+        self.slew_move_button.clicked.connect(
+            lambda: self.moveToTargetRequested.emit(
+                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()))
+
+        position_layout = QtWidgets.QVBoxLayout()
+        _add_centered_label(position_layout, 'Current coordinates')
+        position_layout.addLayout(current_row)
+        _add_centered_label(position_layout, 'Target coordinates')
+        position_layout.addLayout(target_row)
+        position_layout.addLayout(_button_row(self.slew_move_button))
+        position_layout.addStretch(1)
+        position_group = QtWidgets.QGroupBox()
+        position_group.setLayout(position_layout)
+        _tighten_margins(position_group)
+
+        self.slew_file_edit = QtWidgets.QLineEdit('')
+        self.slew_browse_button = QtWidgets.QPushButton('Browse…')
+        self.slew_browse_button.clicked.connect(self._on_slew_browse_clicked)
+        file_row = QtWidgets.QHBoxLayout()
+        file_row.addWidget(self.slew_file_edit, 1)
+        file_row.addWidget(self.slew_browse_button)
+
+        self.slew_search_edit = QtWidgets.QLineEdit('')
+
+        # Short button labels ("Object"/"Pointing */"Focusing *", the
+        # asterisk standing in for "star") so the three fit in one row
+        # instead of stacking -- the "Find nearest ..." label above
+        # supplies the words those labels leave out.
+        self.slew_find_object_button = QtWidgets.QPushButton('Object')
+        self.slew_find_object_button.clicked.connect(
+            lambda: self.findNearestObjectRequested.emit(
+                self.slew_file_edit.text(), self.slew_search_edit.text()))
+        self.slew_find_pointing_button = QtWidgets.QPushButton('Pointing *')
+        self.slew_find_pointing_button.clicked.connect(self.findNearestPointingRequested.emit)
+        self.slew_find_focus_button = QtWidgets.QPushButton('Focusing *')
+        self.slew_find_focus_button.clicked.connect(self.findNearestFocusRequested.emit)
+
+        find_row = _button_row(
+            self.slew_find_object_button, self.slew_find_pointing_button,
+            self.slew_find_focus_button)
+        # Tighter than the default gap between widgets in a layout --
+        # frees up width for the Position panel next to it without
+        # actually shrinking any button.
+        find_row.setSpacing(2)
+
+        # Narrow enough that neither dictates the Search panel's width
+        # on its own -- that's the button row above, now the widest
+        # thing here. Still wide enough to show a short search pattern
+        # or filename without immediately scrolling.
+        text_width = QtWidgets.QLineEdit('M' * 8).sizeHint().width()
+        self.slew_file_edit.setMinimumWidth(text_width)
+        self.slew_search_edit.setMinimumWidth(text_width)
+
+        search_layout = QtWidgets.QVBoxLayout()
+        _add_centered_label(search_layout, 'Starlist')
+        search_layout.addLayout(file_row)
+        _add_centered_label(search_layout, 'Target pattern')
+        search_layout.addWidget(self.slew_search_edit)
+        _add_centered_label(search_layout, 'Find nearest ...')
+        search_layout.addLayout(find_row)
+        search_layout.addStretch(1)
+        search_group = QtWidgets.QGroupBox()
+        search_group.setLayout(search_layout)
+        _tighten_margins(search_group)
+
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(position_group, 1)
+        layout.addWidget(search_group, 1)
+        return _tab_widget(layout)
+
     def _build_single_tab(self):
-        """Build the Single tab: a focus value, exposure settings, and "Acquire"."""
+        """
+        Build the Single tab as two side-by-side sub-panels -- exposure
+        settings, focus value -- with "Acquire" below both, spanning the
+        full tab width rather than belonging to either one.
+        """
         self.single_focus_spin = _int_spin(165, 500, 340)
         exposure_rows, self.single_exptime_spin, self.single_speed_combo, \
             self.single_binning_combo = _exposure_field_rows()
@@ -261,16 +512,21 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.single_acquire_button.clicked.connect(
             lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
 
+        columns = QtWidgets.QHBoxLayout()
+        columns.addWidget(_group_box(exposure_rows), 1)
+        columns.addWidget(_group_box(focus_rows), 1)
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
-        layout.addStretch(1)
+        layout.addLayout(columns)
         layout.addLayout(_button_row(self.single_acquire_button))
+        layout.addStretch(1)
         return _tab_widget(layout)
 
     def _build_grid_tab(self):
         """
-        Build the Grid tab: start focus/step size/number of steps,
-        exposure settings, and Acquire/Interrupt.
+        Build the Grid tab as two side-by-side sub-panels -- exposure
+        settings, start focus/step size/number of steps -- with
+        Acquire/Interrupt below both, spanning the full tab width.
         """
         self.grid_start_spin = _int_spin(165, 500, 340)
         self.grid_step_spin = _int_spin(1, 100, 5)
@@ -285,16 +541,21 @@ class FocusControlPanel(QtWidgets.QWidget):
         button_row, self.grid_acquire_button, self.grid_interrupt_button = \
             self._build_acquire_interrupt_row()
 
+        columns = QtWidgets.QHBoxLayout()
+        columns.addWidget(_group_box(exposure_rows), 1)
+        columns.addWidget(_group_box(focus_rows), 1)
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
-        layout.addStretch(1)
+        layout.addLayout(columns)
         layout.addLayout(button_row)
+        layout.addStretch(1)
         return _tab_widget(layout)
 
     def _build_auto_tab(self):
         """
-        Build the Auto tab: start focus/step size/max steps, exposure
-        settings, and Acquire/Interrupt.
+        Build the Auto tab as two side-by-side sub-panels -- exposure
+        settings, start focus/step size/max steps -- with
+        Acquire/Interrupt below both, spanning the full tab width.
         """
         self.auto_start_spin = _int_spin(165, 500, 340)
         self.auto_step_spin = _int_spin(1, 100, 5)
@@ -309,16 +570,22 @@ class FocusControlPanel(QtWidgets.QWidget):
         button_row, self.auto_acquire_button, self.auto_interrupt_button = \
             self._build_acquire_interrupt_row()
 
+        columns = QtWidgets.QHBoxLayout()
+        columns.addWidget(_group_box(exposure_rows), 1)
+        columns.addWidget(_group_box(focus_rows), 1)
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(_two_column_row(exposure_rows, focus_rows))
-        layout.addStretch(1)
+        layout.addLayout(columns)
         layout.addLayout(button_row)
+        layout.addStretch(1)
         return _tab_widget(layout)
 
     def _build_replay_tab(self):
         """
-        Build the Replay tab: data directory, filename fields, focus-grid
-        fields, and "Load".
+        Build the Replay tab as two side-by-side sub-panels -- on-disk
+        file input (data directory, filename fields), the focus grid
+        describing the sequence to replay -- with "Load" below both,
+        spanning the full tab width.
         """
         self.replay_datadir_edit = QtWidgets.QLineEdit('.')
         self.replay_browse_button = QtWidgets.QPushButton('Browse…')
@@ -333,14 +600,22 @@ class FocusControlPanel(QtWidgets.QWidget):
         datadir_row = QtWidgets.QHBoxLayout()
         datadir_row.addWidget(self.replay_datadir_edit, 1)
         datadir_row.addWidget(self.replay_browse_button)
-        datadir_form = QtWidgets.QFormLayout()
-        datadir_form.addRow('Data directory:', datadir_row)
 
-        filename_rows = [
-            ('Prefix:', self.replay_prefix_edit),
-            ('Suffix:', self.replay_suffix_edit),
-            ('Obsnum:', self.replay_obsnum_spin),
-        ]
+        # "Data directory" centered above the text box/browse button,
+        # rather than a QFormLayout label beside them -- matching the
+        # Slew tab's "Starlist" field (see `_build_slew_tab`).
+        file_layout = QtWidgets.QVBoxLayout()
+        _add_centered_label(file_layout, 'Data directory')
+        file_layout.addLayout(datadir_row)
+        filename_form = QtWidgets.QFormLayout()
+        filename_form.addRow('Prefix:', self.replay_prefix_edit)
+        filename_form.addRow('Suffix:', self.replay_suffix_edit)
+        filename_form.addRow('Obsnum:', self.replay_obsnum_spin)
+        file_layout.addLayout(filename_form)
+        file_group = QtWidgets.QGroupBox()
+        file_group.setLayout(file_layout)
+        _tighten_margins(file_group)
+
         focus_rows = [
             ('Start focus:', self.replay_start_spin),
             ('Step size:', self.replay_step_spin),
@@ -350,11 +625,14 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.replay_load_button = QtWidgets.QPushButton('Load')
         self.replay_load_button.clicked.connect(self.startRequested.emit)
 
+        columns = QtWidgets.QHBoxLayout()
+        columns.addWidget(file_group, 1)
+        columns.addWidget(_group_box(focus_rows), 1)
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(datadir_form)
-        layout.addLayout(_two_column_row(filename_rows, focus_rows))
-        layout.addStretch(1)
+        layout.addLayout(columns)
         layout.addLayout(_button_row(self.replay_load_button))
+        layout.addStretch(1)
         return _tab_widget(layout)
 
     def _build_log_tab(self):
@@ -397,6 +675,10 @@ class FocusControlPanel(QtWidgets.QWidget):
     def _build_help_tab(self):
         """Build the Help tab: a single block of short, rich-text usage reminders."""
         text = (
+            '<b>Slew</b> — move the telescope to a target. Enter RA/Dec '
+            'directly, or use "Find nearest..." to search a starlist '
+            '(the packaged pointing/focus catalog by default) and fill '
+            'them in, then press "Move to Target."<br><br>'
             '<b>Single</b> — take one exposure at the given focus. '
             'Defaults to the most recent fitted best focus, so acquiring '
             'it as-is moves to best focus; change the value first to '
@@ -428,9 +710,51 @@ class FocusControlPanel(QtWidgets.QWidget):
         layout.addStretch(1)
         return _tab_widget(layout)
 
-    # -- public API used by the Controller ---------------------------------
+    # -- public API used by the Controller/MainWindow -----------------------
 
-    def get_sequence_type(self):
+    def preferred_height_excluding_help(self):
+        """
+        The tallest *minimum* height among every tab page except Help,
+        plus the tab bar -- i.e. how tall this panel should start out so
+        every *interactive* tab displays without scrolling by default.
+
+        Not a hard floor: every tab page is individually scrollable (see
+        `_tab_widget`), so this panel can be shrunk well below this value
+        -- any tab that no longer fits just scrolls internally, and the
+        tab bar itself (outside all of that scrolling) stays put either
+        way. Help is excluded because it's a large block of static
+        reference text that's taller than every other tab combined with
+        the tab bar; sizing the *initial* height around it too would
+        waste space under the six shorter, interactive tabs every time
+        the window opens, for the sake of a tab that's fine to need a
+        scrollbar immediately.
+
+        Each candidate tab's *content widget* `minimumSizeHint` is used
+        here, not the tab page's own (a `~PySide6.QtWidgets.QScrollArea`,
+        whose `sizeHint` reflects a generically "comfortable" size that
+        can run well past what its content actually needs -- e.g. the
+        Log tab's `QPlainTextEdit`, which is happy to be much shorter
+        than its `sizeHint` and was otherwise the tallest tab here,
+        ahead of Replay).
+
+        Returns
+        -------
+        :obj:`int`
+            Preferred height, in pixels, that fits every tab page except
+            Help without scrolling.
+        """
+        other_tabs = [self.slew_tab, self.single_tab, self.grid_tab, self.auto_tab,
+                      self.replay_tab, self.log_tab, self.options_tab]
+        tallest_other = max(tab.widget().minimumSizeHint().height() for tab in other_tabs)
+        tab_bar_height = self.tabs.tabBar().sizeHint().height()
+        # `QTabWidget` reserves a couple more pixels around the page
+        # itself (its pane frame) beyond just the tab bar -- without
+        # this, the tallest tab ends up a hair short of fitting and gets
+        # an unnecessary, barely-there scrollbar (confirmed against the
+        # actual rendered tab: a couple of pixels was all it took).
+        return tallest_other + tab_bar_height + 4
+
+    def get_focus_sequence_type(self):
         """
         The sequence type for the currently active tab, as ``'grid'``,
         ``'automated'``, or ``'archive'`` -- or ``None`` if Single, Log,
@@ -446,7 +770,7 @@ class FocusControlPanel(QtWidgets.QWidget):
             return 'archive'
         return None
 
-    def get_sequence_config(self):
+    def get_focus_sequence_config(self):
         """
         Return the currently active tab's configuration as a
         :obj:`dict`. Only includes keys relevant to that tab -- e.g. a
@@ -547,6 +871,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         covering different fields.
         """
         return {
+            'slew/file': self.slew_file_edit,
+            'slew/search': self.slew_search_edit,
             'single/exptime': self.single_exptime_spin,
             'single/speed': self.single_speed_combo,
             'single/binning': self.single_binning_combo,
@@ -604,6 +930,50 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.step_label.setText(text)
         self.log_widget.appendPlainText(text)
 
+    def set_current_position(self, ra_text, dec_text):
+        """
+        Update the Slew tab's live "current position" display.
+
+        Parameters
+        ----------
+        ra_text : :obj:`str`
+            The telescope's current right ascension, already formatted
+            for display (e.g. ``'05:30:00'``) -- formatting an `Angle`
+            is the Controller's job, not this passive view's.
+        dec_text : :obj:`str`
+            The telescope's current declination, formatted the same way.
+        """
+        self.slew_current_ra_label.setText(ra_text)
+        self.slew_current_dec_label.setText(dec_text)
+
+    def show_nearest_target(self, name, ra_text, dec_text):
+        """
+        Populate the Slew tab's target RA/Dec fields with a found
+        nearest target, and report it (mirrors
+        `scripts/slew_to_nearest.py`'s printed message).
+
+        Parameters
+        ----------
+        name : :obj:`str`
+            The nearest target's name.
+        ra_text : :obj:`str`
+            The nearest target's right ascension, already formatted for
+            display.
+        dec_text : :obj:`str`
+            The nearest target's declination, already formatted for
+            display.
+        """
+        self.slew_target_ra_edit.setText(ra_text)
+        self.slew_target_dec_edit.setText(dec_text)
+        text = f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})'
+        self.status_label.setText(text)
+        self.log_widget.appendPlainText(text)
+
+    def show_slew_result(self, message):
+        """Report a completed "Move to Target" slew (e.g., from `SlewWorker.slewFinished`)."""
+        self.status_label.setText(message)
+        self.log_widget.appendPlainText(message)
+
     def show_best_focus(self, best_focus, best_fwhm):
         """
         Report a completed sequence's fitted result, and set it as the
@@ -624,7 +994,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.log_widget.appendPlainText(text)
 
     def show_failure(self, message):
-        """Display a sequence failure (e.g., from `SequenceWorker.sequenceFailed`)."""
+        """Display a sequence failure (e.g., from `FocusWorker.focusSequenceFailed`)."""
         self.status_label.setText(message)
         self.log_widget.appendPlainText(f'ERROR: {message}')
 
@@ -644,5 +1014,17 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, 'Select archive directory', self.replay_datadir_edit.text())
-        if directory:
+        if directory != '':
             self.replay_datadir_edit.setText(directory)
+
+    def _on_slew_browse_clicked(self):
+        """
+        Slot for `slew_browse_button`'s ``clicked``: open the native OS
+        file picker and, unless the user cancels (signaled by an empty
+        string, not `None`), fill the selected path into
+        `slew_file_edit`.
+        """
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Select starlist file', self.slew_file_edit.text())
+        if path != '':
+            self.slew_file_edit.setText(path)

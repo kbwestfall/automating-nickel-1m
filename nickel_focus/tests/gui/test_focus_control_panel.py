@@ -14,7 +14,8 @@ def _step_result(focus_sweep, index=0):
 def test_tabs_exist_in_the_requested_order(qapp):
     panel = FocusControlPanel()
     titles = [panel.tabs.tabText(i) for i in range(panel.tabs.count())]
-    assert titles == ['Single', 'Grid', 'Auto', 'Replay', 'Log', 'Options', 'Help']
+    assert titles == ['Slew', 'Single', 'Grid', 'Auto', 'Replay', 'Log', 'Options', 'Help'], \
+        'tabs should appear in the documented order, with Slew first'
 
 
 def test_number_entry_boxes_have_no_increment_buttons(qapp):
@@ -49,44 +50,44 @@ def test_focus_value_entries_are_integers(qapp):
         assert isinstance(spin_box, QtWidgets.QSpinBox), f'{spin_box} should be an integer entry'
 
 
-def test_get_sequence_type(qapp):
+def test_get_focus_sequence_type(qapp):
     panel = FocusControlPanel()
 
     panel.tabs.setCurrentWidget(panel.single_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
     panel.tabs.setCurrentWidget(panel.grid_tab)
-    assert panel.get_sequence_type() == 'grid'
+    assert panel.get_focus_sequence_type() == 'grid'
     panel.tabs.setCurrentWidget(panel.auto_tab)
-    assert panel.get_sequence_type() == 'automated'
+    assert panel.get_focus_sequence_type() == 'automated'
     panel.tabs.setCurrentWidget(panel.replay_tab)
-    assert panel.get_sequence_type() == 'archive'
+    assert panel.get_focus_sequence_type() == 'archive'
     panel.tabs.setCurrentWidget(panel.log_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
     panel.tabs.setCurrentWidget(panel.help_tab)
-    assert panel.get_sequence_type() is None
+    assert panel.get_focus_sequence_type() is None
 
 
-def test_get_sequence_config_for_grid(qapp):
+def test_get_focus_sequence_config_for_grid(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.grid_tab)
     panel.grid_start_spin.setValue(300)
     panel.grid_step_spin.setValue(2)
     panel.grid_nstep_spin.setValue(7)
 
-    assert panel.get_sequence_config() == {'start': 300, 'step': 2, 'nstep': 7}
+    assert panel.get_focus_sequence_config() == {'start': 300, 'step': 2, 'nstep': 7}
 
 
-def test_get_sequence_config_for_auto(qapp):
+def test_get_focus_sequence_config_for_auto(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.auto_tab)
     panel.auto_start_spin.setValue(310)
     panel.auto_step_spin.setValue(3)
     panel.auto_maxsteps_spin.setValue(9)
 
-    assert panel.get_sequence_config() == {'start': 310, 'step': 3, 'maxsteps': 9}
+    assert panel.get_focus_sequence_config() == {'start': 310, 'step': 3, 'maxsteps': 9}
 
 
-def test_get_sequence_config_for_replay(qapp):
+def test_get_focus_sequence_config_for_replay(qapp):
     panel = FocusControlPanel()
     panel.tabs.setCurrentWidget(panel.replay_tab)
     panel.replay_datadir_edit.setText('/tmp/some/dir')
@@ -97,7 +98,7 @@ def test_get_sequence_config_for_replay(qapp):
     panel.replay_step_spin.setValue(2)
     panel.replay_nstep_spin.setValue(7)
 
-    assert panel.get_sequence_config() == {
+    assert panel.get_focus_sequence_config() == {
         'datadir': Path('/tmp/some/dir'),
         'prefix': 'x',
         'suffix': '.fit',
@@ -108,11 +109,11 @@ def test_get_sequence_config_for_replay(qapp):
     }
 
 
-def test_get_sequence_config_is_empty_outside_grid_auto_replay(qapp):
+def test_get_focus_sequence_config_is_empty_outside_grid_auto_replay(qapp):
     panel = FocusControlPanel()
     for tab in (panel.single_tab, panel.log_tab, panel.help_tab):
         panel.tabs.setCurrentWidget(tab)
-        assert panel.get_sequence_config() == {}
+        assert panel.get_focus_sequence_config() == {}
 
 
 def test_get_exposure_config_for_single_grid_auto(qapp):
@@ -150,6 +151,9 @@ def test_each_tab_has_the_requested_buttons(qapp):
     def button_texts(tab):
         return sorted(b.text() for b in tab.findChildren(QtWidgets.QPushButton))
 
+    assert button_texts(panel.slew_tab) == sorted([
+        'Browse…', 'Move to Target', 'Object', 'Pointing *', 'Focusing *',
+    ]), 'the Slew tab should have its file-browse, move, and three find-nearest buttons'
     assert button_texts(panel.single_tab) == ['Acquire']
     assert button_texts(panel.grid_tab) == ['Acquire', 'Interrupt']
     assert button_texts(panel.auto_tab) == ['Acquire', 'Interrupt']
@@ -214,21 +218,68 @@ def test_replay_tab_load_emits_start_requested(qapp):
     assert starts == [True], 'Load should emit startRequested'
 
 
+def test_slew_move_button_emits_move_to_target_requested(qapp):
+    panel = FocusControlPanel()
+    panel.slew_target_ra_edit.setText('05:30:00')
+    panel.slew_target_dec_edit.setText('+20:15:00')
+    moves = []
+    panel.moveToTargetRequested.connect(lambda ra, dec: moves.append((ra, dec)))
+
+    panel.slew_move_button.click()
+
+    assert moves == [('05:30:00', '+20:15:00')], \
+        'Move to Target should emit the current target RA/Dec field text'
+
+
+def test_slew_find_object_button_emits_file_and_search_text(qapp):
+    panel = FocusControlPanel()
+    panel.slew_file_edit.setText('/some/stars.txt')
+    panel.slew_search_edit.setText('Pointing')
+    requests = []
+    panel.findNearestObjectRequested.connect(lambda file, search: requests.append((file, search)))
+
+    panel.slew_find_object_button.click()
+
+    assert requests == [('/some/stars.txt', 'Pointing')], \
+        'Find nearest object should emit the current file/search field text'
+
+
+def test_slew_find_pointing_and_focus_buttons_emit_their_signals(qapp):
+    panel = FocusControlPanel()
+    pointing_requests, focus_requests = [], []
+    panel.findNearestPointingRequested.connect(lambda: pointing_requests.append(True))
+    panel.findNearestFocusRequested.connect(lambda: focus_requests.append(True))
+
+    panel.slew_find_pointing_button.click()
+    panel.slew_find_focus_button.click()
+
+    assert pointing_requests == [True], 'Find nearest pointing star should emit its own signal'
+    assert focus_requests == [True], 'Find nearest focus star should emit its own signal'
+
+
 def test_set_running_locks_config_widgets_and_acquire_buttons(qapp):
     panel = FocusControlPanel()
 
     panel.set_running(True)
     assert not panel.grid_start_spin.isEnabled(), 'config fields should be locked while running'
+    assert not panel.slew_target_ra_edit.isEnabled(), \
+        'the Slew tab target field should be locked while running'
     for button in (panel.single_acquire_button, panel.grid_acquire_button,
-                   panel.auto_acquire_button, panel.replay_load_button):
+                   panel.auto_acquire_button, panel.replay_load_button,
+                   panel.slew_move_button, panel.slew_find_object_button,
+                   panel.slew_find_pointing_button, panel.slew_find_focus_button):
         assert not button.isEnabled(), f'{button.text()} should be disabled while running'
     for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
         assert button.isEnabled(), f'{button.text()} should be enabled while running'
 
     panel.set_running(False)
     assert panel.grid_start_spin.isEnabled(), 'config fields should unlock once stopped'
+    assert panel.slew_target_ra_edit.isEnabled(), \
+        'the Slew tab target field should unlock once stopped'
     for button in (panel.single_acquire_button, panel.grid_acquire_button,
-                   panel.auto_acquire_button, panel.replay_load_button):
+                   panel.auto_acquire_button, panel.replay_load_button,
+                   panel.slew_move_button, panel.slew_find_object_button,
+                   panel.slew_find_pointing_button, panel.slew_find_focus_button):
         assert button.isEnabled(), f'{button.text()} should be re-enabled once stopped'
     for button in (panel.grid_interrupt_button, panel.auto_interrupt_button):
         assert not button.isEnabled(), f'{button.text()} should be disabled once stopped'
@@ -356,12 +407,74 @@ def test_browse_button_updates_datadir(qapp, monkeypatch):
     assert panel.replay_datadir_edit.text() == '/some/chosen/dir', 'canceling should not clear the field'
 
 
+def test_slew_browse_button_updates_file_edit(qapp, monkeypatch):
+    panel = FocusControlPanel()
+
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getOpenFileName',
+                         lambda *a, **k: ('/some/stars.txt', ''))
+    panel._on_slew_browse_clicked()
+    assert panel.slew_file_edit.text() == '/some/stars.txt'
+
+    # Canceling the dialog (empty string) should leave the field alone.
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'getOpenFileName', lambda *a, **k: ('', ''))
+    panel._on_slew_browse_clicked()
+    assert panel.slew_file_edit.text() == '/some/stars.txt', 'canceling should not clear the field'
+
+
+def test_set_current_position_updates_labels(qapp):
+    panel = FocusControlPanel()
+
+    panel.set_current_position('05:30:00.00', '+20:15:00.00')
+
+    assert panel.slew_current_ra_label.text() == '05:30:00.00', \
+        'the current-RA label should show exactly what was passed in'
+    assert panel.slew_current_dec_label.text() == '+20:15:00.00', \
+        'the current-Dec label should show exactly what was passed in'
+
+
+def test_show_nearest_target_populates_target_fields_and_status(qapp):
+    panel = FocusControlPanel()
+
+    panel.show_nearest_target('Pointing00', '00:30:07.29', '+29:45:06.20')
+
+    assert panel.slew_target_ra_edit.text() == '00:30:07.29', \
+        'the target RA field should be populated with the found target'
+    assert panel.slew_target_dec_edit.text() == '+29:45:06.20', \
+        'the target Dec field should be populated with the found target'
+    assert 'Pointing00' in panel.status_label.text(), 'status should report the target name'
+    assert panel.log_widget.toPlainText().strip(), 'the found target should also be logged'
+
+
+def test_show_slew_result_updates_status(qapp):
+    panel = FocusControlPanel()
+
+    panel.show_slew_result('Move to target complete.')
+
+    assert panel.status_label.text() == 'Move to target complete.'
+    assert panel.log_widget.toPlainText().strip(), 'the slew result should also be logged'
+
+
+def test_preferred_height_excluding_help_ignores_the_tallest_page(qapp):
+    panel = FocusControlPanel()
+
+    height = panel.preferred_height_excluding_help()
+
+    tab_bar_height = panel.tabs.tabBar().sizeHint().height()
+    assert height < panel.help_tab.widget().minimumSizeHint().height() + tab_bar_height, \
+        'excluding Help should give a smaller preferred height than including it would'
+    other_tabs = (panel.slew_tab, panel.single_tab, panel.grid_tab, panel.auto_tab,
+                  panel.replay_tab, panel.log_tab, panel.options_tab)
+    for tab in other_tabs:
+        assert height >= tab.widget().minimumSizeHint().height(), \
+            'the preferred height should be tall enough for every tab except Help'
+
+
 def test_help_tab_has_reminder_text(qapp):
     panel = FocusControlPanel()
     labels = panel.help_tab.findChildren(QtWidgets.QLabel)
     assert labels, 'the Help tab should contain some descriptive text'
     text = ' '.join(label.text() for label in labels)
-    for keyword in ('Single', 'Grid', 'Auto', 'Replay', 'Log'):
+    for keyword in ('Slew', 'Single', 'Grid', 'Auto', 'Replay', 'Log'):
         assert keyword in text, f'Help text should mention {keyword}'
 
 

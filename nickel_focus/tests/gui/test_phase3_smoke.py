@@ -24,8 +24,8 @@ from nickel_focus.gui.views.main_window import MainWindow
 from nickel_focus.gui.controller import Controller
 
 
-def _wait_for_worker(controller, timeout_ms=5000):
-    worker = controller.worker
+def _wait_for_focus_worker(controller, timeout_ms=5000):
+    worker = controller.focus_worker
     if worker is None:
         return
     loop = QtCore.QEventLoop()
@@ -44,10 +44,10 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     panel.tabs.setCurrentWidget(panel.single_tab)
     panel.single_focus_spin.setValue(340)
     panel.single_acquire_button.click()
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
-    assert controller.sequence is None, 'no sequence should be loaded yet'
-    assert controller._standalone_sequence is not None, \
+    assert controller.focus_sequence is None, 'no sequence should be loaded yet'
+    assert controller._standalone_focus_sequence is not None, \
         'the standalone exposure should be held for possible reanalysis'
     assert len(window.image_panel._results) == 1, 'the standalone exposure should be displayed'
     assert len(window.curve_panel._results) == 0, 'not sequence data'
@@ -55,7 +55,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     # 2. Mark a star on it via a click -- with no sequence loaded, this
     #    should reanalyze that one standalone exposure in place (§5.6).
     controller._on_source_selected(50., 50.)
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
     assert controller.method == (50., 50.), 'clicking a source should update the active method'
     assert len(window.image_panel._results) == 1, 'reanalysis should update in place, not duplicate'
@@ -69,13 +69,13 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     panel.grid_nstep_spin.setValue(5)
     panel.grid_exptime_spin.setValue(5.0)
     panel.grid_acquire_button.click()
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
-    assert controller._standalone_sequence is None, \
+    assert controller._standalone_focus_sequence is None, \
         'starting a new sequence should discard standalone single-exposure state'
-    assert isinstance(controller.sequence, focus.GridFocusSequence), \
+    assert isinstance(controller.focus_sequence, focus.GridFocusSequence), \
         'setup: a Grid sequence should be loaded'
-    assert controller.sequence.method == (50., 50.), \
+    assert controller.focus_sequence.method == (50., 50.), \
         'the sequence should have measured the marked source, not "brightest"'
     assert len(window.image_panel._results) == 5, 'one image per exposure'
     assert len(window.curve_panel._results) == 5, 'one curve point per exposure'
@@ -89,7 +89,7 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     assert best_focus == pytest.approx(fake_hardware['best_focus'], abs=5.), \
         'the Single tab should default to the fitted best focus'
     panel.single_acquire_button.click()
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
     assert fake_hardware['focus'].current == best_focus, \
         'the fake Focus should have been commanded to the (rounded) fitted best focus'
@@ -103,10 +103,11 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     #    exposure from step 4 (whichever is "loaded" takes priority --
     #    see `Controller.reanalyze`).
     controller._on_source_selected(55., 55.)
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
     assert controller.method == (55., 55.)
-    assert len(controller.sequence.exposures) == 5, "reanalysis updates in place, doesn't add"
+    assert len(controller.focus_sequence.exposures) == 5, \
+        "reanalysis updates in place, doesn't add"
     assert len(window.curve_panel._results) == 5, 'the loaded sequence was reanalyzed, not added to'
     assert len(window.image_panel._results) == 6, 'no duplicates from reanalysis'
 
@@ -115,19 +116,20 @@ def test_phase3_full_live_workflow(qapp, fake_hardware):
     #    data is fully replaced and standalone state is cleared.
     panel.single_focus_spin.setValue(370)
     panel.single_acquire_button.click()
-    _wait_for_worker(controller)
-    assert controller._standalone_sequence is not None, 'setup: a standalone exposure should exist'
+    _wait_for_focus_worker(controller)
+    assert controller._standalone_focus_sequence is not None, \
+        'setup: a standalone exposure should exist'
 
     panel.tabs.setCurrentWidget(panel.auto_tab)
     panel.auto_start_spin.setValue(340)
     panel.auto_step_spin.setValue(5)
     panel.auto_maxsteps_spin.setValue(12)
     panel.auto_acquire_button.click()
-    _wait_for_worker(controller)
+    _wait_for_focus_worker(controller)
 
-    assert controller._standalone_sequence is None, \
+    assert controller._standalone_focus_sequence is None, \
         'starting a new sequence should discard standalone single-exposure state'
-    assert isinstance(controller.sequence, focus.AutomatedFocusSequence), \
+    assert isinstance(controller.focus_sequence, focus.AutomatedFocusSequence), \
         'the new sequence should have replaced the old Grid sequence'
     assert panel.single_focus_spin.value() == pytest.approx(fake_hardware['best_focus'], abs=5), \
         'the adaptive search should converge near the known best focus'

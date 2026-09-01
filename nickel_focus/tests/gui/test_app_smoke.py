@@ -16,8 +16,8 @@ from nickel_focus.gui.controller import Controller
 from nickel_focus.gui.qt import QtCore
 
 
-def _wait_for_worker(controller, timeout_ms=5000):
-    worker = controller.worker
+def _wait_for_focus_worker(controller, timeout_ms=5000):
+    worker = controller.focus_worker
     if worker is None:
         return
     loop = QtCore.QEventLoop()
@@ -58,7 +58,7 @@ def test_app_opens_and_shows_without_error(qapp):
 def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
     # Build the same sequence directly -- the same GridFocusSequence (for
     # its focus-value arithmetic) + ArchiveFocusSequence + execute() calls
-    # that both focus.py's CLI and Controller.start_sequence()
+    # that both focus.py's CLI and Controller.start_focus_sequence()
     # make -- and confirm the GUI reproduces the identical fit.
     grid = focus.GridFocusSequence(focus_sweep['focus_values'][0],
                                     focus_sweep['focus_values'][1] - focus_sweep['focus_values'][0],
@@ -71,11 +71,11 @@ def test_gui_controller_matches_direct_execute(qapp, focus_sweep):
     controller = Controller(window)
     _configure_replay_tab(window.control_panel, focus_sweep)
 
-    controller.start_sequence()
+    controller.start_focus_sequence()
     fitted = []
-    controller.worker.sequenceFinished.connect(lambda bf, bfw: fitted.append((bf, bfw)))
-    _wait_for_worker(controller)
+    controller.focus_worker.focusSequenceFinished.connect(lambda bf, bfw: fitted.append((bf, bfw)))
+    _wait_for_focus_worker(controller)
 
-    assert fitted, 'sequenceFinished should have fired exactly once'
+    assert fitted, 'focusSequenceFinished should have fired exactly once'
     assert fitted[0][0] == pytest.approx(expected_best_focus), \
         'the GUI Controller should produce the same fit as calling FocusSequence.execute() directly'

@@ -35,7 +35,7 @@ gui/
 ├── controller.py          wires views to the model; owns app state
 ├── model/
 │   ├── __init__.py
-│   └── sequence_worker.py QThread that drives a FocusSequence
+│   └── focus_worker.py    QThread that drives a FocusSequence
 └── views/
     ├── __init__.py
     ├── main_window.py       top-level window, layout, settings persistence
@@ -48,7 +48,7 @@ This is a fairly conventional Model-View-Controller split, with one Qt-
 specific wrinkle:
 
 - **Model** is `scripts/focus.py` and friends -- reused as-is, not
-  reimplemented. `gui/model/sequence_worker.py` isn't domain logic; it's
+  reimplemented. `gui/model/focus_worker.py` isn't domain logic; it's
   the adapter that runs the Model's blocking, synchronous methods
   (`FocusSequence.step`, `.reanalyze`, `.take_single_exposure`) on a
   background `QThread` so a real exposure (seconds to tens of seconds)
@@ -57,10 +57,10 @@ specific wrinkle:
   `FocusCurvePanel`, `FocusControlPanel`) composed inside `MainWindow`.
   Views only display state and emit Qt signals for user actions
   (button clicks, a key press, a picked drop-down entry); they never
-  import `focus` or talk to `SequenceWorker` directly.
+  import `focus` or talk to `FocusWorker` directly.
 - **Controller** (`gui/controller.py`) is the only module that imports
   both the views and the model. It owns the currently active
-  `focus.FocusSequence` and `SequenceWorker` (if any), connects each
+  `focus.FocusSequence` and `FocusWorker` (if any), connects each
   view's signals to its own handler methods, and implements the
   "hardware exclusivity" rule: only one operation (a running sequence, a
   single exposure) may be active at a time.
@@ -86,7 +86,7 @@ view's methods directly.
 | `gui/qt.py` | Single point of contact with PySide6; the only module allowed to `import PySide6` directly. |
 | `gui/main.py` | Builds the `QApplication`, `MainWindow`, and `Controller`; starts the Qt event loop. |
 | `gui/controller.py` | Mediates between views and model; owns the active sequence/worker and the hardware-exclusivity state machine. |
-| `gui/model/sequence_worker.py` | `QThread` subclass that runs one `FocusSequence` operation (step/reanalyze/single exposure) off the GUI thread, reporting progress via signals. |
+| `gui/model/focus_worker.py` | `QThread` subclass that runs one `FocusSequence` operation (step/reanalyze/single exposure) off the GUI thread, reporting progress via signals. |
 | `gui/views/main_window.py` | Top-level `QMainWindow`; lays out the three panels in splitters; persists/restores settings via `QSettings`. |
 | `gui/views/image_panel.py` | Displays collected exposures one at a time: pan, zoom, stretch selection, and click-to-select-source ('m' key) for reanalysis. |
 | `gui/views/focus_curve_panel.py` | Live scatter plot of FWHM vs. focus value, with the fitted quadratic and its vertex once enough points exist. |
@@ -113,9 +113,9 @@ view's methods directly.
                                     │
                           builds / starts / stops
                                     ▼
-                            SequenceWorker (QThread)
-                     stepComplete / sequenceFinished /
-                     sequenceFailed / singleExposureFinished
+                            FocusWorker (QThread)
+                     stepComplete / focusSequenceFinished /
+                     focusSequenceFailed / singleExposureFinished
                                     │
                                     ▼
                      scripts/focus.py (FocusSequence and
@@ -132,16 +132,17 @@ view's methods directly.
   `self.window.control_panel.show_failure(message)`) -- views expose a
   small "public API used by the Controller" for this, documented at the
   top of each view's method list.
-- **Controller → SequenceWorker**: the Controller constructs a new
-  `SequenceWorker` per run (`_start_worker`), connects its signals to its
-  own `_on_*` handlers, and calls `.start()`. `SequenceWorker.request_stop()`
-  is the only method called on a running worker.
-  SequenceWorker → Controller: Qt signals only
-  (`stepComplete`, `sequenceFinished`, `sequenceFailed`,
+- **Controller → FocusWorker**: the Controller constructs a new
+  `FocusWorker` per run (`_start_focus_worker`), connects its signals to
+  its own `_on_*` handlers, and calls `.start()`.
+  `FocusWorker.request_stop()` is the only method called on a running
+  worker.
+  FocusWorker → Controller: Qt signals only
+  (`stepComplete`, `focusSequenceFinished`, `focusSequenceFailed`,
   `singleExposureFinished`, plus `QThread`'s built-in `finished`), safely
   delivered across the thread boundary by Qt's queued-connection
   machinery.
-- **SequenceWorker → Model**: ordinary synchronous Python calls into
+- **FocusWorker → Model**: ordinary synchronous Python calls into
   `focus.FocusSequence` (`.step()`, `.reanalyze()`, `.take_single_exposure()`,
   `.fit_best_focus()`) -- the Model has no idea it's being driven from a
   background thread.

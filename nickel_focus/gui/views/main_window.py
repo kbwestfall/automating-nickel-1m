@@ -46,6 +46,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Nickel Focus GUI')
+        # Guards the one-time image-panel-square adjustment in
+        # `showEvent` -- see there for why it can't just happen here.
+        self._sized_image_panel = False
 
         # Each of these is a QWidget subclass -- constructing one here
         # doesn't show anything on screen by itself; a widget only
@@ -55,39 +58,45 @@ class MainWindow(QtWidgets.QMainWindow):
         self.curve_panel = FocusCurvePanel()
         self.control_panel = FocusControlPanel()
 
-        # FocusControlPanel stacks enough group boxes that its natural
-        # minimum height can exceed a smaller screen's available height;
-        # a QScrollArea's own minimum size hint doesn't inherit that, so
-        # wrapping it here is what actually lets the window shrink to fit
-        # (see _size_to_screen) instead of being held open by the layout.
-        # A QScrollArea is itself a widget: it displays exactly one
-        # child widget (set via setWidget) inside a scrollable viewport,
-        # adding scrollbars only when that child doesn't fit.
-        control_scroll = QtWidgets.QScrollArea()
-        control_scroll.setWidget(self.control_panel)
-        control_scroll.setWidgetResizable(True)
-        # `setWidgetResizable(True)` has a real bug: if the splitter ever
-        # squeezes the viewport narrower than the panel's own minimum
-        # width, the panel doesn't get a horizontal scrollbar as you'd
-        # expect -- it snaps to some unrelated, much larger width (seen
-        # in practice: a ~340px-minimum panel jumping to ~640px) and gets
-        # stuck there. An explicit minimum width on the scroll area itself
-        # (a hard floor, unlike a sizeHint) keeps the splitter from ever
-        # asking for less than the panel can actually provide, so that
-        # code path never triggers. The small buffer accounts for the
-        # vertical scrollbar's own width once one appears.
-        control_scroll.setMinimumWidth(self.control_panel.minimumSizeHint().width() + 20)
+        # Every `FocusControlPanel` tab page is individually scrollable
+        # (see `_tab_widget`), so, unlike a single scroll area wrapped
+        # around the whole panel, its own tab bar never scrolls out of
+        # view along with a tall page's content -- it's a sibling of the
+        # scrolling area inside the `QTabWidget`, not part of it. That
+        # also means this panel needs no scroll wrapper or explicit
+        # minimum size of its own here: each page degrades to its own
+        # internal scrollbars however small the splitter below makes it.
 
         # QSplitter arranges its child widgets in a row or column with a
         # user-draggable handle between each pair, unlike a plain layout
         # (QVBoxLayout/QHBoxLayout elsewhere in this codebase), whose
         # relative sizes the user can't adjust interactively. Splitters
         # nest like any other widget: `right` (curve plot over the
-        # scrollable control panel) becomes one side of `central`
-        # (image panel beside that whole right-hand column).
+        # control panel) becomes one side of `central` (image panel
+        # beside that whole right-hand column).
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         right.addWidget(self.curve_panel)
-        right.addWidget(control_scroll)
+        right.addWidget(self.control_panel)
+        # Give any extra vertical space (window taller than both panes'
+        # combined size) to the curve plot, not the control panel -- a
+        # bigger focus curve is actually useful, while the tabs only
+        # ever need enough room for whichever one is currently open (and
+        # scroll internally otherwise). A stretch factor only governs
+        # *extra* space beyond each widget's own initial share, so
+        # control_panel still grows on its own if a taller tab (or the
+        # user dragging the handle) asks for more than that.
+        right.setStretchFactor(0, 1)
+        right.setStretchFactor(1, 0)
+        # Stretch factors alone only govern *later* resizes -- a
+        # splitter's very first layout instead defaults to giving each
+        # child a share proportional to its own `sizeHint()`, which
+        # would still hand the control panel most of the window here.
+        # An explicit initial split, giving the control panel just
+        # enough for a typical (non-Help) tab and the curve panel
+        # everything else (a size larger than any real window, clamped
+        # down to whatever's actually available), is what actually makes
+        # that the default instead.
+        right.setSizes([1000000, self.control_panel.preferred_height_excluding_help()])
 
         central = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         central.addWidget(self.image_panel)
@@ -119,6 +128,24 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self._save_settings()
         super().closeEvent(event)
+
+    def showEvent(self, event):
+        """
+        The first time this window actually becomes visible, give the
+        image panel a square initial share of `central`'s width.
+        `central`'s geometry doesn't reflect `_size_to_screen`'s resize
+        until the window is genuinely shown -- reading it any earlier in
+        `__init__` (even after a plain `resize()`, even after spinning
+        the event loop with no `show()`) still returns a stale default,
+        so this can't be done any sooner than here. Guarded to run once
+        -- later show events (e.g. un-minimizing) must never undo a
+        splitter drag the user made in between.
+        """
+        super().showEvent(event)
+        if not self._sized_image_panel:
+            self._sized_image_panel = True
+            central = self.centralWidget()
+            central.setSizes([central.height(), central.width() - central.height()])
 
     def _settings(self):
         """The `QSettings` store this window persists to/restores from."""

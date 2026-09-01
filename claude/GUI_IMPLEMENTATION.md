@@ -2173,3 +2173,100 @@ turning on HTML interpretation.
 No behavior changes anywhere in this pass -- confirmed by running the
 full suite (unchanged at 120 tests) and the Qt-free boundary check
 (unchanged at 26 pass) after every file, not just once at the end.
+
+## Phase 6: Slew tab (pointing workflow)
+
+`GUI_DESIGN.md` §6 deferred pointing (`scripts/move_to_target.py`, since
+renamed `slew_to_nearest.py`) to "a later pass... mostly a matter of
+adding a new Model wrapper... and a small control panel." This phase is
+that pass, per a specific layout request: a **Slew** tab, first in the
+list, with the telescope's current position and an editable RA/Dec
+target plus "Move to Target" on the left, and a starlist file/browse
+field, an object-name search string, and three "Find nearest..." buttons
+(object / pointing star / focus star) on the right.
+
+Design decisions:
+
+- **The tab lives inside `FocusControlPanel`'s existing `QTabWidget`**,
+  not a separate top-level view -- "first tab in the list" only makes
+  sense relative to that one tab bar, and it lets the new tab reuse the
+  Log tab's `status_label`/`log_widget` and the settings-persistence/
+  hardware-exclusivity machinery for free, the same way Single/Grid/Auto/
+  Replay already do.
+- **`slew.NickelTelescopePointing.slew_to` runs on a new
+  `gui.model.slew_worker.SlewWorker`** (`QThread`), mirroring
+  `SequenceWorker` -- it can block up to five minutes waiting for the
+  telescope to arrive, so running it on the GUI thread would freeze the
+  window. `Controller` gets a second worker slot (`slew_worker`,
+  alongside the existing `worker`) with its own `_on_slew_*` handlers,
+  since `SlewWorker`'s `slewFinished`/`slewFailed` signals don't match
+  `SequenceWorker`'s.
+- **Hardware exclusivity now runs both directions.** `start_sequence`/
+  `take_single_exposure`/`reanalyze`/`move_to_target` each check *both*
+  `worker` and `slew_worker` before proceeding -- the telescope shouldn't
+  move mid-exposure, or vice versa. `FocusControlPanel.set_running`
+  needed no changes: the Slew tab's fields/buttons were simply added to
+  the existing `_config_widgets`/`_acquire_buttons` lists it already
+  disables uniformly.
+- **The "Find nearest..." buttons populate the target fields; they never
+  slew by themselves.** `Controller.find_nearest_object`/
+  `find_nearest_pointing`/`find_nearest_focus` call
+  `slew.find_nearest_target` and hand the result to a new
+  `FocusControlPanel.show_nearest_target(name, ra_text, dec_text)`,
+  which fills the target RA/Dec fields and logs the find -- moving the
+  telescope is always a separate, reviewable "Move to Target" click.
+  `Controller`, not the View, formats the resulting `Angle`s to text
+  (`to_string(unit=..., sep=':', precision=2)`) -- `FocusControlPanel`
+  stays passive per its existing convention (GUI_DESIGN.md §4.2).
+- **"Find nearest object" requires an explicit file; the other two don't.**
+  Per direction: the packaged pointing/focus catalog is only reachable
+  through the "Find nearest pointing/focus star" buttons (which hardcode
+  `file=None` and `obj_search_str='Pointing'`/`'Focusing'`, ignoring
+  whatever is in the file/search fields, matching
+  `slew_to_nearest.py -s Pointing`/`-s Focusing` with no `-f`);
+  `find_nearest_object` raises `ValueError` if the file field is empty
+  rather than silently falling back to that same catalog, keeping the
+  three buttons' meanings unambiguous.
+- **A live "current position" display, independent of what else is
+  running.** `Controller` owns a `slew.NickelTelescopePointing` handle
+  (`None` if no ktl connection, exactly like `FocusSequence`'s `_focus`/
+  `_exposure`) and polls `telescope.current` on a one-second
+  `~PySide6.QtCore.QTimer`, pushing formatted text to
+  `FocusControlPanel.set_current_position`. Reading `POCORAA`/`POCODECA`
+  is one quick ktl-cache read, not a move, so this keeps ticking
+  regardless of `worker`/`slew_worker` state.
+
+**Layout-width regression, found and fixed before landing:** the first
+working version used per-field labels like "Current RA:"/"Target RA:" in
+two side-by-side `_two_column_row`s; measured against the real widget
+tree, that made the Slew tab ~390px wide -- wider than every other tab
+-- which pushed `FocusControlPanel`'s minimum width past what
+`test_build_window_fits_within_the_screen`'s synthetic 800px-wide screen
+allows (a headroom that turned out to already be only ~27px before this
+change). Root cause, confirmed by decomposing the layout tree
+programmatically rather than guessing: the repeated "Current"/"Target"
+prefixes, not the entry fields themselves, were the dominant width cost.
+Fixed by shortening the per-field labels to plain "RA:"/"Dec:" with one
+short section header ("Current position:"/"Target:") above each row --
+same information, ~90px narrower -- restoring the tab to ~300px, below
+every other tab's minimum.
+
+**Testing:** `gui.model.slew_worker` never touches `ktl`/hardware
+directly in tests, matching every other worker/hardware class in this
+codebase -- `fake_hardware.FakeTelescopePointing` (added earlier,
+alongside the CLI's `slew_to_nearest.py` tests) stands in throughout,
+including for `Controller`, via the pre-existing `fake_telescope`
+fixture. New: `tests/gui/test_slew_worker.py`. Extended:
+`test_focus_control_panel.py` (tab contents, each new signal, the
+display/report methods, `set_running` coverage) and `test_controller.py`
+(both exclusivity directions, ktl-unavailable fallbacks for every new
+action, the three find-nearest paths, and `move_to_target`'s
+success/failure paths). 170 → 193 tests, all passing.
+
+**Related infrastructure fix, same session:** `nickel_focus/tests/` and
+`nickel_focus/tests/gui/` gained `__init__.py` files (previously absent,
+relying on pytest's implicit rootdir-based `sys.path` insertion), so
+`conftest.py`'s `from fake_hardware import ...` became the absolute
+`from nickel_focus.tests.fake_hardware import ...` -- consistent with
+this codebase's no-bare-imports convention and needed for the new
+`test_slew_worker.py`'s equivalent import to resolve the same way.

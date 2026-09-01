@@ -448,3 +448,56 @@ dropped at the user's request:
   `test_verbose_parameter_removed` (photometry) and a test confirming
   `execute()` dropped its `verbose` parameter.
 - Full suite: `223 passed` (`pytest nickel_focus/tests`).
+
+### Phase 4 — done (2026-09-01)
+
+Implemented largely as planned, with one test-strategy correction and two
+planned tests dropped at the user's request:
+
+- `scripts/focus.py` (lines 180, 181, 197) and `scripts/slew_to_nearest.py`
+  (line 80) → `log.info(...)`, added via each script's existing
+  function-local `main()` imports (matching this file's established
+  CLI-startup-speed exception to the imports-at-top convention).
+- **Resolution**: `scripts/focus.py`'s separate `--verbose` flag was
+  confirmed dead code (per the Phase 3 investigation -- `args.verbose` is
+  never read anywhere in `main()`, and it never gated anything real once
+  `photometry.py`'s own `verbose` param was already gone). Removed the
+  flag outright.
+- Rewrote the `capsys`-based assertions in `test_focus_cli.py` and
+  `test_slew_to_nearest_cli.py` to use `caplog` instead, checking
+  `nickel_focus`-named records rather than stdout text. This is the
+  concrete resolution to the `capsys` blocker noted as deferred in
+  project memory. Left `test_focus_gui_cli.py::test_test_flag_is_suppressed_from_help`
+  on `capsys` -- it tests `argparse`'s own `--help` text, not application
+  logging, so `caplog` doesn't apply.
+- **Test-strategy correction**: the plan's proposed
+  `test_cli_verbosity_flag_controls_log_level` (using `caplog` to check
+  that `-v` gates which levels appear) doesn't actually test what it
+  claims to. `caplog` attaches its own handler independently of whatever
+  handlers the app configures -- that's the point of `caplog`, so tests
+  don't depend on app logging setup -- but it also means `-v`'s effect
+  (which only changes the *console/file handler's* level, not the
+  logger's own level, which Phase 1 fixed to always stay permissive) is
+  invisible to it: `caplog` would capture the same records regardless of
+  `-v`. Wrote `test_cli_verbosity_flag_controls_console_level` instead,
+  asserting on `log.sh.level` directly after `NickelFocus.init_log(...)`
+  at each `-v` value -- this actually verifies the mechanism
+  `scriptbase.py` wires (`convert_verbosity_to_logging_level` →
+  `log.init(level=...)`), which is what determines what a user watching
+  the console actually sees.
+- Manually confirmed end-to-end: `NickelFocus.get_parser().format_help()`
+  no longer lists `--verbose`, and still lists `-v/--verbosity`.
+- Two planned tests dropped at the user's explicit request (not needed):
+  a `test_cli_verbosity_flag_controls_log_level` in the `caplog` form
+  originally planned (superseded by the corrected version above), and a
+  test confirming `--verbose` was removed from the parser.
+- Full suite: `224 passed` (`pytest nickel_focus/tests`).
+
+### All four phases complete
+
+Both of the user's original milestones for this branch are done: the Log
+tab is wired to real `logging` output (Phases 1-2), and the `print()` →
+`logging` migration across the domain layer and CLI scripts is finished
+(Phases 3-4), including the two bugs this work surfaced along the way
+(the logger-level gate never being opened, and dead `verbose`
+parameters/flags in `focus.py`/`photometry.py`/`scripts/focus.py`).

@@ -68,6 +68,7 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
             Parsed command-line arguments, as returned by
             `get_parser`/`~nickel_focus.scripts.scriptbase.ScriptBase.parse_args`.
         """
+        from nickel_focus import log
         from nickel_focus import slew
 
         cls.init_log(args)
@@ -77,7 +78,7 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
         target_name, target_ra, target_dec = slew.find_nearest_target(
             telescope.current, obj_search_str=args.search, file=args.starlist
         )
-        print(f'Nearest object is: {target_name} at RA={target_ra}, Dec={target_dec}')
+        log.info(f'Nearest object is: {target_name} at RA={target_ra}, Dec={target_dec}')
 
         if not args.dry_run:
             telescope.slew_to(target_ra, target_dec)

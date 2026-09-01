@@ -11,59 +11,69 @@ phase-by-phase build log).
 
 ## 1. Summary
 
-`gui` is a PySide6 (Qt) desktop application wrapping `scripts/focus.py`'s
-telescope focus-sequence automation for the Nickel 1-m telescope at Lick
-Observatory. It lets an observer configure and run a focus sequence (a
-fixed grid of focus values, or an adaptive search), inspect each exposure
-and its measured FWHM as it comes in, watch the live focus curve, and
-replay/reanalyze previously collected exposures from disk -- all without
-using the `focus.py` CLI directly.
+`gui` is a PySide6 (Qt) desktop application wrapping `nickel_focus.focus`'s
+telescope focus-sequence automation and `nickel_focus.slew`'s
+telescope-pointing control for the Nickel 1-m telescope at Lick
+Observatory. It lets an observer slew the telescope to a target (entered
+directly, or found as the nearest pointing/focusing star in a starlist,
+mirroring `scripts/slew_to_nearest.py`), configure and run a focus
+sequence (a fixed grid of focus values, or an adaptive search), inspect
+each exposure and its measured FWHM as it comes in, watch the live focus
+curve, and replay/reanalyze previously collected exposures from disk --
+all without using the `focus.py`/`slew_to_nearest.py` CLIs directly.
 
 The GUI is strictly a View+Controller layer on top of the existing Model
-code in `scripts/` (`focus.py`, `photometry.py`, `quadratic.py`). It adds
-no new domain logic of its own; every hardware call, exposure, fit, and
-sequence rule still lives in `scripts/focus.py`, unchanged and still
-independently usable from the CLI with no Qt installed at all.
+code in `nickel_focus/` (`focus.py`, `slew.py`, `starlist.py`,
+`photometry.py`, `quadratic.py`). It adds no new domain logic of its own;
+every hardware call, exposure, slew, fit, and sequence rule still lives in
+that Model code, unchanged and still independently usable from the CLI
+(`nickel_focus/scripts/`) with no Qt installed at all.
 
 ## 2. Directory structure and design
 
 ```
 gui/
-├── __init__.py            adds scripts/ to sys.path; no Qt import
+├── __init__.py            package docstring only; no Qt import
 ├── qt.py                  the only module that imports PySide6
-├── main.py                entry point (`python -m gui.main`)
+├── launcher.py            builds the QApplication/MainWindow (entry point: `nickel_focus_gui`)
 ├── controller.py          wires views to the model; owns app state
 ├── model/
 │   ├── __init__.py
-│   └── focus_worker.py    QThread that drives a FocusSequence
+│   ├── focus_worker.py    QThread that drives a FocusSequence
+│   └── slew_worker.py     QThread that drives a telescope slew
 └── views/
     ├── __init__.py
     ├── main_window.py       top-level window, layout, settings persistence
     ├── image_panel.py       exposure display/pan/zoom/source selection
     ├── focus_curve_panel.py live FWHM-vs-focus plot
-    └── focus_control_panel.py sequence configuration tabs, log, options
+    └── focus_control_panel.py Slew/Single/Grid/Auto/Replay tabs, log, options
 ```
 
 This is a fairly conventional Model-View-Controller split, with one Qt-
 specific wrinkle:
 
-- **Model** is `scripts/focus.py` and friends -- reused as-is, not
-  reimplemented. `gui/model/focus_worker.py` isn't domain logic; it's
-  the adapter that runs the Model's blocking, synchronous methods
-  (`FocusSequence.step`, `.reanalyze`, `.take_single_exposure`) on a
-  background `QThread` so a real exposure (seconds to tens of seconds)
-  doesn't freeze the GUI's event loop.
+- **Model** is `focus.py`/`slew.py` and friends -- reused as-is, not
+  reimplemented. `gui/model/focus_worker.py` and `gui/model/slew_worker.py`
+  aren't domain logic; they're the adapters that run the Model's blocking,
+  synchronous methods (`FocusSequence.step`/`.reanalyze`/
+  `.take_single_exposure`, `NickelTelescopePointing.slew_to`) on a
+  background `QThread` so a real exposure (seconds to tens of seconds) or
+  a slew (up to five minutes) doesn't freeze the GUI's event loop.
 - **View** is `gui/views/` -- three panels (`ImagePanel`,
-  `FocusCurvePanel`, `FocusControlPanel`) composed inside `MainWindow`.
-  Views only display state and emit Qt signals for user actions
-  (button clicks, a key press, a picked drop-down entry); they never
-  import `focus` or talk to `FocusWorker` directly.
+  `FocusCurvePanel`, `FocusControlPanel`) composed inside `MainWindow`;
+  `FocusControlPanel` itself holds the Slew/Single/Grid/Auto/Replay tabs
+  plus Log/Options/Help. Views only display state and emit Qt signals for
+  user actions (button clicks, a key press, a picked drop-down entry);
+  they never import `focus`/`slew` or talk to `FocusWorker`/`SlewWorker`
+  directly.
 - **Controller** (`gui/controller.py`) is the only module that imports
   both the views and the model. It owns the currently active
-  `focus.FocusSequence` and `FocusWorker` (if any), connects each
-  view's signals to its own handler methods, and implements the
-  "hardware exclusivity" rule: only one operation (a running sequence, a
-  single exposure) may be active at a time.
+  `focus.FocusSequence`/`FocusWorker`, the `slew.NickelTelescopePointing`
+  handle/`SlewWorker` (if any), connects each view's signals to its own
+  handler methods, and implements the "hardware exclusivity" rule: only
+  one operation (a running sequence, a single exposure, or a slew) may be
+  active at a time. Finding the nearest target is exempt from that rule --
+  it's a fast, synchronous `ktl` read plus a starlist search, not a move.
 
 `gui/qt.py` exists so exactly one module fails, with one clear message, if
 PySide6 isn't installed -- every other `gui` module imports Qt classes from
@@ -102,13 +112,14 @@ view's methods directly.
 | Module | Purpose |
 | --- | --- |
 | `gui/qt.py` | Single point of contact with PySide6; the only module allowed to `import PySide6` directly. |
-| `gui/main.py` | Builds the `QApplication`, `MainWindow`, and `Controller`; starts the Qt event loop. |
-| `gui/controller.py` | Mediates between views and model; owns the active sequence/worker and the hardware-exclusivity state machine. |
+| `gui/launcher.py` | Builds the `QApplication` and `MainWindow`. Wiring up the `Controller`, showing the window, and starting the Qt event loop happens one layer up, in `scripts/focus_gui.py`'s `NickelFocusGUI.main` (the `nickel_focus_gui` console script's entry point). |
+| `gui/controller.py` | Mediates between views and model; owns the active sequence/worker, the telescope handle/slew worker, and the hardware-exclusivity state machine. |
 | `gui/model/focus_worker.py` | `QThread` subclass that runs one `FocusSequence` operation (step/reanalyze/single exposure) off the GUI thread, reporting progress via signals. |
+| `gui/model/slew_worker.py` | `QThread` subclass that runs one `NickelTelescopePointing.slew_to` call off the GUI thread, since a slew can block for up to five minutes. |
 | `gui/views/main_window.py` | Top-level `QMainWindow`; lays out the three panels in splitters; persists/restores settings via `QSettings`. |
 | `gui/views/image_panel.py` | Displays collected exposures one at a time: pan, zoom, stretch selection, and click-to-select-source ('m' key) for reanalysis. |
 | `gui/views/focus_curve_panel.py` | Live scatter plot of FWHM vs. focus value, with the fitted quadratic and its vertex once enough points exist. |
-| `gui/views/focus_control_panel.py` | Tabbed sequence configuration (Single/Grid/Auto/Replay), plus Log and Options tabs; emits the signals that request an action. |
+| `gui/views/focus_control_panel.py` | Tabbed sequence configuration -- Slew (target entry, "Move to Target", "Find nearest object/pointing/focus star") plus Single/Grid/Auto/Replay -- and Log/Options/Help tabs; emits the signals that request an action. |
 
 ### Lines of communication
 
@@ -121,28 +132,32 @@ view's methods directly.
               ┌─────────────────────┼─────────────────────┐
               ▼                     ▼                      ▼
       ImagePanel            FocusCurvePanel         FocusControlPanel
-   (exposure display)       (FWHM vs focus)       (config tabs, log, options)
-              │                     ▲                      │
-    sourceSelected            add_result /            startRequested /
-    (Signal)                  update_result           stopRequested /
-              │                     ▲                takeSingleExposureRequested
-              ▼                     │                      │
+   (exposure display)       (FWHM vs focus)      (Slew/Single/Grid/Auto/
+              │                     ▲              Replay tabs, log, options)
+    sourceSelected            add_result /                │
+    (Signal)                  update_result      startRequested / stopRequested /
+              │                     ▲            takeSingleExposureRequested /
+              ▼                     │           moveToTargetRequested / findNearest*Requested
               └─────────────► Controller ◄──────────────────┘
                                     │
-                          builds / starts / stops
-                                    ▼
-                            FocusWorker (QThread)
-                     stepComplete / focusSequenceFinished /
-                     focusSequenceFailed / singleExposureFinished
-                                    │
-                                    ▼
-                     scripts/focus.py (FocusSequence and
-                     subclasses, unmodified Model code)
+                    ┌───────────────┴────────────────┐
+              builds / starts /                 builds / starts
+                 stops                                 │
+                    ▼                                  ▼
+            FocusWorker (QThread)             SlewWorker (QThread)
+     stepComplete / focusSequenceFinished /    slewFinished / slewFailed
+     focusSequenceFailed / singleExposureFinished
+                    │                                  │
+                    ▼                                  ▼
+         focus.py (FocusSequence and            slew.py (NickelTelescopePointing/
+         subclasses, unmodified Model code)     find_nearest_target, unmodified Model code)
 ```
 
 - **Views → Controller**: exclusively via Qt signals
   (`FocusControlPanel.startRequested`/`stopRequested`/
-  `takeSingleExposureRequested`, `ImagePanel.sourceSelected`), connected
+  `takeSingleExposureRequested`/`moveToTargetRequested`/
+  `findNearestObjectRequested`/`findNearestPointingRequested`/
+  `findNearestFocusRequested`, `ImagePanel.sourceSelected`), connected
   once in `Controller.__init__`. Views never call Controller methods
   directly.
 - **Controller → Views**: exclusively via direct method calls (e.g.
@@ -164,6 +179,19 @@ view's methods directly.
   `focus.FocusSequence` (`.step()`, `.reanalyze()`, `.take_single_exposure()`,
   `.fit_best_focus()`) -- the Model has no idea it's being driven from a
   background thread.
+- **Controller → SlewWorker**: same pattern as `FocusWorker`, one level
+  simpler -- `move_to_target` constructs a `SlewWorker` per slew, connects
+  its signals, and calls `.start()`. There is no stop/interrupt for a
+  slew already in progress. SlewWorker → Controller: `slewFinished`/
+  `slewFailed` (plus `finished`), the same queued-connection signals.
+  `find_nearest_object`/`find_nearest_pointing`/`find_nearest_focus`, by
+  contrast, run synchronously on the GUI thread with no worker at all --
+  a `ktl` position read plus an in-memory starlist search is fast enough
+  not to need one.
+- **SlewWorker → Model**: one call, `slew.NickelTelescopePointing.slew_to(ra, dec)`.
+- Not shown above: the Controller also owns a `QTimer` that polls
+  `telescope.current` once a second to drive the Slew tab's live
+  position display, independent of whatever else is running.
 
 ## 4. Usage
 
@@ -171,11 +199,13 @@ view's methods directly.
 nickel_focus_gui
 ```
 
-Requires PySide6 (`pip install .[gui]`). Configure a sequence on the Single, Grid,
-Auto, or Replay tab and press Acquire/Load; watch progress on the image
-panel, focus curve, and Log tab; press Interrupt to stop a running
-Grid/Auto sequence between steps. See the in-app Help tab for a short
-per-tab usage summary.
+Requires PySide6 (`pip install .[gui]`). Enter a target RA/Dec (or find the
+nearest object/pointing/focus star from a starlist) and press Move to
+Target on the Slew tab; configure a sequence on the Single, Grid, Auto, or
+Replay tab and press Acquire/Load; watch progress on the image panel,
+focus curve, and Log tab; press Interrupt to stop a running Grid/Auto
+sequence between steps. A slew and a focus sequence/exposure can't run at
+once. See the in-app Help tab for a short per-tab usage summary.
 
 Installation and testing instructions will be added here once the repo is
 restructured into an installable Python package.
@@ -222,3 +252,5 @@ tagging releases, it holds the short commit hash current as of each entry.
 | Version | Date | Summary |
 | --- | --- | --- |
 | `c6058e8` | 2026-08-24 | Initial reference document, covering the GUI as of the code-quality/docstring pass following Phase 5. |
+| `8222c32` | 2026-09-01 | Updated the document to reflect the Slew tab, merged earlier without a doc update. |
+| `c702eb1` | 2026-09-01 | Documented the `nickel_focus/pkg/ktl.py` single entry point (mirroring `gui/qt.py`) and added the "Testing" section covering the autouse `no_ktl` fixture, which together let the test suite pass regardless of whether `ktl` is installed while never touching real hardware. |

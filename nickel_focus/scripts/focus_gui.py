@@ -1,5 +1,7 @@
 #! @KPYTHON@
 
+import argparse
+
 from nickel_focus.scripts import scriptbase
 
 class NickelFocusGUI(scriptbase.ScriptBase):
@@ -9,6 +11,14 @@ class NickelFocusGUI(scriptbase.ScriptBase):
         parser = super().get_parser(
             description='Focusing GUI for the 1m Nickel Telescope.', width=width
         )
+        # Undocumented: lets a developer with no live ktl connection
+        # still see and click through the Slew/Single/Grid/Auto tabs
+        # (normally grayed out in that case -- see `gui.controller.Controller`)
+        # to work on the GUI's layout. Every action on those tabs still
+        # fails exactly as it would otherwise; this never enables real
+        # hardware control without ktl actually being there, so there's
+        # no reason to advertise it to an observer via --help.
+        parser.add_argument('--test', action='store_true', help=argparse.SUPPRESS)
         return parser
 
     @classmethod
@@ -32,7 +42,8 @@ class NickelFocusGUI(scriptbase.ScriptBase):
         # doesn't parent it to the window automatically), and it -- along
         # with every signal connection it made in `Controller.__init__` --
         # could be garbage-collected out from under the running window.
-        controller = Controller(window)  # noqa: F841 (kept alive for the life of main())
+        controller = Controller(  # noqa: F841 (kept alive for the life of main())
+            window, force_enable_hardware_tabs=args.test)
         window.show()
         # QApplication.exec() starts Qt's event loop: it blocks here,
         # dispatching mouse clicks, key presses, timers, and cross-thread

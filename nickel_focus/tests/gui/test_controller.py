@@ -331,6 +331,46 @@ def test_controller_without_ktl_shows_placeholder_current_position(qapp):
     assert window.control_panel.slew_current_dec_label.text() == '—'
 
 
+def test_hardware_tabs_disabled_without_ktl(qapp):
+    # No fake_hardware fixture here: this dev machine has no ktl, so the
+    # four tabs that need it should come up grayed out, with Replay (the
+    # only one that works with no ktl connection) shown initially.
+    window = MainWindow()
+    Controller(window)
+    panel = window.control_panel
+
+    for tab in (panel.slew_tab, panel.single_tab, panel.grid_tab, panel.auto_tab):
+        assert not panel.tabs.isTabEnabled(panel.tabs.indexOf(tab)), \
+            f'{tab} should be disabled without a ktl connection'
+    assert panel.tabs.currentWidget() is panel.replay_tab, \
+        'Replay should be the tab shown when the window opens with no ktl connection'
+
+
+def test_hardware_tabs_enabled_with_fake_hardware(qapp, fake_hardware):
+    window = MainWindow()
+    Controller(window)
+    panel = window.control_panel
+
+    for i in range(panel.tabs.count()):
+        assert panel.tabs.isTabEnabled(i), \
+            f'tab {panel.tabs.tabText(i)!r} should be enabled once ktl is available'
+
+
+def test_force_enable_hardware_tabs_overrides_no_ktl(qapp):
+    # The GUI script's suppressed --test flag: a developer with no ktl
+    # connection can still see/click through the hardware tabs, even
+    # though every action on them still fails (see the "no ktl
+    # connection" tests above/below, none of which pass this flag).
+    window = MainWindow()
+    controller = Controller(window, force_enable_hardware_tabs=True)
+    panel = window.control_panel
+
+    assert controller.ktl_available is False, 'setup: no ktl connection is available'
+    for i in range(panel.tabs.count()):
+        assert panel.tabs.isTabEnabled(i), \
+            f'tab {panel.tabs.tabText(i)!r} should stay enabled with force_enable_hardware_tabs'
+
+
 def test_controller_polls_current_position_from_fake_telescope(qapp, fake_telescope):
     fake_telescope.ra, fake_telescope.dec = 5.5, 30.25
 

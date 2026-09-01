@@ -37,9 +37,28 @@ class Controller(QtCore.QObject):
     (a single fast ktl read plus a starlist search, not a move) do not.
     A `~PySide6.QtCore.QTimer` polls the telescope's current position
     for the tab's live display regardless of what else is running.
+
+    Without a live ``ktl`` connection, the Slew/Single/Grid/Auto tabs
+    can't do anything but fail -- see :attr:`ktl_available` and
+    `~gui.views.focus_control_panel.FocusControlPanel.set_hardware_tabs_enabled`.
+
+    Parameters
+    ----------
+    window : `~gui.views.main_window.MainWindow`
+        The window to wire up.
+    parent : `~PySide6.QtCore.QObject`, optional
+        Passed through to the base `~PySide6.QtCore.QObject` constructor.
+    force_enable_hardware_tabs : :obj:`bool`, optional
+        Leave the Slew/Single/Grid/Auto tabs enabled even with no live
+        ``ktl`` connection, so a developer can still see and click
+        through them while working on the GUI. Every action on those
+        tabs still fails exactly as it would otherwise (each checks
+        `telescope`/`focus.ktl` itself) -- this only skips graying them
+        out. Wired to the GUI script's suppressed ``--test`` flag; never
+        set outside of that.
     """
 
-    def __init__(self, window, parent=None):
+    def __init__(self, window, parent=None, force_enable_hardware_tabs=False):
         super().__init__(parent)
         self.window = window
         self.focus_sequence = None  # the current focus.FocusSequence, or None
@@ -65,6 +84,15 @@ class Controller(QtCore.QObject):
             self.telescope = slew.NickelTelescopePointing()
         except RuntimeError:
             self.telescope = None
+
+        # `focus.ktl` and `slew.ktl` are the same object in normal
+        # operation (see `nickel_focus/pkg/ktl.py`), so checking one is
+        # enough to know whether any of the four ktl-driven tabs can do
+        # anything useful; `force_enable_hardware_tabs` overrides only
+        # the View-level graying-out below, not this flag itself.
+        self.ktl_available = focus.ktl is not None
+        window.control_panel.set_hardware_tabs_enabled(
+            self.ktl_available or force_enable_hardware_tabs)
 
         # This is Qt's signal/slot mechanism, the backbone of how every
         # View talks to this Controller: each `connect()` call below

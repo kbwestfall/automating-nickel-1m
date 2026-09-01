@@ -18,6 +18,30 @@ def test_tabs_exist_in_the_requested_order(qapp):
         'tabs should appear in the documented order, with Slew first'
 
 
+def test_set_hardware_tabs_enabled_false_grays_out_and_switches_to_replay(qapp):
+    panel = FocusControlPanel()
+    panel.tabs.setCurrentWidget(panel.grid_tab)
+
+    panel.set_hardware_tabs_enabled(False)
+
+    for tab in (panel.slew_tab, panel.single_tab, panel.grid_tab, panel.auto_tab):
+        assert not panel.tabs.isTabEnabled(panel.tabs.indexOf(tab)), \
+            f'{tab} should be disabled with no ktl connection'
+    assert panel.tabs.isTabEnabled(panel.tabs.indexOf(panel.replay_tab)), \
+        'Replay should stay enabled -- it never needs a ktl connection'
+    assert panel.tabs.currentWidget() is panel.replay_tab, \
+        'Replay should become the current tab once the others are disabled'
+
+
+def test_set_hardware_tabs_enabled_true_leaves_every_tab_enabled(qapp):
+    panel = FocusControlPanel()
+
+    panel.set_hardware_tabs_enabled(True)
+
+    for i in range(panel.tabs.count()):
+        assert panel.tabs.isTabEnabled(i), f'tab {panel.tabs.tabText(i)!r} should be enabled'
+
+
 def test_number_entry_boxes_have_no_increment_buttons(qapp):
     panel = FocusControlPanel()
     spin_boxes = (

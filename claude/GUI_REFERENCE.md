@@ -42,6 +42,7 @@ gui/
 ├── qt.py                  the only module that imports PySide6
 ├── launcher.py            builds the QApplication/MainWindow (entry point: `nickel_focus_gui`)
 ├── controller.py          wires views to the model; owns app state
+├── log_handler.py         logging.Handler that forwards nickel_focus.log records into the Log tab
 ├── model/
 │   ├── __init__.py
 │   ├── focus_worker.py    QThread that drives a FocusSequence
@@ -124,6 +125,24 @@ display and the focus curve) is mediated by the Controller reacting to one
 signal and calling methods on multiple views -- no view ever calls another
 view's methods directly.
 
+The Log tab's scrolling history (`FocusControlPanel.log_widget`) is
+populated entirely by real `nickel_focus.log` output, not by view methods
+appending text directly: `Controller.__init__` attaches a `QtLogHandler`
+(`gui/log_handler.py`) to the `nickel_focus.log` singleton, formatted with
+`pkg/logger.GuiFormatter`, which forwards each log record into the Log tab
+via a Qt signal -- safe even when the record is logged from a background
+thread (e.g. inside a `FocusWorker`/`SlewWorker`, or from `focus.py`/
+`photometry.py` while one is running). The Controller's own `log.info(...)`/
+`log.error(...)` calls (including its `_fail(message)` helper, used
+everywhere a failure needs to be both logged and shown) are what actually
+drive the Log tab's content; the `show_*` view methods only update the
+status/step labels. Because `log` is a module-level singleton rather than
+one per `Controller`, `Controller.__init__` calls
+`log.remove_handlers_of_type(QtLogHandler)` before attaching its own, so a
+handler pointing at a since-destroyed window never lingers. See
+`claude/GUI_LOGGING_PLAN.md` for the full design rationale and phased
+implementation history.
+
 ## 3. Key modules
 
 | Module | Purpose |
@@ -131,6 +150,7 @@ view's methods directly.
 | `gui/qt.py` | Single point of contact with PySide6; the only module allowed to `import PySide6` directly. |
 | `gui/launcher.py` | Builds the `QApplication` and `MainWindow`. Wiring up the `Controller`, showing the window, and starting the Qt event loop happens one layer up, in `scripts/focus_gui.py`'s `NickelFocusGUI.main` (the `nickel_focus_gui` console script's entry point). |
 | `gui/controller.py` | Mediates between views and model; owns the active sequence/worker, the telescope handle/slew worker, and the hardware-exclusivity state machine; also decides, once, whether the ktl-driven tabs start out enabled. |
+| `gui/log_handler.py` | `QtLogHandler`, a `logging.Handler` that forwards formatted `nickel_focus.log` records into the Log tab via a Qt signal, so records logged from a background thread are delivered safely to the GUI thread. |
 | `gui/model/focus_worker.py` | `QThread` subclass that runs one `FocusSequence` operation (step/reanalyze/single exposure) off the GUI thread, reporting progress via signals. |
 | `gui/model/slew_worker.py` | `QThread` subclass that runs one `NickelTelescopePointing.slew_to` call off the GUI thread, since a slew can block for up to five minutes. |
 | `gui/views/main_window.py` | Top-level `QMainWindow`; lays out the three panels in splitters; persists/restores settings via `QSettings`. |
@@ -279,3 +299,4 @@ tagging releases, it holds the short commit hash current as of each entry.
 | `8222c32` | 2026-09-01 | Updated the document to reflect the Slew tab, merged earlier without a doc update. |
 | `c702eb1` | 2026-09-01 | Documented the `nickel_focus/pkg/ktl.py` single entry point (mirroring `gui/qt.py`) and added the "Testing" section covering the autouse `no_ktl` fixture, which together let the test suite pass regardless of whether `ktl` is installed while never touching real hardware. |
 | `1e47148` | 2026-09-01 | Documented that the Slew/Single/Grid/Auto tabs gray out (and the window opens on Replay) with no live `ktl` connection, and the suppressed `nickel_focus_gui --test` flag that overrides it for development. |
+| `73141ca` | 2026-09-01 | Documented that the Log tab is now driven by real `nickel_focus.log` output via `gui/log_handler.py`'s `QtLogHandler`, rather than by view methods appending text directly; see `claude/GUI_LOGGING_PLAN.md` for the full logging-integration design and phased implementation history. |

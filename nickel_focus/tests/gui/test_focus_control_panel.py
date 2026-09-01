@@ -152,8 +152,7 @@ def test_each_tab_has_the_requested_buttons(qapp):
         return sorted(b.text() for b in tab.findChildren(QtWidgets.QPushButton))
 
     assert button_texts(panel.slew_tab) == sorted([
-        'Browse…', 'Move to Target', 'Find nearest object',
-        'Find nearest pointing star', 'Find nearest focus star',
+        'Browse…', 'Move to Target', 'Object', 'Pointing *', 'Focusing *',
     ]), 'the Slew tab should have its file-browse, move, and three find-nearest buttons'
     assert button_texts(panel.single_tab) == ['Acquire']
     assert button_texts(panel.grid_tab) == ['Acquire', 'Interrupt']
@@ -455,18 +454,19 @@ def test_show_slew_result_updates_status(qapp):
     assert panel.log_widget.toPlainText().strip(), 'the slew result should also be logged'
 
 
-def test_minimum_height_excluding_help_ignores_the_tallest_page(qapp):
+def test_preferred_height_excluding_help_ignores_the_tallest_page(qapp):
     panel = FocusControlPanel()
 
-    height = panel.minimum_height_excluding_help()
+    height = panel.preferred_height_excluding_help()
 
-    assert height < panel.minimumSizeHint().height(), \
-        'excluding Help should give a smaller floor than the panel as a whole'
+    tab_bar_height = panel.tabs.tabBar().sizeHint().height()
+    assert height < panel.help_tab.widget().minimumSizeHint().height() + tab_bar_height, \
+        'excluding Help should give a smaller preferred height than including it would'
     other_tabs = (panel.slew_tab, panel.single_tab, panel.grid_tab, panel.auto_tab,
                   panel.replay_tab, panel.log_tab, panel.options_tab)
     for tab in other_tabs:
-        assert height >= tab.minimumSizeHint().height(), \
-            'the floor should be tall enough for every tab except Help'
+        assert height >= tab.widget().minimumSizeHint().height(), \
+            'the preferred height should be tall enough for every tab except Help'
 
 
 def test_help_tab_has_reminder_text(qapp):

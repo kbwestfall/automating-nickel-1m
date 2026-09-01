@@ -1023,6 +1023,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.status_label.setText(message)
         self.log_widget.appendPlainText(f'ERROR: {message}')
 
+    def append_log_line(self, text):
+        """Append one line of text to the Log tab's scrolling history."""
+        self.log_widget.appendPlainText(text)
+
     def reset(self):
         """Clear live status and log for a new run."""
         self.step_label.setText('Step: —')

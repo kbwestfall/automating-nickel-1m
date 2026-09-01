@@ -14,12 +14,27 @@ pytest.importorskip('PySide6')
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+from nickel_focus import log
+from nickel_focus.gui.log_handler import QtLogHandler
+
 
 @pytest.fixture(scope='session')
 def qapp():
     """The (session-wide, singleton) QApplication needed to create any Qt widget."""
     from nickel_focus.gui.qt import QtWidgets
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _remove_qt_log_handlers():
+    """
+    Remove any `QtLogHandler` a test's `Controller` added to the
+    `nickel_focus.log` singleton once that test finishes, so a handler
+    pointing at a destroyed window never lingers into a later test module.
+    """
+    yield
+    for handler in [h for h in log.handlers if isinstance(h, QtLogHandler)]:
+        log.removeHandler(handler)
 
 
 @pytest.fixture(autouse=True)

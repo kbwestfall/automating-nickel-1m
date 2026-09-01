@@ -135,6 +135,21 @@ class FileFormatter(logging.Formatter):
         logging.Formatter.__init__(self, fmt, datefmt='%Y-%m-%d %H:%M:%S')
 
 
+class GuiFormatter(logging.Formatter):
+    """
+    Custom `Formatter <logging.Formatter>` for handlers feeding a GUI
+    widget: plain (no ANSI color codes, which would render as literal
+    escape junk in a text widget) and terser than `FileFormatter` (no
+    timestamp or calling-frame location), since it's meant for a narrow
+    panel that scrolls live.
+    """
+
+    base_fmt = "%(levelname)8s | %(message)s"
+
+    def __init__(self, fmt=base_fmt):
+        logging.Formatter.__init__(self, fmt)
+
+
 class NickelFocusLogger(logging.Logger):
     """
     Custom logging system for the Nickel focus software.
@@ -170,6 +185,15 @@ class NickelFocusLogger(logging.Logger):
         # want to make these things options in the future.
         capture_exceptions = True
         capture_warnings = True
+
+        # A logger's own level gates every call before any handler is even
+        # consulted, so it must stay at the most permissive value (DEBUG) --
+        # otherwise it would clamp every handler to whichever level is
+        # narrowest, defeating e.g. a file handler set more verbose than the
+        # console (log_file_level) or a future handler with its own level.
+        # All real filtering happens per-handler, via each handler's own
+        # setLevel() call below.
+        self.setLevel(logging.DEBUG)
 
         # NOTE: Because of how get_logger works, this makes warnings_logger an
         # instance of PypeItLogger.

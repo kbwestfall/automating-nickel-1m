@@ -6,13 +6,18 @@ Model (`focus.FocusSequence` subclasses, via
 
 See GUI_DESIGN.md §4.3.
 """
+import logging
+
 from astropy.coordinates import SkyCoord
 
 from nickel_focus import focus
+from nickel_focus import log
 from nickel_focus import slew
+from nickel_focus.gui.log_handler import QtLogHandler
 from nickel_focus.gui.model.focus_worker import FocusWorker
 from nickel_focus.gui.model.slew_worker import SlewWorker
 from nickel_focus.gui.qt import QtCore
+from nickel_focus.pkg.logger import GuiFormatter
 
 
 class Controller(QtCore.QObject):
@@ -61,6 +66,20 @@ class Controller(QtCore.QObject):
     def __init__(self, window, parent=None, force_enable_hardware_tabs=False):
         super().__init__(parent)
         self.window = window
+
+        # `log` is a module-level singleton, not per-Controller, so a new
+        # Controller must remove any handler a previous one added before
+        # adding its own -- otherwise a stale handler pointing at a
+        # since-destroyed log_widget accumulates each time a Controller is
+        # (re)constructed.
+        for handler in [h for h in log.handlers if isinstance(h, QtLogHandler)]:
+            log.removeHandler(handler)
+        self._log_handler = QtLogHandler(self)
+        self._log_handler.setFormatter(GuiFormatter())
+        self._log_handler.setLevel(logging.INFO)
+        self._log_handler.record_logged.connect(window.control_panel.append_log_line)
+        log.addHandler(self._log_handler)
+
         self.focus_sequence = None  # the current focus.FocusSequence, or None
         self.focus_worker = None    # the FocusWorker currently running, or None
         self.method = 'brightest'   # the photometry method currently in effect

@@ -4,6 +4,8 @@ import types
 import pytest
 
 from nickel_focus import focus
+from nickel_focus import log
+from nickel_focus.gui.log_handler import QtLogHandler
 from nickel_focus.gui.qt import QtCore
 from nickel_focus.gui.views.main_window import MainWindow
 from nickel_focus.gui.controller import Controller
@@ -523,3 +525,25 @@ def test_find_nearest_without_ktl_reports_clear_failure(qapp):
     controller.find_nearest_pointing()
 
     assert 'no ktl connection' in window.control_panel.status_label.text().lower()
+
+
+def test_log_records_appear_in_log_tab(qapp):
+    window = MainWindow()
+    controller = Controller(window)  # noqa: F841 (kept alive; see Controller's own note on this)
+
+    log.info('hello from the logger')
+    QtCore.QCoreApplication.processEvents()
+
+    assert 'hello from the logger' in window.control_panel.log_widget.toPlainText(), \
+        'a log.info() call should be delivered into the Log tab'
+
+
+def test_repeated_controller_construction_does_not_leak_handlers(qapp):
+    first_window = MainWindow()
+    first_controller = Controller(first_window)  # noqa: F841 (kept alive)
+    second_window = MainWindow()
+    second_controller = Controller(second_window)  # noqa: F841 (kept alive)
+
+    qt_handlers = [h for h in log.handlers if isinstance(h, QtLogHandler)]
+    assert len(qt_handlers) == 1, \
+        'constructing a new Controller must remove any handler a previous one added'

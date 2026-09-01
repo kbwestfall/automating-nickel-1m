@@ -8,12 +8,7 @@ from IPython import embed
 from matplotlib import pyplot, patches
 import numpy as np
 
-try:
-    import ktl
-except ModuleNotFoundError:
-    warnings.warn('Unable to import ktl package.  Functionality will be limited.')
-    ktl = None
-
+from nickel_focus import ktl
 from nickel_focus.photometry import image_quality
 from nickel_focus import quadratic
 

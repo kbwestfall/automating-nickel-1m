@@ -5,17 +5,11 @@ plus a helper to locate the nearest known target in a starlist.
 
 from importlib import resources
 from pathlib import Path
-import warnings
 
 from astropy.coordinates import Angle, SkyCoord
 import numpy as np
 
-try:
-    import ktl
-except ModuleNotFoundError:
-    warnings.warn('Unable to import ktl package.  Functionality will be limited.')
-    ktl = None
-
+from nickel_focus import ktl
 from nickel_focus import log
 from nickel_focus import starlist
 

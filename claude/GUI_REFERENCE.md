@@ -73,6 +73,24 @@ installing the base package is enough to run the CLI with no Qt involved,
 and the `gui` extra in `pyproject.toml` adds the one extra dependency the
 GUI needs.
 
+`ktl` (the KTL package used to talk to real telescope/camera hardware) gets
+the same single-entry-point treatment, but outside `gui/`, in
+`nickel_focus/pkg/ktl.py`, since it's needed by the Model layer
+(`focus.py`/`slew.py`) independent of whether the GUI is even installed.
+Every module that needs it does `from nickel_focus import ktl` rather than
+`import ktl` directly, mirroring `from gui.qt import QtWidgets`. The two
+entry points differ in how they treat their dependency being missing,
+though: `gui/qt.py` *hard*-fails (raises `ImportError` with a clear
+message), since the GUI extra requires PySide6 to do anything at all,
+whereas `pkg/ktl.py` *soft*-fails -- it warns once, at most, and sets
+`ktl = None` -- because `ktl` being unavailable is expected and supported,
+not an error: the CLI's archive/replay path and
+`focus.ArchiveFocusSequence` must keep working with no live `ktl`
+connection at all. Code that actually needs `ktl` (`focus.Focus`,
+`focus.Exposure`, `slew.NickelTelescopePointing`, and, in turn, the
+Controller that constructs them) checks `ktl is None` itself and reports a
+clear failure instead of crashing.
+
 Views hold no reference to each other or to the Controller. All
 cross-panel communication (e.g. a new exposure updating both the image
 display and the focus curve) is mediated by the Controller reacting to one
@@ -162,7 +180,41 @@ per-tab usage summary.
 Installation and testing instructions will be added here once the repo is
 restructured into an installable Python package.
 
-## 5. Version history
+## 5. Testing
+
+The test suite (`nickel_focus/tests/`, including `tests/gui/`) is designed
+to run -- and pass -- identically whether or not `ktl` or PySide6 are
+installed, and to never manipulate real telescope/camera hardware no
+matter which is true:
+
+- `tests/gui/conftest.py` skips the entire `tests/gui/` subtree via
+  `pytest.importorskip('PySide6')` if PySide6 isn't installed, and forces
+  the offscreen Qt platform plugin so whatever GUI tests do run never need
+  a real display.
+- `tests/conftest.py`'s autouse `no_ktl` fixture forces `focus.ktl`/
+  `slew.ktl` to `None` before every test, regardless of whether the real
+  `ktl` package happens to be importable in the environment running the
+  suite. Since `focus.Focus`/`focus.Exposure`/
+  `slew.NickelTelescopePointing` all raise `RuntimeError` in their
+  constructors whenever `ktl is None`, this guarantees no test -- not just
+  the ones that explicitly check "no ktl connection" behavior, but also,
+  e.g., every `ArchiveFocusSequence`-based test -- can reach a real
+  `ktl.cache(...)` call and touch actual hardware.
+- Tests that need to exercise the "live hardware" code paths (stepping a
+  `GridFocusSequence`/`AutomatedFocusSequence`, taking a single exposure,
+  slewing) request the `fake_hardware`/`fake_telescope` fixtures instead.
+  These run after `no_ktl` and override it: they monkeypatch
+  `focus.Focus`/`focus.Exposure`/`slew.NickelTelescopePointing` to
+  lightweight in-memory stand-ins (`tests/fake_hardware.py`) that
+  synthesize FITS frames and record commanded focus/pointing values,
+  rather than ever talking to a real KTL keyword.
+
+Net effect: the same test run gives the same pass/fail result on a
+developer laptop with neither dependency installed and on a machine at the
+telescope with both installed and a live KTL dispatcher running -- and it
+never commands the telescope or camera in either case.
+
+## 6. Version history
 
 This column will eventually hold git tags; until the project starts
 tagging releases, it holds the short commit hash current as of each entry.

@@ -6,6 +6,7 @@ that can be imported by submodules.
 """
 
 from .pkg.version import version
+from .pkg.ktl import ktl
 
 # Set version
 __version__ = version

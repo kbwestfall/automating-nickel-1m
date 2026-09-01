@@ -327,7 +327,7 @@ def test_set_stopping_disables_interrupt_buttons_and_shows_status(qapp):
     assert 'Stopping' in panel.status_label.text(), 'status should explain the wait'
 
 
-def test_update_step_updates_label_and_log(qapp, focus_sweep):
+def test_update_step_updates_label_and_leaves_log_untouched(qapp, focus_sweep):
     result = _step_result(focus_sweep, index=1)
     panel = FocusControlPanel()
 
@@ -337,22 +337,24 @@ def test_update_step_updates_label_and_log(qapp, focus_sweep):
     assert f'{result.focus_value:.0f}' in panel.step_label.text(), 'step label should show focus'
     assert f'{result.centroid[0]:.1f}' in panel.step_label.text(), \
         'step label should show the measured source coordinates'
-    assert panel.log_widget.toPlainText().strip(), 'the step should also be appended to the log'
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
 
 
-def test_show_best_focus_updates_log_and_single_tab_default(qapp):
+def test_show_best_focus_updates_status_and_single_tab_default(qapp):
     panel = FocusControlPanel()
 
     panel.show_best_focus(356.6, 3.3)
 
     assert '356.6' in panel.status_label.text(), 'status should show the best focus'
     assert '3.3' in panel.status_label.text(), 'status should show the expected FWHM'
-    assert 'ERROR' not in panel.log_widget.toPlainText()
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
     assert panel.single_focus_spin.value() == 357, \
         'the Single tab default should be the best focus, rounded to the nearest integer'
 
 
-def test_show_single_exposure_result_updates_status_and_log(qapp, focus_sweep):
+def test_show_single_exposure_result_updates_status_only(qapp, focus_sweep):
     result = _step_result(focus_sweep)
     panel = FocusControlPanel()
 
@@ -364,15 +366,17 @@ def test_show_single_exposure_result_updates_status_and_log(qapp, focus_sweep):
         'status should report the measured FWHM'
     assert f'{result.centroid[0]:.1f}' in panel.status_label.text(), \
         'status should report the measured source coordinates'
-    assert panel.log_widget.toPlainText().strip(), 'the result should also be logged'
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
 
 
-def test_show_failure_updates_status_and_log(qapp):
+def test_show_failure_updates_status_only(qapp):
     panel = FocusControlPanel()
     panel.show_failure('Stopped early -- not enough points for a focus fit')
 
     assert panel.status_label.text() == 'Stopped early -- not enough points for a focus fit'
-    assert 'ERROR' in panel.log_widget.toPlainText(), 'failures should be logged too'
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
 
 
 def test_status_and_step_labels_wrap_instead_of_widening(qapp):
@@ -399,6 +403,7 @@ def test_reset_clears_status_and_log(qapp, focus_sweep):
     panel = FocusControlPanel()
     panel.update_step(result)
     panel.show_failure('oops')
+    panel.append_log_line('oops')  # the view itself no longer appends to the log
 
     panel.reset()
 
@@ -466,7 +471,8 @@ def test_show_nearest_target_populates_target_fields_and_status(qapp):
     assert panel.slew_target_dec_edit.text() == '+29:45:06.20', \
         'the target Dec field should be populated with the found target'
     assert 'Pointing00' in panel.status_label.text(), 'status should report the target name'
-    assert panel.log_widget.toPlainText().strip(), 'the found target should also be logged'
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
 
 
 def test_show_slew_result_updates_status(qapp):
@@ -475,7 +481,8 @@ def test_show_slew_result_updates_status(qapp):
     panel.show_slew_result('Move to target complete.')
 
     assert panel.status_label.text() == 'Move to target complete.'
-    assert panel.log_widget.toPlainText().strip(), 'the slew result should also be logged'
+    assert panel.log_widget.toPlainText() == '', \
+        'the view should no longer append to the log itself -- that is the logging handler\'s job'
 
 
 def test_preferred_height_excluding_help_ignores_the_tallest_page(qapp):

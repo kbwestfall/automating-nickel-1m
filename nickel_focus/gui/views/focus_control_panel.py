@@ -953,7 +953,6 @@ class FocusControlPanel(QtWidgets.QWidget):
         if result.is_outlier:
             text += '  [outlier]'
         self.step_label.setText(text)
-        self.log_widget.appendPlainText(text)
 
     def set_current_position(self, ra_text, dec_text):
         """
@@ -990,14 +989,11 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         self.slew_target_ra_edit.setText(ra_text)
         self.slew_target_dec_edit.setText(dec_text)
-        text = f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})'
-        self.status_label.setText(text)
-        self.log_widget.appendPlainText(text)
+        self.status_label.setText(f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})')
 
     def show_slew_result(self, message):
         """Report a completed "Move to Target" slew (e.g., from `SlewWorker.slewFinished`)."""
         self.status_label.setText(message)
-        self.log_widget.appendPlainText(message)
 
     def show_best_focus(self, best_focus, best_fwhm):
         """
@@ -1006,22 +1002,19 @@ class FocusControlPanel(QtWidgets.QWidget):
         is a whole-unit telescope position even though the fit itself can
         land on a fractional one.
         """
-        text = f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}'
-        self.status_label.setText(text)
-        self.log_widget.appendPlainText(text)
+        self.status_label.setText(
+            f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
         self.single_focus_spin.setValue(round(best_focus))
 
     def show_single_exposure_result(self, result):
         """Report one exposure taken from the Single tab."""
-        text = (f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
-                f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
-        self.status_label.setText(text)
-        self.log_widget.appendPlainText(text)
+        self.status_label.setText(
+            f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
+            f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
 
     def show_failure(self, message):
         """Display a sequence failure (e.g., from `FocusWorker.focusSequenceFailed`)."""
         self.status_label.setText(message)
-        self.log_widget.appendPlainText(f'ERROR: {message}')
 
     def append_log_line(self, text):
         """Append one line of text to the Log tab's scrolling history."""

@@ -355,3 +355,41 @@ Implemented as planned, plus one unplanned fix discovered while testing:
   `GuiFormatter`'s plain (non-ANSI) text, while the console still shows
   `StreamFormatter`'s colorized version of the same records.
 - Full suite: `209 passed` (`pytest nickel_focus/tests`).
+
+### Phase 2 — done (2026-09-01)
+
+Implemented as planned, no changes to the plan itself:
+
+- Stripped the `self.log_widget.appendPlainText(...)` call out of each of
+  `FocusControlPanel.update_step`, `show_nearest_target`, `show_slew_result`,
+  `show_best_focus`, `show_single_exposure_result`, `show_failure` — these
+  now only update `status_label`/`step_label`, matching the panel's other
+  pure-display methods (`set_current_position`, etc.).
+- Added a matching `log.*()` call in `Controller` at every corresponding
+  call site: `log.error(...)` alongside all 9 `show_failure(...)` call
+  sites (in `start_focus_sequence`, `take_single_exposure`, `move_to_target`,
+  `_find_nearest`, `_on_focus_sequence_failed`, `_on_slew_failed`);
+  `log.info(...)` in `_on_slew_finished`, `_on_focus_sequence_finished`,
+  `_on_single_exposure_finished`, `_find_nearest` (success path), and
+  `_on_step_complete`. The step/best-focus/single-exposure messages
+  intentionally duplicate the same short f-string the View used to build
+  internally (rather than introducing a shared formatter/changing method
+  signatures to accept pre-formatted text) — each is 1-6 lines, and this
+  keeps Phase 2 scoped to what was planned; worth revisiting if this
+  duplication grows.
+- Result: `log_widget`'s entire content is now sourced from one place
+  (`Controller`'s `log.*()` calls via Phase 1's `QtLogHandler`) — verified
+  manually (`_on_focus_sequence_failed('smoke test failure')` followed by
+  `_on_slew_finished()` produced both an ERROR and an INFO line in the Log
+  tab, while `status_label` correctly showed only the latest one).
+- Updated 7 existing tests in `tests/gui/test_focus_control_panel.py` whose
+  assertions checked `log_widget` content directly after calling a view
+  method (now asserting `log_widget` is left untouched instead); renamed a
+  few to match (e.g. `test_show_failure_updates_status_and_log` →
+  `test_show_failure_updates_status_only`). `test_reset_clears_status_and_log`
+  now populates `log_widget` via `append_log_line()` before calling
+  `reset()`, so it still meaningfully exercises clearing a non-empty log.
+- Added 8 new tests in `tests/gui/test_controller.py`, one `caplog`-based
+  test per call site added above, plus
+  `test_log_tab_reflects_worker_signal_end_to_end`.
+- Full suite: `217 passed` (`pytest nickel_focus/tests`).

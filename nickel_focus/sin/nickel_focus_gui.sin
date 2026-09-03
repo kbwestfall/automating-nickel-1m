@@ -1,0 +1,11 @@
+#! @KPYTHON@
+
+from nickel_focus.scripts.focus_gui import NickelFocusGUI
+
+
+def main():
+    NickelFocusGUI.entry_point()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,11 @@
+#! @KPYTHON@
+
+from nickel_focus.scripts.slew_to_nearest import NickelSlewToNearest
+
+
+def main():
+    NickelSlewToNearest.entry_point()
+
+
+if __name__ == "__main__":
+    main()

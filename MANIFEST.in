@@ -1,0 +1,9 @@
+global-exclude Makefile
+global-exclude *.sin
+
+prune .github
+prune dev
+prune claude
+
+exclude .gitignore
+exclude Makefile.example

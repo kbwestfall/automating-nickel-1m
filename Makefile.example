@@ -1,0 +1,26 @@
+ifndef LROOT
+	LROOT = /usr/local/lick
+endif
+
+include $(LROOT)/etc/Make.defs
+
+
+LIBFILES = APFControl.py Calibrate.py Coords.py Observe.py ExposureCalculations.py \
+           ObservedLog.py ParseUCOSched.py SchedulerConsts.py UCOScheduler.py \
+           Visible.py apflog.py x_gaussslit.py getUCOTargets.py  TelescopeControl.py \
+           UCOTargets.py SunPos.py
+LIBSUB = python/
+
+BINFILES = Main
+BINSUB = master
+
+DATASUB = apf/main
+
+DATAFILES = ucoscheduler-d79e797f0ade.json
+
+
+SINFILES = $(wildcard *.sin)
+FILES = $(SINFILES:%.sin=%)
+
+
+include $(LROOT)/etc/Make.rules

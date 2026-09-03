@@ -16,8 +16,9 @@ class FocusCurvePanel(QtWidgets.QWidget):
     Scatter of FWHM versus focus value for a sequence's results so far,
     with the best-fit quadratic and its vertex overlaid once there are
     enough points to fit one (matching
-    :func:`focus.FocusSequence.fit_best_focus`'s own 3-point minimum).
-    Outlier points (`focus.StepResult.is_outlier`) are drawn as a
+    :meth:`~nickel_focus.focus.FocusSequence.fit_best_focus`'s own 3-point
+    minimum). Outlier points
+    (:attr:`~nickel_focus.focus.StepResult.is_outlier`) are drawn as a
     distinct color/marker from normal ones.
     """
 
@@ -38,7 +39,7 @@ class FocusCurvePanel(QtWidgets.QWidget):
         layout.addWidget(self.canvas)
 
     def add_result(self, result):
-        """Add one more :class:`focus.StepResult` and redraw."""
+        """Add one more :class:`~nickel_focus.focus.StepResult` and redraw."""
         self._results.append(result)
         self._render()
 
@@ -51,9 +52,14 @@ class FocusCurvePanel(QtWidgets.QWidget):
     def _reset_axis(self):
         """
         Clear the plot and redraw its static decorations (labels, title,
-        grid) -- everything :func:`_render` would otherwise have to
-        re-apply after every `Axes.clear`, factored out since both
-        :func:`_render` and :func:`reset` need exactly this.
+        grid) -- everything
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._render`
+        would otherwise have to re-apply after every
+        :meth:`matplotlib.axes.Axes.clear`, factored out since both
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._render`
+        and
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel.reset`
+        need exactly this.
         """
         self.ax.clear()
         self.ax.set_xlabel('Focus Value')
@@ -63,8 +69,9 @@ class FocusCurvePanel(QtWidgets.QWidget):
 
     def _render(self):
         """
-        Redraw the whole plot from `_results`: points, plus the fitted
-        curve/vertex if enough exist.
+        Redraw the whole plot from
+        :attr:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._results`:
+        points, plus the fitted curve/vertex if enough exist.
         """
         self._reset_axis()
         if not self._results:

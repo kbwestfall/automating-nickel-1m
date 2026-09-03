@@ -77,7 +77,7 @@ def clear_text_color(text:str) -> str:
 
 class StreamFormatter(logging.Formatter):
     """
-    Custom `Formatter <logging.Formatter>` for the stream handler.
+    Custom :class:`logging.Formatter` for the stream handler.
     """
     base_level = None
     """
@@ -126,7 +126,7 @@ class DebugStreamFormatter(StreamFormatter):
 
 class FileFormatter(logging.Formatter):
     """
-    Custom `Formatter <logging.Formatter>` for the file handler.
+    Custom :class:`logging.Formatter` for the file handler.
     """
 
     base_fmt = "%(levelname)8s | %(asctime)s | %(filename)s:%(funcName)s:%(lineno)s | %(message)s"
@@ -137,9 +137,10 @@ class FileFormatter(logging.Formatter):
 
 class GuiFormatter(logging.Formatter):
     """
-    Custom `Formatter <logging.Formatter>` for handlers feeding a GUI
+    Custom :class:`logging.Formatter` for handlers feeding a GUI
     widget: plain (no ANSI color codes, which would render as literal
-    escape junk in a text widget) and terser than `FileFormatter` (no
+    escape junk in a text widget) and terser than
+    :class:`~nickel_focus.pkg.logger.FileFormatter` (no
     timestamp or calling-frame location), since it's meant for a narrow
     panel that scrolls live.
     """
@@ -374,7 +375,7 @@ class NickelFocusLogger(logging.Logger):
         Parameters
         ----------
         handler_type : type
-            The `logging.Handler` subclass to remove; every attached
+            The :class:`logging.Handler` subclass to remove; every attached
             handler for which ``isinstance(handler, handler_type)`` is
             true is removed.
         """

@@ -78,7 +78,7 @@ class StarlistEntry:
     @property
     def coord(self) -> SkyCoord:
         """
-        The target position as an `~astropy.coordinates.SkyCoord`, in
+        The target position as an :class:`astropy.coordinates.SkyCoord`, in
         this entry's own reference frame and equinox (rather than any
         common frame).
 
@@ -319,7 +319,7 @@ def _parse_keyval_token(token: str, entry: StarlistEntry) -> None:
         such as ``V`` or ``J``. Anything else is stored verbatim in
         ``entry.extra``.
     entry
-        The `StarlistEntry` to update.
+        The :class:`~nickel_focus.starlist.StarlistEntry` to update.
     """
     m = _KEYVAL_RE.match(token)
     key, val = m.group('key'), m.group('val')
@@ -353,7 +353,8 @@ def _resolve_generic(cursor: _LineCursor, fmt: str | None) -> str:
     cursor
         The line cursor to consume from.
     fmt
-        The field's ``fieldformat``, as produced by `_parse_field_list`:
+        The field's ``fieldformat``, as produced by
+        :func:`~nickel_focus.starlist._parse_field_list`:
         ``None`` or ``'%s'`` for a whitespace-delimited token, ``'%N'``
         (``N`` an integer) for a fixed-width slice, ``'*'`` for the rest
         of the line, or any other string, which is a literal default
@@ -411,13 +412,14 @@ def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
     Collapse the consecutive ``ra_h ra_m ra_s`` / ``dec_d dec_m dec_s``
     triplets (or the ``ra_hms``/``ra_dms``/``dec_dms`` shorthands) that a
     ``!Data`` directive must always specify together into single pseudo
-    fields that `parse_data_line` knows how to consume as a unit.
+    fields that :func:`~nickel_focus.starlist.parse_data_line` knows how to
+    consume as a unit.
 
     Parameters
     ----------
     fields
         The ``(fieldname, fieldformat)`` pairs returned by
-        `_parse_field_list`.
+        :func:`~nickel_focus.starlist._parse_field_list`.
 
     Returns
     -------
@@ -426,7 +428,8 @@ def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
         single ``('__ra__', info)``/``('__dec__', info)`` pseudo-fields,
         where ``info`` is a dict with keys ``'unit'``,
         ``'colon_required'``, and ``'has_minsec'`` as consumed by
-        `_consume_angle`. All other fields are passed through unchanged.
+        :func:`~nickel_focus.starlist._consume_angle`. All other fields are
+        passed through unchanged.
 
     Raises
     ------
@@ -481,7 +484,7 @@ def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
 def compile_data_directive(directive: str | None = None) -> list:
     """
     Parse a ``!Data`` directive into the field-specification list consumed
-    by `parse_data_line`.
+    by :func:`~nickel_focus.starlist.parse_data_line`.
 
     Parameters
     ----------
@@ -537,8 +540,9 @@ def is_comment_line(line: str, patterns: list[str]) -> bool:
     line
         The raw line text to test.
     patterns
-        Regular expressions, as returned by `compile_comment_patterns`.
-        ``line`` is a comment if it matches (via `re.search`) any of
+        Regular expressions, as returned by
+        :func:`~nickel_focus.starlist.compile_comment_patterns`.
+        ``line`` is a comment if it matches (via :func:`re.search`) any of
         them.
 
     Returns
@@ -551,14 +555,15 @@ def is_comment_line(line: str, patterns: list[str]) -> bool:
 
 def parse_data_line(line: str, fields: list, lineno: int | None = None) -> StarlistEntry:
     """
-    Parse one starlist data line into a `StarlistEntry`.
+    Parse one starlist data line into a :class:`~nickel_focus.starlist.StarlistEntry`.
 
     Parameters
     ----------
     line
         The raw line text (not a comment or directive line).
     fields
-        The field specification, as returned by `compile_data_directive`.
+        The field specification, as returned by
+        :func:`~nickel_focus.starlist.compile_data_directive`.
     lineno
         Optional line number, recorded on the entry for error reporting.
 
@@ -618,26 +623,27 @@ def entries_to_table(
     entries: list[StarlistEntry], frame: str | object = 'icrs', **frame_attrs
 ) -> Table:
     """
-    Combine a list of `StarlistEntry` objects into a single
-    `~astropy.table.Table`, with every position transformed to one common
-    reference frame.
+    Combine a list of :class:`~nickel_focus.starlist.StarlistEntry` objects into a
+    single :class:`astropy.table.Table`, with every position transformed to one
+    common reference frame.
 
     Each entry can carry its own equinox/reference frame (``'fk4'`` or
     ``'fk5'``, set line-by-line from the starlist's ``equinox`` field), so
     positions cannot simply be stacked into a table as-is. This function
-    transforms each entry's `~astropy.coordinates.SkyCoord`
-    (`StarlistEntry.coord`) into ``frame`` individually before combining
-    them, which sidesteps that mismatch.
+    transforms each entry's :class:`astropy.coordinates.SkyCoord`
+    (:attr:`~nickel_focus.starlist.StarlistEntry.coord`) into ``frame``
+    individually before combining them, which sidesteps that mismatch.
 
     Parameters
     ----------
     entries
-        The entries to combine, e.g. as returned by `parse_data_line`.
+        The entries to combine, e.g. as returned by
+        :func:`~nickel_focus.starlist.parse_data_line`.
     frame
         The frame to transform every position into: a frame name
-        recognized by `~astropy.coordinates.frame_transform_graph` (e.g.
+        recognized by :attr:`astropy.coordinates.frame_transform_graph` (e.g.
         ``'icrs'``, ``'fk5'``, ``'fk4'``), or an already-constructed frame
-        instance/class accepted by `~astropy.coordinates.SkyCoord.transform_to`.
+        instance/class accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
     **frame_attrs
         Frame attributes used to construct the target frame when ``frame``
         is given as a name, e.g. ``equinox='J2000.0'``. Ignored if
@@ -717,12 +723,13 @@ def parse_starlist(
         file handle or list of strings).
     frame
         The frame to transform every position into, forwarded to
-        `entries_to_table`: a frame name recognized by
-        `~astropy.coordinates.frame_transform_graph` (e.g. ``'icrs'``,
+        :func:`~nickel_focus.starlist.entries_to_table`: a frame name recognized by
+        :attr:`astropy.coordinates.frame_transform_graph` (e.g. ``'icrs'``,
         ``'fk5'``, ``'fk4'``), or an already-constructed frame
-        instance/class accepted by `~astropy.coordinates.SkyCoord.transform_to`.
+        instance/class accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
     **frame_attrs
-        Frame attributes forwarded to `entries_to_table`, used to
+        Frame attributes forwarded to
+        :func:`~nickel_focus.starlist.entries_to_table`, used to
         construct the target frame when ``frame`` is given as a name,
         e.g. ``equinox='J2000.0'``.
 
@@ -730,8 +737,8 @@ def parse_starlist(
     -------
     astropy.table.Table
         One row per data line in the file, in file order, as built by
-        `entries_to_table`. Blank lines, ``!Comment``-matched lines, and
-        directive lines themselves are skipped.
+        :func:`~nickel_focus.starlist.entries_to_table`. Blank lines,
+        ``!Comment``-matched lines, and directive lines themselves are skipped.
     """
     if isinstance(source, (str, Path)):
         lines = Path(source).read_text().splitlines()

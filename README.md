@@ -1,132 +1,178 @@
-# Automating-Nickel-1m
+# nickel_focus
+
+Acquisition and focusing tools for the Nickel 1-m Telescope at Lick
+Observatory.
 
 Scott Hakoda
-Utah Tech University 
+Utah Tech University
 
-Site: University of California Observatories, Santa Cruz, California 
+Site: University of California Observatories, Santa Cruz, California
 Mentors: Kyle Westfall, Will Deich
 
-Automating Observing Procedures for the Nickel 1-m Telescope at Lick Observatory
+## Overview
 
-Lick Observatory’s Nickel 1-m Telescope, located atop Mount Hamilton, is utilized by a wide variety of observers, including faculty, staff, and students both within and outside of the University of California Observatories. At the beginning of each observation session, observers must perform a set of startup and calibration procedures. These include focusing, adjusting the telescope’s pointing, and collecting bias frames and sky flats. Currently, the focusing process is inefficient, requiring observers to select a focus star and manually image it at a range of different focus values. This is a process that takes approximately 10 minutes and must be repeated multiple times per night, making it a tedious and error-prone task. This project aims to address this inefficiency by automating the focusing process using Python scripting. The Keck Task Library (KTL) API was used for communication with the Nickel 1-m Telescope and manipulation of its instruments.  The new automation system selects and slews to the nearest known focus star based on the Nickel’s current position and takes a series of exposures of the star at a range of focus values. After each exposure, the quality of the focus is assessed by measuring the full width at half maximum (FWHM) of the star at each focus value. Based on the collected measurements, a curve is fit to the data to determine the optimal focus value. The new focusing procedure should significantly reduce telescope downtime spent on focusing by up to 90% and improve scientific return on data by standardizing the image quality. 
+Lick Observatory's Nickel 1-m Telescope, located atop Mount Hamilton, is
+used by a wide variety of observers, including faculty, staff, and
+students both within and outside the University of California
+Observatories. At the start of each observing session, observers must
+perform a set of startup and calibration procedures, including focusing
+and adjusting the telescope's pointing. Focusing in particular has
+historically been a manual, ~10-minute-per-iteration process, repeated
+several times per night — tedious, error-prone, and a meaningful source of
+lost telescope time.
 
+This package automates that process using the Keck Task Library (KTL) API,
+the control interface for the Nickel's mechanisms (secondary focus,
+pointing) and its science camera. Given the telescope's current position,
+it selects and slews to the nearest known focus or pointing star, takes a
+series of exposures across a range of focus values, measures each
+exposure's image quality (FWHM), and fits a curve to the results to
+determine the optimal focus. A Qt-based GUI is also available for
+interactive use.
 
-move_to_target.py:
-    automatically moves the Nickel telescope to the nearest suitable star for focus or pointing calibration based on a catalog of known stars.
+## Installation
 
-    Uses the Nickel's current RA and DEC to locate the closest pointing/focus (p/f) star from the star list (point_focus.txt)
-    Creates a SkyCoord object for the telescope and each of the p/f stars and uses the SkyCoord method .seperation to get the distance between the telescope's position and each of the p/f stars. The p/f star with the smallest seperation is returned and the telescope is moved to its RA and DEC.
+`nickel_focus` requires Python 3.12–3.14. The `ktl` package (Keck's
+telescope-control middleware) is not pip-installable — it's provided
+separately by the observatory's `kpython` environment. `nickel_focus` is
+designed to degrade gracefully without it: importing the package still
+works, and code paths that don't need a live telescope connection (e.g.
+re-analyzing an already-recorded focus sequence) still run.
 
-    Argument	    Type	Default	    Description
-    --star_type     str	    'focus'	    Type of star: 'focus' or 'pointing'
-    --dry_run	    flag	False	    Test mode - no actual telescope movement
+For most uses — development, testing on a laptop, or reprocessing archived
+data — install directly from a checkout of this repository:
 
-    Examples
+```console
+pip install .
+```
 
-    1. Move to focus star:
-        kpython move_to_target.py --star_type focus
-    
-    2. Test pointing star slelction:
-        kpython move_to_target.py --star_type pointing --dry_run
+Optional extras add functionality on top of the base install:
 
+| Extra | Adds |
+|---|---|
+| `gui` | The Qt-based focusing GUI (`nickel_focus_gui`), via PySide6 |
+| `test` | The pytest-based test suite |
+| `gui_test` | GUI-specific test dependencies (`pytest-qt`) |
+| `dev` | All of the above, plus `setuptools_scm` for the maintainer tools under `tools/` |
 
-photometry.py:
-    analyzes FITS images to measure star properties, particularly the Full Width at Half Maximum (FWHM) for focus optimization.
+For example, to install with GUI support:
 
-    1. Iterative Background Subtraction
-        - uses SigmaClip, detect_threshold, and detect_sources to determine sources and grow a grow a mask around them to be used when determining the background. 
-        - median background is subtracted from the data 
-        - process repeated until max iterations or threshold change is insignificant 
-        - background subtracted data and detcted sources are returned
-    
-    2. Source Shape Analysis. 
-        - use moments to characterize source propertis 
-        - calculate M0, M1, and M2
-        - σ_x = √(M2_x - M1_x²)
-        - σ_y = √(M2_y - M1_y²)
-        - FWHM_x = 2√(2ln(2)) * σ_x ≈ 2.355 * σ_x
-        - FWHM_y = 2√(2ln(2)) * σ_y ≈ 2.355 * σ_y
+```console
+pip install ".[gui]"
+```
 
-    3. Source Selection
-        a. Coordinate-based (if focus_coords provided):
-            - calculate distance to each detected source 
-            - select closest source to specified coordinates
-        b. brightness-based:
-            - select brightest source (highest M0)
-            - used when coordinates not specified
-    
-    returns:    
-        focus_star = {
-            'Label': source_id,
-            'M0': total_flux,
-            'Centroid': (x_position, y_position),
-            'FWHM': average_fwhm (from moment analysis),
-            'Focus': focus_value,
-            'ObsNum': observation_number
-        }
+or, for a full development setup:
 
+```console
+pip install ".[dev]"
+```
 
-automate.py:
-    focus finding system for the Nickel telescope that automatically determines the optimal focus position by taking a series of exposures at different focus values and analyzing the FWHM of stars. 
+This installs the three command-line scripts described below directly
+onto your `PATH` (via the environment's usual `bin`/`Scripts` directory).
+Note this is separate from how the package reaches the telescope itself —
+see **Maintenance** below.
 
-    Keyword Class:
-        manages all KTL keywords
+## Scripts
 
-    Event Class:
-        executes telescope operation and image acquisition 
-        a sequence consists of:
-            1. change focus to target value
-            2. take exposure
-            3. perform photometery on resulting image 
+Three command-line scripts are installed. All three share a common set of
+logging options: `-v`/`--verbosity` (0 = warnings/errors only, 1 = default,
+adds informational messages, 2 = adds debug messages), `--log_file` (write
+a log file; use `default` for an automatically-named one), and
+`--log_level` (verbosity for the log file specifically, if different from
+the console). Pass `--help` to any of them for the full, current option
+list.
 
-    Focus Finding:
-        - automatic
-            1. intial sampling: takes two images at starting focus and starting focus + step_size
-            2. analyze each images fwhm
-            3. curve following: uses curve_finder to traverse the curve in the direction that minimizes the fwhm
-            4. range expansion: uses curve_helper to fill in additional points aroudn the minimum 
-            5. fit quadratic curve to collected data
-        - manual
-            1. takes images at regular intervals from start to end focus
-            2. analyze each images fwhm 
-            3. fit quadratic curve to collected data
+### `nickel_focus`
 
-    Program Flow:
-        1. Parse command line arguments
-        2. Create Keyword object (KTL interface)
-        3. Perform safety checks (controller ready, motion enabled)
-        4. Execute focus finding:
-            - Auto mode: curve_finder algorithm
-            - Manual mode: evalute focus over range
-            - Refit/Reevaluate: data reprocessing
-        5. Analyze results:
-            - Detect outliers
-            - Fit quadratic curve
-            - Find optimal focus
-        6. Save data and display results
+The main focus-finding driver. Given a starting focus value and a step
+size, it either follows an automated curve-fitting search or steps
+through a fixed grid, taking an exposure and measuring its image quality
+at each step, then fits a quadratic to focus-vs-FWHM to find the optimum.
 
-    Argument	            Type    Default	    Description
-    -fs, --focus_start	    int	    350	        Starting focus value
-    -fe, --focus_end	    int	    None	    Ending focus value 
-    -s, --step_size	        int	    5	        Step size for focus increments
-    -el, --length_exposure	float	1.0	        Exposure length in seconds
-    -es, --exposure_speed	str	    'Fast'	    Exposure speed: Slow, Medium, Fast
-    --focus_coords	        float   None	    Coordinates(x, y) of star to use for focus
-    --refit	                flag	False	    Refit curve using last focus session data
-    --omit	                int 	None	    Observation numbers to omit from fitting
-    --reevaluate	        flag	False	    Reprocess last focus session data
-    --verbose	            flag	False	    Enable detailed debug output
+```console
+# Automated search starting at focus 350, step size 5
+nickel_focus 350 5
 
-    Examples
+# Fixed grid from focus 350 to 400 in steps of 5
+nickel_focus 350 5 400
 
-    1. automatic focus finding: starting at 360 incrementing focus by 2
-        kpython automate.py -fs 360 -s 2
+# Fixed grid with an explicit number of steps instead of an end value
+nickel_focus 350 5 --nstep 10
 
-    2. specified range focus finding: starting at 360 and stopping at 370 incrementing focus by 2 (6 exposures)
-        kpython automate.py -fs 360 -fe 370 -s 2
+# Save the measured focus curve to a file for later reference
+nickel_focus 350 5 --ofile focus_data.ecsv
+```
 
-    3. refit curve: excluding bad measurements:
-        kpython automate.py --refit --omit 1001 1002 1003
+Useful options include `--exptime`/`-t` (exposure time in seconds),
+`--binning`/`-b` (`1,1`, `2,2`, or `4,4`), `--speed`/`-s` (`Slow` or
+`Fast`), and `--no-plot` (disable the live focus-curve plot). A sequence
+can also be re-analyzed from previously-recorded exposures, without a live
+`ktl` connection, using `--obsnum` together with `--datadir`, `--prefix`,
+and `--suffix` to locate the archived files. (`--refit`/`--omit`, for
+refitting a saved curve after excluding bad points, are accepted but not
+yet implemented.)
 
-    4. reevalute curve: using specific coordinate of focus star
-        kpython automate.py --reevaluate --focus_coords 480 580 
+### `nickel_focus_gui`
+
+Launches a Qt-based GUI for the same focusing functionality — slewing,
+single exposures, grid sequences, and automated sequences — with live
+plots of the current frame, per-exposure source stamps, and the evolving
+focus curve. Requires the `gui` extra (PySide6). Takes no arguments beyond
+the shared logging options above.
+
+```console
+nickel_focus_gui
+```
+
+### `nickel_slew_to_nearest`
+
+Slews the telescope to the nearest known pointing or focus star, or the
+nearest match in a user-supplied starlist.
+
+```console
+# Slew to the nearest star in the default pointing/focus catalog
+nickel_slew_to_nearest
+
+# Restrict to the pointing stars specifically, without actually moving
+nickel_slew_to_nearest --search Pointing --dry_run
+
+# Use a custom starlist file instead of the default catalog
+nickel_slew_to_nearest --starlist my_targets.txt
+```
+
+## Maintenance
+
+> **Notional.** The description below reflects the deployment approach as
+> currently designed and is expected to change as it's finalized with
+> Brad Holden and Will Deich; see `claude/DEPLOYMENT.md` in this
+> repository for the current, evolving detail.
+
+Development happens in this git repository. At the telescope, however,
+`nickel_focus` runs under the observatory's own `kpython` environment and
+is maintained at the system level by observatory staff — observers use
+that system-level install directly, rather than a `pip`-managed
+environment.
+
+That system install goes through Lick/Keck's existing "kroot"-style build
+system, whose source of truth is CVS rather than git. The plan is:
+
+- A one-way, manually-triggered sync (`tools/deploy.sh`) mirrors this
+  repository's `nickel_focus/` tree into the CVS-managed working copy that
+  the kroot build actually installs from.
+- A tree of kroot-convention Makefiles under `nickel_focus/` (mirroring
+  its directory structure) declare which files are importable library code
+  versus installed executables, following the same conventions used by
+  other instruments' software at Lick.
+- The three command-line scripts are installed from `.sin` template files
+  under `nickel_focus/sin/`, each starting with a `#! @KPYTHON@` shebang
+  that gets substituted with the real `kpython` interpreter path at
+  install time — the standard UCO/Keck convention for this kind of script.
+- Because no `pip` build ever happens along this path,
+  `nickel_focus/pkg/version.py` (normally generated by `setuptools_scm` as
+  a side effect of a `pip` build) is instead regenerated directly via
+  `tools/write_version.py`, run as a step in the deploy script.
+
+`pip install .` and the scripts it installs (see above) remain the
+supported path for development, CI, and any other pip-managed use — the
+kroot/CVS path above is specific to the telescope's own system
+installation.

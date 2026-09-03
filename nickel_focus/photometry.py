@@ -28,8 +28,8 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
     """
     Find sources in an image.
 
-    Iteratively uses `photutils.segmentation.detect_threshold` to determine the
-    image detection threshold and `photutils.segmentation.detect_sources` to
+    Iteratively uses :func:`photutils.segmentation.detect_threshold` to determine the
+    image detection threshold and :func:`photutils.segmentation.detect_sources` to
     identify pixels with sources.  Source pixels masks are grown and the
     non-source pixels are used to measure and subtract the background.
     Iterations stop when subsequent measurements of the threshold are within the
@@ -45,16 +45,16 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
         Number of pixels to grow the source mask.
     atol : :obj:`float`, optional
         Absolute tolerance used to test for convergence of the detection
-        threshold.  See `numpy.isclose`.
+        threshold.  See :func:`numpy.isclose`.
     rtol : :obj:`float`, optional
         Relative tolerance used to test for convergence of the detection
-        threshold.  See `numpy.isclose`.
+        threshold.  See :func:`numpy.isclose`.
 
     Returns
     -------
     background : :obj:`float`
         The estimated background in the image
-    source_mask : `photutils.segmentation.core.SegmentationImage`
+    source_mask : :class:`photutils.segmentation.core.SegmentationImage`
         Segmentation image.
     """
     previous_threshold = None               # Previous threshold value
@@ -207,14 +207,14 @@ def evaluate_sources(data, sources):
 
     Parameters
     ----------
-    data : `numpy.ndarray`
+    data : :class:`numpy.ndarray`
         Background subtracted, raw image data
-    sources : `photutils.segmentation.core.SegmentationImage`
+    sources : :class:`photutils.segmentation.core.SegmentationImage`
         Source segmentation image.
 
     Returns
     -------
-    `astropy.table.Table`
+    :class:`astropy.table.Table`
         Table with the source measurements.  Columns are:
             - ID: Source ID number
             - CENX : center along X (column)
@@ -269,7 +269,7 @@ def image_quality(fits_file, method='brightest'):
 
     Parameters
     ----------
-    fits_file : :obj:`str`, `Path`
+    fits_file : :obj:`str`, :class:`pathlib.Path`
         File with raw image data
     method : :obj:`str`, :obj:`tuple`, optional
         Method used to measure the image quality.  Must be:
@@ -285,15 +285,16 @@ def image_quality(fits_file, method='brightest'):
 
     Returns
     -------
-    data : `numpy.ndarray`
+    data : :class:`numpy.ndarray`
         Raw image data.
     bkg : :obj:`float`
         Estimated background.
-    src_data : `astropy.table.Table`
-        Table with the source measurements; see :func:`evaluate_sources`.
+    src_data : :class:`astropy.table.Table`
+        Table with the source measurements; see
+        :func:`~nickel_focus.photometry.evaluate_sources`.
     img_quality : :obj:`float`
         The image-quality measurement (mean of the source's x and y sigma).
-    stamp : `numpy.ndarray`
+    stamp : :class:`numpy.ndarray`
         Cutout of the background-subtracted data around the selected source.
     coords : :obj:`tuple`
         The (x,y) centroid of the selected source.

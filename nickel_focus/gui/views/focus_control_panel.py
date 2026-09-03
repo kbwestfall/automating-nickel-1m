@@ -3,8 +3,9 @@ Focus-sequence configuration and controls.
 
 See GUI_DESIGN.md §5.4 and claude/GUI_IMPLEMENTATION.md's Phase 4 for the
 tabbed redesign. This view only exposes configuration and emits signals
-for requested actions; it never constructs a `focus.FocusSequence` or
-talks to `gui.model.focus_worker.FocusWorker` itself -- that's the
+for requested actions; it never constructs a
+:class:`~nickel_focus.focus.FocusSequence` or talks to
+:class:`~nickel_focus.gui.model.focus_worker.FocusWorker` itself -- that's the
 Controller's job.
 """
 from pathlib import Path
@@ -13,7 +14,7 @@ from nickel_focus.gui.qt import QtCore, QtWidgets
 
 
 def _int_spin(minimum, maximum, value):
-    """A :class:`~PySide6.QtWidgets.QSpinBox` with no increment/decrement buttons."""
+    """A :class:`PySide6.QtWidgets.QSpinBox` with no increment/decrement buttons."""
     spin = QtWidgets.QSpinBox()
     spin.setRange(minimum, maximum)
     spin.setValue(value)
@@ -22,7 +23,7 @@ def _int_spin(minimum, maximum, value):
 
 
 def _float_spin(minimum, maximum, value):
-    """A :class:`~PySide6.QtWidgets.QDoubleSpinBox` with no increment/decrement buttons."""
+    """A :class:`PySide6.QtWidgets.QDoubleSpinBox` with no increment/decrement buttons."""
     spin = QtWidgets.QDoubleSpinBox()
     spin.setRange(minimum, maximum)
     spin.setValue(value)
@@ -40,7 +41,7 @@ def _exposure_field_rows():
     tuple
         ``(rows, exptime_spin, speed_combo, binning_combo)``, where
         ``rows`` is a list of ``(label, widget)`` pairs suitable for
-        :func:`_group_box`.
+        :func:`~nickel_focus.gui.views.focus_control_panel._group_box`.
     """
     exptime_spin = _float_spin(0.1, 600., 5.)
     speed_combo = QtWidgets.QComboBox()
@@ -58,14 +59,14 @@ def _exposure_field_rows():
 def _two_column_row(left_rows, right_rows):
     """
     Lay ``left_rows``/``right_rows`` (each a list of ``(label, widget)``
-    pairs) out as two side-by-side :class:`~PySide6.QtWidgets.QFormLayout`\\
+    pairs) out as two side-by-side :class:`PySide6.QtWidgets.QFormLayout`\\
     s, so a tab's fields use horizontal space instead of stacking
     everything in one tall column -- exposure parameters on the left,
     the focus value(s) that define the sequence on the right.
 
     Returns
     -------
-    :class:`~PySide6.QtWidgets.QHBoxLayout`
+    :class:`PySide6.QtWidgets.QHBoxLayout`
     """
     # QFormLayout is a layout specialized for exactly this
     # "label: field" arrangement -- addRow() places each label to the
@@ -98,7 +99,7 @@ def _tighten_margins(widget):
 
     Parameters
     ----------
-    widget : :class:`~PySide6.QtWidgets.QWidget`
+    widget : :class:`PySide6.QtWidgets.QWidget`
         The widget whose layout's margins/spacing should be tightened;
         must already have a layout set.
     """
@@ -109,10 +110,11 @@ def _tighten_margins(widget):
 
 def _group_box(rows):
     """
-    A titleless :class:`~PySide6.QtWidgets.QGroupBox` containing ``rows``
-    laid out as a :class:`~PySide6.QtWidgets.QFormLayout` -- the border
+    A titleless :class:`PySide6.QtWidgets.QGroupBox` containing ``rows``
+    laid out as a :class:`PySide6.QtWidgets.QFormLayout` -- the border
     alone groups the fields, the same untitled convention used by the
-    Slew tab's sub-panels (see `FocusControlPanel._build_slew_tab`'s
+    Slew tab's sub-panels (see
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel._build_slew_tab`'s
     docstring for why no title is needed there).
 
     Parameters
@@ -120,11 +122,11 @@ def _group_box(rows):
     rows : list
         ``(label, field)`` pairs, in the order they should appear;
         ``field`` may be a widget or a layout (a
-        :class:`~PySide6.QtWidgets.QFormLayout` row accepts either).
+        :class:`PySide6.QtWidgets.QFormLayout` row accepts either).
 
     Returns
     -------
-    :class:`~PySide6.QtWidgets.QGroupBox`
+    :class:`PySide6.QtWidgets.QGroupBox`
     """
     form = QtWidgets.QFormLayout()
     for label, field in rows:
@@ -136,7 +138,7 @@ def _group_box(rows):
 
 
 def _button_row(*buttons):
-    """A :class:`~PySide6.QtWidgets.QHBoxLayout` containing each of ``buttons``, in order."""
+    """A :class:`PySide6.QtWidgets.QHBoxLayout` containing each of ``buttons``, in order."""
     row = QtWidgets.QHBoxLayout()
     for button in buttons:
         row.addWidget(button)
@@ -145,13 +147,13 @@ def _button_row(*buttons):
 
 def _add_centered_label(layout, text):
     """
-    Add a :class:`~PySide6.QtWidgets.QLabel` to ``layout``, horizontally
+    Add a :class:`PySide6.QtWidgets.QLabel` to ``layout``, horizontally
     centered over whatever ``layout`` holds below it, rather than
     stretched to its full width or left-aligned.
 
     Parameters
     ----------
-    layout : :class:`~PySide6.QtWidgets.QBoxLayout`
+    layout : :class:`PySide6.QtWidgets.QBoxLayout`
         The layout to add the label to.
     text : :obj:`str`
         The label's text.
@@ -162,17 +164,18 @@ def _add_centered_label(layout, text):
 def _tab_widget(layout):
     """
     Wrap ``layout`` in a scrollable page, ready to hand to
-    :func:`~PySide6.QtWidgets.QTabWidget.addTab` -- every
+    :meth:`PySide6.QtWidgets.QTabWidget.addTab` -- every
     ``_build_*_tab`` method below ends by returning this.
 
-    Scrollable (rather than a bare :class:`~PySide6.QtWidgets.QWidget`)
+    Scrollable (rather than a bare :class:`PySide6.QtWidgets.QWidget`)
     so a tab whose content doesn't fit the available height scrolls
     internally, keeping the tab bar itself fixed in place instead of
-    scrolling out of view along with everything else -- `MainWindow` no
-    longer needs to size its own control-panel area around the tallest
-    page (Help) for exactly this reason. The frame is turned off since
-    the surrounding `QTabWidget` already visually frames each page;
-    without this, a page would show two nested borders.
+    scrolling out of view along with everything else --
+    :class:`~nickel_focus.gui.views.main_window.MainWindow` no longer needs to
+    size its own control-panel area around the tallest page (Help) for
+    exactly this reason. The frame is turned off since the surrounding
+    :class:`PySide6.QtWidgets.QTabWidget` already visually frames each
+    page; without this, a page would show two nested borders.
     """
     widget = QtWidgets.QWidget()
     widget.setLayout(layout)
@@ -193,37 +196,42 @@ class FocusControlPanel(QtWidgets.QWidget):
     One tab per action -- Slew, Single, Grid, Auto, Replay -- each
     showing only the fields relevant to it. Single/Grid/Auto/Replay each
     lay their fields out as two side-by-side, titleless
-    :class:`~PySide6.QtWidgets.QGroupBox` sub-panels (see
-    :func:`_group_box`) -- exposure parameters (or, for Replay,
+    :class:`PySide6.QtWidgets.QGroupBox` sub-panels (see
+    :func:`~nickel_focus.gui.views.focus_control_panel._group_box`) --
+    exposure parameters (or, for Replay,
     on-disk file input) on the left, the focus value(s) that define the
     sequence on the right -- with its own acquisition button(s) below
     both, spanning the full tab width rather than belonging to either
     sub-panel: Single has "Acquire"; Grid and Auto have "Acquire" and
     "Interrupt"; Replay has "Load". Log and Help have no buttons at all.
-    Because a `QTabWidget` only lets the user interact with the
-    currently visible page, each button unambiguously means "do this
-    tab's action" -- there's no need to track which tab is active to
-    decide what a click means, only to decide what
-    :func:`get_focus_sequence_type`/:func:`get_focus_sequence_config`
+    Because a :class:`PySide6.QtWidgets.QTabWidget` only lets the user
+    interact with the currently visible page, each button unambiguously
+    means "do this tab's action" -- there's no need to track which tab is
+    active to decide what a click means, only to decide what
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_focus_sequence_type`/
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_focus_sequence_config`
     should return once a click has already happened.
 
     The Slew tab (first in the list) is a small control panel around
-    `slew.NickelTelescopePointing`/`slew.find_nearest_target`, mirroring
-    `scripts/slew_to_nearest.py`: a live "current position" display and
-    a manually-editable RA/Dec target with its own "Move to Target"
-    button on the left; a starlist file/browse field, an object-name
-    search string, and the three "Find nearest..." buttons (which
-    populate the target fields rather than moving the telescope
+    :class:`~nickel_focus.slew.NickelTelescopePointing`/
+    :func:`~nickel_focus.slew.find_nearest_target`, mirroring
+    :class:`~nickel_focus.scripts.slew_to_nearest.NickelSlewToNearest`: a live
+    "current position" display and a manually-editable RA/Dec target with its
+    own "Move to Target" button on the left; a starlist file/browse field, an
+    object-name search string, and the three "Find nearest..." buttons
+    (which populate the target fields rather than moving the telescope
     themselves) on the right. Unlike the other tabs, it has no
-    `get_*_config` counterpart -- each button emits its own request
+    ``get_*_config`` counterpart -- each button emits its own request
     signal with exactly the text fields it needs, since there is no
     single "the currently active tab's config" to read (this tab is
     never in competition with Single/Grid/Auto/Replay for what
-    `startRequested` means).
+    :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.startRequested`
+    means).
 
     The Single tab doubles as "move to best focus": its focus field
     defaults to the most recent fitted best focus (via
-    :func:`show_best_focus`), so acquiring a single exposure there with
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.show_best_focus`),
+    so acquiring a single exposure there with
     the default value *is* moving to best focus; changing the value
     first tests any other focus instead. There is no separate
     confirmation step -- reviewing/editing the value before pressing
@@ -232,45 +240,50 @@ class FocusControlPanel(QtWidgets.QWidget):
     There is no photometry-method selector: every measurement uses the
     brightest detected source by default, and the coordinates actually
     used (whether the automatic brightest source or one picked by
-    clicking the image and pressing 'm' -- see `ImagePanel`) are
-    reported on the Log tab via :func:`update_step`/
-    :func:`show_single_exposure_result` rather than shown as a persistent
-    "current method" state.
+    clicking the image and pressing 'm' -- see
+    :class:`~nickel_focus.gui.views.image_panel.ImagePanel`) are reported on
+    the Log tab via
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.update_step`/
+    :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.show_single_exposure_result`
+    rather than shown as a persistent "current method" state.
 
     The Options tab holds app-wide preferences -- currently just
     "Remember settings between sessions," which opts into (and, when
     unchecked, immediately erases) the settings persistence handled by
-    `~gui.views.main_window.MainWindow`. It's meant to grow as more
-    such preferences become useful, rather than being specific to any
-    one sequence action the way the other tabs are.
+    :class:`~nickel_focus.gui.views.main_window.MainWindow`. It's meant to
+    grow as more such preferences become useful, rather than being specific
+    to any one sequence action the way the other tabs are.
 
     Attributes
     ----------
-    startRequested : :class:`~PySide6.QtCore.Signal`
+    startRequested : :class:`PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Acquire" or Replay's "Load" is
         clicked; the Controller should read
-        :func:`get_focus_sequence_type` and
-        :func:`get_focus_sequence_config` (and :func:`get_exposure_config`
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_focus_sequence_type`
+        and
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_focus_sequence_config`
+        (and
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_exposure_config`
         for Grid/Auto) to build and run the sequence.
-    stopRequested : :class:`~PySide6.QtCore.Signal`
+    stopRequested : :class:`PySide6.QtCore.Signal`
         Emitted when Grid/Auto's "Interrupt" is clicked.
-    takeSingleExposureRequested : :class:`~PySide6.QtCore.Signal`
+    takeSingleExposureRequested : :class:`PySide6.QtCore.Signal`
         Emitted with a focus value when Single's "Acquire" is clicked.
-    moveToTargetRequested : :class:`~PySide6.QtCore.Signal`
+    moveToTargetRequested : :class:`PySide6.QtCore.Signal`
         Emitted with ``(ra_text, dec_text)`` when the Slew tab's "Move to
         Target" is clicked; the Controller should parse these and call
-        `slew.NickelTelescopePointing.slew_to`.
-    findNearestObjectRequested : :class:`~PySide6.QtCore.Signal`
+        :meth:`~nickel_focus.slew.NickelTelescopePointing.slew_to`.
+    findNearestObjectRequested : :class:`PySide6.QtCore.Signal`
         Emitted with ``(file_text, search_text)`` when the Slew tab's
         "Find nearest object" is clicked -- either may be an empty
         string, meaning "use the default" (see
-        `slew.find_nearest_target`).
-    findNearestPointingRequested : :class:`~PySide6.QtCore.Signal`
+        :func:`~nickel_focus.slew.find_nearest_target`).
+    findNearestPointingRequested : :class:`PySide6.QtCore.Signal`
         Emitted when the Slew tab's "Find nearest pointing star" is
         clicked; the Controller should search the packaged default
         catalog with ``obj_search_str='Pointing'``, ignoring whatever is
         currently in the file/search fields.
-    findNearestFocusRequested : :class:`~PySide6.QtCore.Signal`
+    findNearestFocusRequested : :class:`PySide6.QtCore.Signal`
         Emitted when the Slew tab's "Find nearest focus star" is
         clicked; like ``findNearestPointingRequested``, but with
         ``obj_search_str='Focusing'``.
@@ -354,12 +367,14 @@ class FocusControlPanel(QtWidgets.QWidget):
     def _build_acquire_interrupt_row(self):
         """
         An "Acquire"/"Interrupt" button pair wired to
-        :attr:`startRequested`/:attr:`stopRequested`, used identically
-        by the Grid and Auto tabs (the only two tabs with a running,
-        interruptible sequence). Interrupt starts disabled; see
-        :func:`set_running`/:func:`set_stopping` for how the two
-        buttons' enabled states are actually managed once the panel is
-        in use.
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.startRequested`/
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.stopRequested`,
+        used identically by the Grid and Auto tabs (the only two tabs with a
+        running, interruptible sequence). Interrupt starts disabled; see
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.set_running`/
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.set_stopping`
+        for how the two buttons' enabled states are actually managed once the
+        panel is in use.
 
         Returns
         -------
@@ -380,7 +395,7 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _build_slew_tab(self):
         """
-        Build the Slew tab as two untitled `~PySide6.QtWidgets.QGroupBox`
+        Build the Slew tab as two untitled :class:`PySide6.QtWidgets.QGroupBox`
         sub-panels: current/target RA-Dec and "Move to Target" on the
         left, starlist file/browse, a target-name search pattern, and a
         single row of three "Find nearest ..." buttons ("Object",
@@ -719,8 +734,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         every *interactive* tab displays without scrolling by default.
 
         Not a hard floor: every tab page is individually scrollable (see
-        `_tab_widget`), so this panel can be shrunk well below this value
-        -- any tab that no longer fits just scrolls internally, and the
+        :func:`~nickel_focus.gui.views.focus_control_panel._tab_widget`), so
+        this panel can be shrunk well below this
+        value -- any tab that no longer fits just scrolls internally, and the
         tab bar itself (outside all of that scrolling) stays put either
         way. Help is excluded because it's a large block of static
         reference text that's taller than every other tab combined with
@@ -729,13 +745,15 @@ class FocusControlPanel(QtWidgets.QWidget):
         the window opens, for the sake of a tab that's fine to need a
         scrollbar immediately.
 
-        Each candidate tab's *content widget* `minimumSizeHint` is used
-        here, not the tab page's own (a `~PySide6.QtWidgets.QScrollArea`,
-        whose `sizeHint` reflects a generically "comfortable" size that
-        can run well past what its content actually needs -- e.g. the
-        Log tab's `QPlainTextEdit`, which is happy to be much shorter
-        than its `sizeHint` and was otherwise the tallest tab here,
-        ahead of Replay).
+        Each candidate tab's *content widget*
+        :meth:`PySide6.QtWidgets.QWidget.minimumSizeHint` is used here, not
+        the tab page's own (a :class:`PySide6.QtWidgets.QScrollArea`, whose
+        :meth:`PySide6.QtWidgets.QWidget.sizeHint` reflects a generically
+        "comfortable" size that can run well past what its content actually
+        needs -- e.g. the Log tab's
+        :class:`PySide6.QtWidgets.QPlainTextEdit`, which is happy to be
+        much shorter than its :meth:`PySide6.QtWidgets.QWidget.sizeHint`
+        and was otherwise the tallest tab here, ahead of Replay).
 
         Returns
         -------
@@ -759,7 +777,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         The sequence type for the currently active tab, as ``'grid'``,
         ``'automated'``, or ``'archive'`` -- or ``None`` if Single, Log,
         or Help is active (in which case no button can have triggered
-        `startRequested` in the first place).
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.startRequested`
+        in the first place).
         """
         tab = self.tabs.currentWidget()
         if tab is self.grid_tab:
@@ -775,8 +794,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         Return the currently active tab's configuration as a
         :obj:`dict`. Only includes keys relevant to that tab -- e.g. a
         Grid config has no ``datadir``, an Auto config has ``maxsteps``
-        instead of ``nstep`` -- matching `focus.py`'s own CLI arguments.
-        Empty for Single/Log/Help.
+        instead of ``nstep`` -- matching the CLI arguments of
+        :class:`~nickel_focus.scripts.focus.NickelFocus`. Empty for
+        Single/Log/Help.
         """
         tab = self.tabs.currentWidget()
         if tab is self.grid_tab:
@@ -831,9 +851,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         Return every persistable field's current value as a flat
         :obj:`dict` keyed by ``'<tab>/<field>'`` (e.g. ``'grid/start'``),
         suitable for a settings store like
-        :class:`~PySide6.QtCore.QSettings`. The Single tab's focus value
+        :class:`PySide6.QtCore.QSettings`. The Single tab's focus value
         is deliberately excluded -- it tracks the most recent fit (see
-        :func:`show_best_focus`), not a persisted default.
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.show_best_focus`),
+        not a persisted default.
         """
         state = {}
         for key, widget in self._settings_fields().items():
@@ -847,8 +868,9 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def set_settings_state(self, state):
         """
-        Apply a settings :obj:`dict` from :func:`get_settings_state` (or
-        any subset of it -- e.g. an older saved state missing a field
+        Apply a settings :obj:`dict` from
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_settings_state`
+        (or any subset of it -- e.g. an older saved state missing a field
         added later). Keys not recognized, or missing entirely, are
         left at their current value.
         """
@@ -866,9 +888,11 @@ class FocusControlPanel(QtWidgets.QWidget):
     def _settings_fields(self):
         """
         Map of persistable setting key to the widget holding it. The
-        single source of truth for both :func:`get_settings_state` and
-        :func:`set_settings_state`, so the two can't drift apart into
-        covering different fields.
+        single source of truth for both
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.get_settings_state`
+        and
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.set_settings_state`,
+        so the two can't drift apart into covering different fields.
         """
         return {
             'slew/file': self.slew_file_edit,
@@ -901,12 +925,14 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         Enable or disable the four tabs that need a live ``ktl``
         connection to do anything (Slew, Single, Grid, Auto) -- called
-        once from `Controller.__init__` (see there for how ``enabled``
-        is decided). This is a one-time, ``ktl``-availability toggle,
-        independent of :func:`set_running`'s per-action running state.
+        once from :meth:`~nickel_focus.gui.controller.Controller.__init__`
+        (see there for how ``enabled`` is decided). This is a one-time,
+        ``ktl``-availability toggle, independent of
+        :meth:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.set_running`'s
+        per-action running state.
 
         Disabling a tab via
-        `~PySide6.QtWidgets.QTabWidget.setTabEnabled` grays it out and
+        :meth:`PySide6.QtWidgets.QTabWidget.setTabEnabled` grays it out and
         disables every widget on it, so it stays visible but can't be
         clicked into or interacted with; the Replay tab -- the only one
         that works with no ``ktl`` connection at all -- is left alone,
@@ -944,7 +970,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.status_label.setText('Stopping — waiting for current exposure to finish...')
 
     def update_step(self, result, total_expected=None):
-        """Update the live step/status display for one new `focus.StepResult`."""
+        """Update the live step/status display for one new
+        :class:`~nickel_focus.focus.StepResult`."""
         text = f'Step {result.index + 1}'
         if total_expected:
             text += f'/{total_expected}'
@@ -974,7 +1001,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         Populate the Slew tab's target RA/Dec fields with a found
         nearest target, and report it (mirrors
-        `scripts/slew_to_nearest.py`'s printed message).
+        ``scripts/slew_to_nearest.py``'s printed message).
 
         Parameters
         ----------
@@ -992,7 +1019,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.status_label.setText(f'Nearest target: {name} (RA={ra_text}, Dec={dec_text})')
 
     def show_slew_result(self, message):
-        """Report a completed "Move to Target" slew (e.g., from `SlewWorker.slewFinished`)."""
+        """
+        Report a completed "Move to Target" slew (e.g., from
+        :attr:`~nickel_focus.gui.model.slew_worker.SlewWorker.slewFinished`).
+        """
         self.status_label.setText(message)
 
     def show_best_focus(self, best_focus, best_fwhm):
@@ -1013,7 +1043,10 @@ class FocusControlPanel(QtWidgets.QWidget):
             f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
 
     def show_failure(self, message):
-        """Display a sequence failure (e.g., from `FocusWorker.focusSequenceFailed`)."""
+        """
+        Display a sequence failure (e.g., from
+        :attr:`~nickel_focus.gui.model.focus_worker.FocusWorker.focusSequenceFailed`).
+        """
         self.status_label.setText(message)
 
     def append_log_line(self, text):
@@ -1030,9 +1063,12 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _on_browse_clicked(self):
         """
-        Slot for `replay_browse_button`'s ``clicked``: open the native
-        OS directory picker and, unless the user cancels (signaled by
-        an empty string, not `None`), fill it into `replay_datadir_edit`.
+        Slot for the
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.replay_browse_button`
+        ``clicked`` signal: open the native OS directory picker and, unless
+        the user cancels (signaled by an empty string, not ``None``), fill it
+        into
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.replay_datadir_edit`.
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, 'Select archive directory', self.replay_datadir_edit.text())
@@ -1041,10 +1077,12 @@ class FocusControlPanel(QtWidgets.QWidget):
 
     def _on_slew_browse_clicked(self):
         """
-        Slot for `slew_browse_button`'s ``clicked``: open the native OS
-        file picker and, unless the user cancels (signaled by an empty
-        string, not `None`), fill the selected path into
-        `slew_file_edit`.
+        Slot for the
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.slew_browse_button`
+        ``clicked`` signal: open the native OS file picker and, unless the
+        user cancels (signaled by an empty string, not ``None``), fill the
+        selected path into
+        :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.slew_file_edit`.
         """
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Select starlist file', self.slew_file_edit.text())

@@ -89,7 +89,7 @@ class ScriptBase:
             Restrict the width of the formatted help output to be no longer than
             this number of characters, if possible given the help formatter.  If
             None, the width is the same as the terminal width.
-        formatter : `argparse.HelpFormatter`_
+        formatter : :class:`argparse.HelpFormatter`
             Class used to format the help output.
         include_log_options : :obj:`bool`, optional
             Include options that define the logging level(s) and log file.
@@ -99,7 +99,7 @@ class ScriptBase:
 
         Returns
         -------
-        `argparse.ArgumentParser`_
+        :class:`argparse.ArgumentParser`
             Command-line interpreter.
         """
         parser = argparse.ArgumentParser(

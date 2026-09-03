@@ -20,7 +20,7 @@ class NickelTelescopePointing:
     Raises
     ------
     RuntimeError
-        Raised if the ``ktl`` package is not available.
+        Raised if the :mod:`ktl` package is not available.
     """
     def __init__(self):
         if ktl is None:
@@ -67,7 +67,7 @@ class NickelTelescopePointing:
         ra
             Right ascension of the target. May be a bare number (assumed
             to be hours) or a sexagesimal string, or any
-            `~astropy.units.Quantity`/`~astropy.coordinates.Angle` (in
+            :class:`astropy.units.Quantity`/:class:`astropy.coordinates.Angle` (in
             which case its own unit is used instead).
         dec
             Declination of the target, interpreted the same way as
@@ -111,12 +111,13 @@ def find_nearest_target(telescope_coo, obj_search_str=None, file=None):
     ----------
     telescope_coo
         The position to measure separations from, typically
-        `NickelTelescopePointing.current`.
+        :attr:`~nickel_focus.slew.NickelTelescopePointing.current`.
     obj_search_str
         If given, only targets whose name contains this substring are
         considered; if ``None``, every target in the file is considered.
     file
-        Path to a starlist file to search (see `starlist.parse_starlist`
+        Path to a starlist file to search (see
+        :func:`~nickel_focus.starlist.parse_starlist`
         for the supported format). If ``None``, the packaged default
         catalog of pointing/focus stars
         (``nickel_focus/data/point_focus.txt``) is used.

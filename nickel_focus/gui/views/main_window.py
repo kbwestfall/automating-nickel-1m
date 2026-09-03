@@ -11,20 +11,23 @@ from nickel_focus.gui.views.focus_control_panel import FocusControlPanel
 
 class MainWindow(QtWidgets.QMainWindow):
     """
-    Lays out `ImagePanel` (left), `FocusCurvePanel` (top right), and
-    `FocusControlPanel` (bottom right) per §5.1's sketch. Purely
-    structural -- wiring the panels together is `gui.controller.Controller`'s
-    job, not this class's.
+    Lays out :class:`~nickel_focus.gui.views.image_panel.ImagePanel` (left),
+    :class:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel` (top
+    right), and
+    :class:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel`
+    (bottom right) per §5.1's sketch. Purely structural -- wiring the panels
+    together is
+    :class:`~nickel_focus.gui.controller.Controller`'s job, not this class's.
 
     Also owns settings persistence (GUI_DESIGN.md §9 phase 5): each
     panel's last-used configuration is restored on construction and
-    saved on close, via `~PySide6.QtCore.QSettings`. Deliberately not
-    saved on every change -- these are convenience defaults for next
+    saved on close, via :class:`PySide6.QtCore.QSettings`. Deliberately
+    not saved on every change -- these are convenience defaults for next
     time, not data that needs crash-safety.
 
     Persistence is opt-in, via the Options tab's "Remember settings
     between sessions" checkbox
-    (`~gui.views.focus_control_panel.FocusControlPanel.remember_settings_checkbox`),
+    (:attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.remember_settings_checkbox`),
     and that opt-in is never itself written to disk as a separate flag --
     doing so would mean *every* user silently gets a settings file
     written the moment they close the window, whether they ever checked
@@ -119,12 +122,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         """
         Save settings before the window actually closes. This overrides
-        a `QWidget` *event handler* rather than connecting to a signal
-        (contrast `gui.controller.Controller`, which is all signal/slot
-        connections) -- Qt calls this method itself whenever the window
-        is about to close, however that was triggered (the close button,
-        `QWidget.close()`, or quitting the application), so overriding
-        it is the standard way to run code at that specific moment.
+        a :class:`PySide6.QtWidgets.QWidget` *event handler* rather than
+        connecting to a signal (contrast
+        :class:`~nickel_focus.gui.controller.Controller`,
+        which is all signal/slot connections) -- Qt calls this method itself
+        whenever the window is about to close, however that was triggered
+        (the close button, :meth:`PySide6.QtWidgets.QWidget.close`, or
+        quitting the application), so overriding it is the standard way to
+        run code at that specific moment.
         """
         self._save_settings()
         super().closeEvent(event)
@@ -132,14 +137,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def showEvent(self, event):
         """
         The first time this window actually becomes visible, give the
-        image panel a square initial share of `central`'s width.
-        `central`'s geometry doesn't reflect `_size_to_screen`'s resize
-        until the window is genuinely shown -- reading it any earlier in
-        `__init__` (even after a plain `resize()`, even after spinning
-        the event loop with no `show()`) still returns a stale default,
-        so this can't be done any sooner than here. Guarded to run once
-        -- later show events (e.g. un-minimizing) must never undo a
-        splitter drag the user made in between.
+        image panel a square initial share of ``central``'s width.
+        ``central``'s geometry doesn't reflect the
+        :meth:`~nickel_focus.gui.views.main_window.MainWindow._size_to_screen`
+        resize until the window is genuinely shown -- reading it any earlier
+        in :meth:`~nickel_focus.gui.views.main_window.MainWindow.__init__`
+        (even after a plain
+        :meth:`PySide6.QtWidgets.QWidget.resize`, even after spinning the
+        event loop with no :meth:`PySide6.QtWidgets.QWidget.show`) still
+        returns a stale default, so this can't be done any sooner than here.
+        Guarded to run once -- later show events (e.g. un-minimizing) must
+        never undo a splitter drag the user made in between.
         """
         super().showEvent(event)
         if not self._sized_image_panel:
@@ -148,7 +156,7 @@ class MainWindow(QtWidgets.QMainWindow):
             central.setSizes([central.height(), central.width() - central.height()])
 
     def _settings(self):
-        """The `QSettings` store this window persists to/restores from."""
+        """The :class:`PySide6.QtCore.QSettings` store this window persists to/restores from."""
         return QtCore.QSettings(self._SETTINGS_ORG, self._SETTINGS_APP)
 
     def _save_settings(self):
@@ -178,7 +186,8 @@ class MainWindow(QtWidgets.QMainWindow):
         (see the class docstring) -- and only then restore it, falling
         back to whatever the widgets were already constructed with for
         any key never saved before (a field added since the last save).
-        Passing that current value as `QSettings.value`'s ``defaultValue``
+        Passing that current value as
+        :meth:`PySide6.QtCore.QSettings.value`'s ``defaultValue``
         also tells it what type to coerce the stored value to, so no
         separate type map is needed here. This is read-only: merely
         checking/reading must never itself create a settings file.

@@ -22,7 +22,7 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
         width
             Restrict the width of the formatted help output to be no
             longer than this number of characters, if possible; see
-            `scriptbase.ScriptBase.get_parser`.
+            :meth:`~nickel_focus.scripts.scriptbase.ScriptBase.get_parser`.
 
         Returns
         -------
@@ -66,7 +66,8 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
         ----------
         args
             Parsed command-line arguments, as returned by
-            `get_parser`/`~nickel_focus.scripts.scriptbase.ScriptBase.parse_args`.
+            :meth:`~nickel_focus.scripts.slew_to_nearest.NickelSlewToNearest.get_parser`/
+            :meth:`~nickel_focus.scripts.scriptbase.ScriptBase.parse_args`.
         """
         from nickel_focus import log
         from nickel_focus import slew

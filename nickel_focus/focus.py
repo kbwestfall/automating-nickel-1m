@@ -360,7 +360,8 @@ class StepResult:
         The (x,y) centroid of the selected source.
     is_outlier : :obj:`bool`
         Whether this step's centroid is an outlier relative to the rest of
-        the sequence collected so far; see :func:`FocusPlot.is_outlier`.
+        the sequence collected so far; see
+        :meth:`~nickel_focus.focus.FocusPlot.is_outlier`.
     """
     index: int
     focus_value: float
@@ -408,21 +409,22 @@ class FocusSequence:
         """
         Advance the focus sequence one exposure at a time.
 
-        This is the engine shared by :func:`execute` (used by the CLI
-        script) and any other driver of the sequence (e.g., a GUI worker
-        thread): each iteration sets the focus, takes or retrieves an
+        This is the engine shared by :meth:`~nickel_focus.focus.FocusSequence.execute`
+        (used by the CLI script) and any other driver of the sequence (e.g., a GUI
+        worker thread): each iteration sets the focus, takes or retrieves an
         exposure, measures its image quality, and yields the result. It
         does not decide when the sequence should stop (see
-        :func:`continue_sequence`) or what to do once it has; callers are
-        responsible for calling :func:`reset` beforehand and for reacting
-        to each :class:`StepResult` as it's yielded (e.g., to update a
-        plot).
+        :meth:`~nickel_focus.focus.FocusSequence.continue_sequence`) or what to do
+        once it has; callers are responsible for calling
+        :meth:`~nickel_focus.focus.FocusSequence.reset` beforehand and for reacting
+        to each :class:`~nickel_focus.focus.StepResult` as it's yielded (e.g., to
+        update a plot).
 
         Parameters
         ----------
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
 
         Yields
         ------
@@ -472,7 +474,7 @@ class FocusSequence:
         ----------
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
 
         Yields
         ------
@@ -509,8 +511,8 @@ class FocusSequence:
     def take_single_exposure(self, focus_value, method='brightest', **exp_kwargs):
         """
         Move to ``focus_value``, take one exposure, and measure its image
-        quality -- one iteration of :func:`step`'s body, without any
-        sequence bookkeeping (``step_iter``, ``observed_focus``,
+        quality -- one iteration of :meth:`~nickel_focus.focus.FocusSequence.step`'s
+        body, without any sequence bookkeeping (``step_iter``, ``observed_focus``,
         ``img_quality``, etc. are left untouched).
 
         This is the shared primitive behind both "move to best focus"
@@ -524,10 +526,10 @@ class FocusSequence:
             The focus value to move to before exposing.
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
         **exp_kwargs
-            Passed to :func:`ExposureConfig.configure` before exposing
-            (``record``, ``speed``, ``binning``, ``exptime``).
+            Passed to :meth:`~nickel_focus.focus.ExposureConfig.configure` before
+            exposing (``record``, ``speed``, ``binning``, ``exptime``).
 
         Returns
         -------

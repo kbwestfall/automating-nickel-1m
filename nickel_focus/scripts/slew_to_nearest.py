@@ -8,8 +8,8 @@ from nickel_focus.scripts import scriptbase
 
 class NickelSlewToNearest(scriptbase.ScriptBase):
     """
-    Slew the telescope to the nearest pointing/focus star, or the
-    nearest target in a user-supplied starlist.
+    Slew the telescope to the nearest pointing/focus star, or the nearest target
+    in a user-supplied starlist.
     """
 
     @classmethod
@@ -20,8 +20,8 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
         Parameters
         ----------
         width
-            Restrict the width of the formatted help output to be no
-            longer than this number of characters, if possible; see
+            Restrict the width of the formatted help output to be no longer than
+            this number of characters, if possible; see
             :meth:`~nickel_focus.scripts.scriptbase.ScriptBase.get_parser`.
 
         Returns
@@ -59,8 +59,8 @@ class NickelSlewToNearest(scriptbase.ScriptBase):
     @classmethod
     def main(cls, args):
         """
-        Execute the script: find the nearest target and, unless running
-        in dry-run mode, slew the telescope to it.
+        Execute the script: find the nearest target and, unless running in
+        dry-run mode, slew the telescope to it.
 
         Parameters
         ----------

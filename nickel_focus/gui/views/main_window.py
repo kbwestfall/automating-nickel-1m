@@ -15,29 +15,28 @@ class MainWindow(QtWidgets.QMainWindow):
     :class:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel` (top
     right), and
     :class:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel`
-    (bottom right) per §5.1's sketch. Purely structural -- wiring the panels
-    together is
-    :class:`~nickel_focus.gui.controller.Controller`'s job, not this class's.
+    (bottom right) per §5.1's sketch.  Purely structural -- wiring the panels
+    together is :class:`~nickel_focus.gui.controller.Controller`'s job, not this
+    class's.
 
-    Also owns settings persistence (GUI_DESIGN.md §9 phase 5): each
-    panel's last-used configuration is restored on construction and
-    saved on close, via :class:`PySide6.QtCore.QSettings`. Deliberately
-    not saved on every change -- these are convenience defaults for next
-    time, not data that needs crash-safety.
+    Also owns settings persistence (GUI_DESIGN.md §9 phase 5): each panel's
+    last-used configuration is restored on construction and saved on close, via
+    :class:`PySide6.QtCore.QSettings`. Deliberately not saved on every change --
+    these are convenience defaults for next time, not data that needs
+    crash-safety.
 
-    Persistence is opt-in, via the Options tab's "Remember settings
-    between sessions" checkbox
+    Persistence is opt-in, via the Options tab's "Remember settings between
+    sessions" checkbox
     (:attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.remember_settings_checkbox`),
-    and that opt-in is never itself written to disk as a separate flag --
-    doing so would mean *every* user silently gets a settings file
-    written the moment they close the window, whether they ever checked
-    the box or not. Instead, whether anything was ever saved *is* the
-    opt-in signal: on load, the checkbox is checked if (and only if) a
-    previous session actually saved something; on close, nothing is
-    written at all unless the checkbox is checked, and any
-    previously-saved configuration is actively erased the moment it's
-    unchecked (rather than merely left unsaved and lingering unused, or
-    the checkbox itself lingering on disk with nothing behind it).
+    and that opt-in is never itself written to disk as a separate flag -- doing
+    so would mean *every* user silently gets a settings file written the moment
+    they close the window, whether they ever checked the box or not.  Instead,
+    whether anything was ever saved *is* the opt-in signal: on load, the
+    checkbox is checked if (and only if) a previous session actually saved
+    something; on close, nothing is written at all unless the checkbox is
+    checked, and any previously-saved configuration is actively erased the
+    moment it's unchecked (rather than merely left unsaved and lingering unused,
+    or the checkbox itself lingering on disk with nothing behind it).
     """
 
     #: Organization/application name identifying this app's `QSettings`
@@ -121,33 +120,32 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         """
-        Save settings before the window actually closes. This overrides
-        a :class:`PySide6.QtWidgets.QWidget` *event handler* rather than
+        Save settings before the window actually closes.  This overrides a
+        :class:`PySide6.QtWidgets.QWidget` *event handler* rather than
         connecting to a signal (contrast
-        :class:`~nickel_focus.gui.controller.Controller`,
-        which is all signal/slot connections) -- Qt calls this method itself
-        whenever the window is about to close, however that was triggered
-        (the close button, :meth:`PySide6.QtWidgets.QWidget.close`, or
-        quitting the application), so overriding it is the standard way to
-        run code at that specific moment.
+        :class:`~nickel_focus.gui.controller.Controller`, which is all
+        signal/slot connections) -- Qt calls this method itself whenever the
+        window is about to close, however that was triggered (the close button,
+        :meth:`PySide6.QtWidgets.QWidget.close`, or quitting the application),
+        so overriding it is the standard way to run code at that specific
+        moment.
         """
         self._save_settings()
         super().closeEvent(event)
 
     def showEvent(self, event):
         """
-        The first time this window actually becomes visible, give the
-        image panel a square initial share of ``central``'s width.
-        ``central``'s geometry doesn't reflect the
+        The first time this window actually becomes visible, give the image
+        panel a square initial share of ``central``'s width.  ``central``'s
+        geometry doesn't reflect the
         :meth:`~nickel_focus.gui.views.main_window.MainWindow._size_to_screen`
-        resize until the window is genuinely shown -- reading it any earlier
-        in :meth:`~nickel_focus.gui.views.main_window.MainWindow.__init__`
-        (even after a plain
-        :meth:`PySide6.QtWidgets.QWidget.resize`, even after spinning the
-        event loop with no :meth:`PySide6.QtWidgets.QWidget.show`) still
-        returns a stale default, so this can't be done any sooner than here.
-        Guarded to run once -- later show events (e.g. un-minimizing) must
-        never undo a splitter drag the user made in between.
+        resize until the window is genuinely shown -- reading it any earlier in
+        :meth:`~nickel_focus.gui.views.main_window.MainWindow.__init__` (even
+        after a plain :meth:`PySide6.QtWidgets.QWidget.resize`, even after
+        spinning the event loop with no :meth:`PySide6.QtWidgets.QWidget.show`)
+        still returns a stale default, so this can't be done any sooner than
+        here.  Guarded to run once -- later show events (e.g.  un-minimizing)
+        must never undo a splitter drag the user made in between.
         """
         super().showEvent(event)
         if not self._sized_image_panel:
@@ -156,16 +154,18 @@ class MainWindow(QtWidgets.QMainWindow):
             central.setSizes([central.height(), central.width() - central.height()])
 
     def _settings(self):
-        """The :class:`PySide6.QtCore.QSettings` store this window persists to/restores from."""
+        """
+        The :class:`PySide6.QtCore.QSettings` store this window persists
+        to/restores from.
+        """
         return QtCore.QSettings(self._SETTINGS_ORG, self._SETTINGS_APP)
 
     def _save_settings(self):
         """
-        If "Remember settings between sessions" is unchecked, touch
-        nothing -- unless a previous session actually saved something
-        (in which case it's erased, honoring an opt-*out*). A fresh
-        install/session that never opts in must never cause a settings
-        file to be written at all.
+        If "Remember settings between sessions" is unchecked, touch nothing --
+        unless a previous session actually saved something (in which case it's
+        erased, honoring an opt-*out*). A fresh install/session that never opts
+        in must never cause a settings file to be written at all.
         """
         settings = self._settings()
         if not self.control_panel.remember_settings_checkbox.isChecked():
@@ -180,17 +180,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _load_settings(self):
         """
-        Check the "Remember settings between sessions" box if (and only
-        if) a previous session actually saved something -- that presence
-        *is* the opt-in state, rather than a separately-persisted flag
-        (see the class docstring) -- and only then restore it, falling
-        back to whatever the widgets were already constructed with for
-        any key never saved before (a field added since the last save).
-        Passing that current value as
-        :meth:`PySide6.QtCore.QSettings.value`'s ``defaultValue``
-        also tells it what type to coerce the stored value to, so no
-        separate type map is needed here. This is read-only: merely
-        checking/reading must never itself create a settings file.
+        Check the "Remember settings between sessions" box if (and only if) a
+        previous session actually saved something -- that presence *is* the
+        opt-in state, rather than a separately-persisted flag (see the class
+        docstring) -- and only then restore it, falling back to whatever the
+        widgets were already constructed with for any key never saved before (a
+        field added since the last save). Passing that current value as
+        :meth:`PySide6.QtCore.QSettings.value`'s ``defaultValue`` also tells it
+        what type to coerce the stored value to, so no separate type map is
+        needed here.  This is read-only: merely checking/reading must never
+        itself create a settings file.
         """
         settings = self._settings()
         remember = 'control_panel' in settings.childGroups()
@@ -210,10 +209,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _size_to_screen(self, preferred_width, preferred_height):
         """
-        Size the window to ``(preferred_width, preferred_height)``, or
-        smaller if the screen's available area (excluding docks/taskbars)
-        can't fit that -- so the resize handles are never pushed off
-        screen -- then center it.
+        Size the window to ``(preferred_width, preferred_height)``, or smaller
+        if the screen's available area (excluding docks/taskbars) can't fit that
+        -- so the resize handles are never pushed off screen -- then center it.
         """
         screen = self.screen() or QtWidgets.QApplication.primaryScreen()
         if screen is None:

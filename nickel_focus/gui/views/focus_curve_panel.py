@@ -13,13 +13,12 @@ from nickel_focus.gui.qt import QtWidgets
 
 class FocusCurvePanel(QtWidgets.QWidget):
     """
-    Scatter of FWHM versus focus value for a sequence's results so far,
-    with the best-fit quadratic and its vertex overlaid once there are
-    enough points to fit one (matching
-    :meth:`~nickel_focus.focus.FocusSequence.fit_best_focus`'s own 3-point
-    minimum). Outlier points
-    (:attr:`~nickel_focus.focus.StepResult.is_outlier`) are drawn as a
-    distinct color/marker from normal ones.
+    Scatter of FWHM versus focus value for a sequence's results so far, with the
+    best-fit quadratic and its vertex overlaid once there are enough points to
+    fit one (matching :meth:`~nickel_focus.focus.FocusSequence.fit_best_focus`'s
+    own 3-point minimum). Outlier points
+    (:attr:`~nickel_focus.focus.StepResult.is_outlier`) are drawn as a distinct
+    color/marker from normal ones.
     """
 
     def __init__(self, parent=None):
@@ -51,8 +50,8 @@ class FocusCurvePanel(QtWidgets.QWidget):
 
     def _reset_axis(self):
         """
-        Clear the plot and redraw its static decorations (labels, title,
-        grid) -- everything
+        Clear the plot and redraw its static decorations (labels, title, grid)
+        -- everything
         :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._render`
         would otherwise have to re-apply after every
         :meth:`matplotlib.axes.Axes.clear`, factored out since both

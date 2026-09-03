@@ -1,12 +1,12 @@
 """
-Parser for Lick Observatory "starlist" files, as read by the ``coords``
-program used at the 1-m (Nickel) and 3-m (Shane) telescopes.
+Parser for Lick Observatory "starlist" files, as read by the ``coords`` program
+used at the 1-m (Nickel) and 3-m (Shane) telescopes.
 
 The format is documented at
-https://mthamilton.ucolick.org/techdocs/telescopes/starlistFormat.html;
-this module implements the standard line format (section I), the
-``!Comment`` directive (section II), and the ``!Data`` directive
-(section III) described there.
+https://mthamilton.ucolick.org/techdocs/telescopes/starlistFormat.html; this
+module implements the standard line format (section I), the ``!Comment``
+directive (section II), and the ``!Data`` directive (section III) described
+there.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class StarlistEntry:
     dec
         Declination.
     equinox
-        The equinox value (e.g. ``2000.0``).
+        The equinox value (e.g.  ``2000.0``).
     frame
         Reference frame implied by the equinox: ``'fk4'`` or ``'fk5'``.
     pm_ra
@@ -53,8 +53,8 @@ class StarlistEntry:
     comment
         Any trailing comment text on the line.
     extra
-        Any other ``key=value`` pairs, or otherwise-named ``!Data``
-        fields, not otherwise recognized.
+        Any other ``key=value`` pairs, or otherwise-named ``!Data`` fields, not
+        otherwise recognized.
     line
         The original raw line text this entry was parsed from.
     lineno
@@ -78,9 +78,8 @@ class StarlistEntry:
     @property
     def coord(self) -> SkyCoord:
         """
-        The target position as an :class:`astropy.coordinates.SkyCoord`, in
-        this entry's own reference frame and equinox (rather than any
-        common frame).
+        The target position as an :class:`astropy.coordinates.SkyCoord`, in this
+        entry's own reference frame and equinox (rather than any common frame).
 
         Returns
         -------
@@ -95,8 +94,8 @@ class StarlistEntry:
 
 class _LineCursor:
     """
-    Tracks a read position while sequentially consuming fields from a
-    starlist data line.
+    Tracks a read position while sequentially consuming fields from a starlist
+    data line.
 
     Parameters
     ----------
@@ -110,14 +109,13 @@ class _LineCursor:
 
     def peek_token(self) -> str | None:
         """
-        Look ahead at the next whitespace-delimited token without
-        consuming it.
+        Look ahead at the next whitespace-delimited token without consuming it.
 
         Returns
         -------
         str or None
-            The next token, or ``None`` if only whitespace (or nothing)
-            remains in the line.
+            The next token, or ``None`` if only whitespace (or nothing) remains
+            in the line.
         """
         m = re.match(r'\s*(\S+)', self.line[self.pos:])
         return None if m is None else m.group(1)
@@ -144,8 +142,8 @@ class _LineCursor:
 
     def take_fixed(self, width: int) -> str:
         """
-        Consume and return a fixed-width slice of the line, counted from
-        the current position without first skipping leading whitespace.
+        Consume and return a fixed-width slice of the line, counted from the
+        current position without first skipping leading whitespace.
 
         Parameters
         ----------
@@ -155,8 +153,8 @@ class _LineCursor:
         Returns
         -------
         str
-            The consumed slice, exactly ``width`` characters long
-            (including any leading/trailing whitespace it contains).
+            The consumed slice, exactly ``width`` characters long (including any
+            leading/trailing whitespace it contains).
 
         Raises
         ------
@@ -178,8 +176,7 @@ class _LineCursor:
         Returns
         -------
         str
-            The remaining line text, stripped of leading/trailing
-            whitespace.
+            The remaining line text, stripped of leading/trailing whitespace.
         """
         value = self.line[self.pos:].strip()
         self.pos = len(self.line)
@@ -191,28 +188,27 @@ def _consume_angle(
 ) -> Angle:
     """
     Consume 1-3 whitespace-delimited tokens describing an hours- or
-    degrees-based angle, honoring the decimal-fraction and colon shorthand
-    rules in section I/III of the format document.
+    degrees-based angle, honoring the decimal-fraction and colon shorthand rules
+    in section I/III of the format document.
 
     Parameters
     ----------
     cursor
         The line cursor to consume tokens from.
     unit
-        The angular unit (``units.hourangle`` or ``units.deg``) that a
-        bare (non-colon, non-decimal) leading value is expressed in.
+        The angular unit (``units.hourangle`` or ``units.deg``) that a bare
+        (non-colon, non-decimal) leading value is expressed in.
     colon_required
-        If ``True`` (the ``ra_hms``/``ra_dms``/``dec_dms`` shorthands),
-        the single token consumed must be colon-separated into exactly
-        three parts (``h:m:s``/``d:m:s``); a plain or decimal value is
-        rejected.
+        If ``True`` (the ``ra_hms``/``ra_dms``/``dec_dms`` shorthands), the
+        single token consumed must be colon-separated into exactly three parts
+        (``h:m:s``/``d:m:s``); a plain or decimal value is rejected.
     has_minsec
         If ``True``, a bare leading value (no colon, no decimal point) is
-        followed by a separate minutes token and, unless that minutes
-        token is itself decimal, a separate seconds token. If ``False``
-        (e.g. a standalone ``ra_d``/``dec_d`` field with no declared
-        ``_m``/``_s`` partner fields), a bare leading value is the whole
-        angle and no further tokens are consumed.
+        followed by a separate minutes token and, unless that minutes token is
+        itself decimal, a separate seconds token.  If ``False`` (e.g.  a
+        standalone ``ra_d``/``dec_d`` field with no declared ``_m``/``_s``
+        partner fields), a bare leading value is the whole angle and no further
+        tokens are consumed.
 
     Returns
     -------
@@ -222,9 +218,8 @@ def _consume_angle(
     Raises
     ------
     ValueError
-        Raised if ``colon_required`` is set and the token either has no
-        colons or does not split into exactly three colon-separated
-        parts.
+        Raised if ``colon_required`` is set and the token either has no colons
+        or does not split into exactly three colon-separated parts.
     """
     token = cursor.take_token()
 
@@ -272,24 +267,24 @@ def _parse_equinox(token: str) -> tuple[float, str]:
     Parameters
     ----------
     token
-        The equinox value, optionally prefixed with ``B`` or ``J`` to
-        select the reference frame explicitly (e.g. ``'J2000.0'``,
-        ``'B1950.0'``), or a bare numeric value (e.g. ``'2000.0'``).
+        The equinox value, optionally prefixed with ``B`` or ``J`` to select the
+        reference frame explicitly (e.g.  ``'J2000.0'``, ``'B1950.0'``), or a
+        bare numeric value (e.g.  ``'2000.0'``).
 
     Returns
     -------
     value : float
         The numeric equinox value.
     frame : str
-        The implied reference frame, ``'fk4'`` or ``'fk5'``: taken from
-        an explicit ``B``/``J`` prefix if present, otherwise ``'fk4'``
-        if ``value <= 1975`` and ``'fk5'`` otherwise.
+        The implied reference frame, ``'fk4'`` or ``'fk5'``: taken from an
+        explicit ``B``/``J`` prefix if present, otherwise ``'fk4'`` if ``value
+        <= 1975`` and ``'fk5'`` otherwise.
 
     Raises
     ------
     ValueError
-        Raised if ``token`` does not match the expected
-        ``[BJ]?<number>`` format.
+        Raised if ``token`` does not match the expected ``[BJ]?<number>``
+        format.
     """
     m = re.match(r'^(?P<prefix>[BJ])?(?P<value>[+-]?\d+\.?\d*)$', token, re.IGNORECASE)
     if m is None:
@@ -312,12 +307,11 @@ def _parse_keyval_token(token: str, entry: StarlistEntry) -> None:
     Parameters
     ----------
     token
-        A single ``key=value`` token (e.g. ``'pmra=12.3'``,
-        ``'Vmag=15.1'``). Recognized keys are ``pmra``, ``pmdec``,
-        ``pmepoch``, and ``pri``; a band-letter-prefixed magnitude such
-        as ``Vmag`` or ``Jmag``; a bare ``mag``; or a single band letter
-        such as ``V`` or ``J``. Anything else is stored verbatim in
-        ``entry.extra``.
+        A single ``key=value`` token (e.g.  ``'pmra=12.3'``, ``'Vmag=15.1'``).
+        Recognized keys are ``pmra``, ``pmdec``, ``pmepoch``, and ``pri``; a
+        band-letter-prefixed magnitude such as ``Vmag`` or ``Jmag``; a bare
+        ``mag``; or a single band letter such as ``V`` or ``J``. Anything else
+        is stored verbatim in ``entry.extra``.
     entry
         The :class:`~nickel_focus.starlist.StarlistEntry` to update.
     """
@@ -345,8 +339,7 @@ def _parse_keyval_token(token: str, entry: StarlistEntry) -> None:
 
 def _resolve_generic(cursor: _LineCursor, fmt: str | None) -> str:
     """
-    Resolve a non-angle, non-keyword field's value given its
-    ``fieldformat``.
+    Resolve a non-angle, non-keyword field's value given its ``fieldformat``.
 
     Parameters
     ----------
@@ -354,11 +347,11 @@ def _resolve_generic(cursor: _LineCursor, fmt: str | None) -> str:
         The line cursor to consume from.
     fmt
         The field's ``fieldformat``, as produced by
-        :func:`~nickel_focus.starlist._parse_field_list`:
-        ``None`` or ``'%s'`` for a whitespace-delimited token, ``'%N'``
-        (``N`` an integer) for a fixed-width slice, ``'*'`` for the rest
-        of the line, or any other string, which is a literal default
-        value and consumes nothing from the line.
+        :func:`~nickel_focus.starlist._parse_field_list`: ``None`` or ``'%s'``
+        for a whitespace-delimited token, ``'%N'`` (``N`` an integer) for a
+        fixed-width slice, ``'*'`` for the rest of the line, or any other
+        string, which is a literal default value and consumes nothing from the
+        line.
 
     Returns
     -------
@@ -383,17 +376,17 @@ def _parse_field_list(directive: str) -> list[tuple[str, str | None]]:
     Parameters
     ----------
     directive
-        The directive text (or default line format string) to tokenize,
-        e.g. ``'name ra_h ra_m ra_s dec_d dec_m dec_s equinox mag keyval
-        {comment *}'``. Each whitespace-separated token is either a bare
-        field name (format defaults to ``None``) or a brace-delimited
-        ``{fieldname fieldformat}`` group.
+        The directive text (or default line format string) to tokenize, e.g.
+        ``'name ra_h ra_m ra_s dec_d dec_m dec_s equinox mag keyval {comment
+        *}'``. Each whitespace-separated token is either a bare field name
+        (format defaults to ``None``) or a brace-delimited ``{fieldname
+        fieldformat}`` group.
 
     Returns
     -------
     list
-        The ``(fieldname, fieldformat)`` pairs, in the order they appear
-        in ``directive``.
+        The ``(fieldname, fieldformat)`` pairs, in the order they appear in
+        ``directive``.
     """
     fields = []
     for tok in _TOKEN_RE.findall(directive):
@@ -409,11 +402,11 @@ def _parse_field_list(directive: str) -> list[tuple[str, str | None]]:
 
 def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
     """
-    Collapse the consecutive ``ra_h ra_m ra_s`` / ``dec_d dec_m dec_s``
-    triplets (or the ``ra_hms``/``ra_dms``/``dec_dms`` shorthands) that a
-    ``!Data`` directive must always specify together into single pseudo
-    fields that :func:`~nickel_focus.starlist.parse_data_line` knows how to
-    consume as a unit.
+    Collapse the consecutive ``ra_h ra_m ra_s`` / ``dec_d dec_m dec_s`` triplets
+    (or the ``ra_hms``/``ra_dms``/``dec_dms`` shorthands) that a ``!Data``
+    directive must always specify together into single pseudo fields that
+    :func:`~nickel_focus.starlist.parse_data_line` knows how to consume as a
+    unit.
 
     Parameters
     ----------
@@ -424,21 +417,20 @@ def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
     Returns
     -------
     list
-        ``fields``, with any RA/Dec sexagesimal sub-fields collapsed into
-        single ``('__ra__', info)``/``('__dec__', info)`` pseudo-fields,
-        where ``info`` is a dict with keys ``'unit'``,
-        ``'colon_required'``, and ``'has_minsec'`` as consumed by
+        ``fields``, with any RA/Dec sexagesimal sub-fields collapsed into single
+        ``('__ra__', info)``/``('__dec__', info)`` pseudo-fields, where ``info``
+        is a dict with keys ``'unit'``, ``'colon_required'``, and
+        ``'has_minsec'`` as consumed by
         :func:`~nickel_focus.starlist._consume_angle`. All other fields are
         passed through unchanged.
 
     Raises
     ------
     ValueError
-        Raised if a ``fieldformat`` is given for one of the RA/Dec
-        primary fieldnames (not allowed, per the format document), or if
-        a minutes/seconds sub-field (``ra_m``, ``ra_s``, ``dec_m``, or
-        ``dec_s``) appears without its primary field immediately
-        preceding it.
+        Raised if a ``fieldformat`` is given for one of the RA/Dec primary
+        fieldnames (not allowed, per the format document), or if a
+        minutes/seconds sub-field (``ra_m``, ``ra_s``, ``dec_m``, or ``dec_s``)
+        appears without its primary field immediately preceding it.
     """
     ra_primary_units = {'ra_h': units.hourangle, 'ra_d': units.deg}
     dec_primary_units = {'dec_d': units.deg}
@@ -483,16 +475,15 @@ def _collapse_angle_fields(fields: list[tuple[str, str | None]]) -> list:
 
 def compile_data_directive(directive: str | None = None) -> list:
     """
-    Parse a ``!Data`` directive into the field-specification list consumed
-    by :func:`~nickel_focus.starlist.parse_data_line`.
+    Parse a ``!Data`` directive into the field-specification list consumed by
+    :func:`~nickel_focus.starlist.parse_data_line`.
 
     Parameters
     ----------
     directive
-        The text following ``!Data`` on a directive line.  If ``None`` or
-        blank, the default line format is used: ``name ra_h ra_m ra_s
-        dec_d dec_m dec_s equinox mag keyval {comment *}`` ("Example 1" in
-        the format document).
+        The text following ``!Data`` on a directive line.  If ``None`` or blank,
+        the default line format is used: ``name ra_h ra_m ra_s dec_d dec_m dec_s
+        equinox mag keyval {comment *}`` ("Example 1" in the format document).
 
     Returns
     -------
@@ -514,9 +505,9 @@ def compile_comment_patterns(directive: str | None = None) -> list[str]:
     Parameters
     ----------
     directive
-        The text following ``!Comment`` on a directive line.  If ``None``
-        or blank, the built-in ``coords`` default (``^[ \\t]*#``, i.e. any
-        line beginning with optional whitespace then ``#``) is used.
+        The text following ``!Comment`` on a directive line.  If ``None`` or
+        blank, the built-in ``coords`` default (``^[ \\t]*#``, i.e.  any line
+        beginning with optional whitespace then ``#``) is used.
 
     Returns
     -------
@@ -541,9 +532,8 @@ def is_comment_line(line: str, patterns: list[str]) -> bool:
         The raw line text to test.
     patterns
         Regular expressions, as returned by
-        :func:`~nickel_focus.starlist.compile_comment_patterns`.
-        ``line`` is a comment if it matches (via :func:`re.search`) any of
-        them.
+        :func:`~nickel_focus.starlist.compile_comment_patterns`. ``line`` is a
+        comment if it matches (via :func:`re.search`) any of them.
 
     Returns
     -------
@@ -555,7 +545,8 @@ def is_comment_line(line: str, patterns: list[str]) -> bool:
 
 def parse_data_line(line: str, fields: list, lineno: int | None = None) -> StarlistEntry:
     """
-    Parse one starlist data line into a :class:`~nickel_focus.starlist.StarlistEntry`.
+    Parse one starlist data line into a
+    :class:`~nickel_focus.starlist.StarlistEntry`.
 
     Parameters
     ----------
@@ -575,8 +566,8 @@ def parse_data_line(line: str, fields: list, lineno: int | None = None) -> Starl
     Raises
     ------
     ValueError
-        Raised if the line cannot be parsed, or does not supply all of
-        object name, RA, Dec, and equinox.
+        Raised if the line cannot be parsed, or does not supply all of object
+        name, RA, Dec, and equinox.
     """
     cursor = _LineCursor(line)
     entry = StarlistEntry(
@@ -623,13 +614,13 @@ def entries_to_table(
     entries: list[StarlistEntry], frame: str | object = 'icrs', **frame_attrs
 ) -> Table:
     """
-    Combine a list of :class:`~nickel_focus.starlist.StarlistEntry` objects into a
-    single :class:`astropy.table.Table`, with every position transformed to one
-    common reference frame.
+    Combine a list of :class:`~nickel_focus.starlist.StarlistEntry` objects into
+    a single :class:`astropy.table.Table`, with every position transformed to
+    one common reference frame.
 
     Each entry can carry its own equinox/reference frame (``'fk4'`` or
     ``'fk5'``, set line-by-line from the starlist's ``equinox`` field), so
-    positions cannot simply be stacked into a table as-is. This function
+    positions cannot simply be stacked into a table as-is.  This function
     transforms each entry's :class:`astropy.coordinates.SkyCoord`
     (:attr:`~nickel_focus.starlist.StarlistEntry.coord`) into ``frame``
     individually before combining them, which sidesteps that mismatch.
@@ -637,35 +628,34 @@ def entries_to_table(
     Parameters
     ----------
     entries
-        The entries to combine, e.g. as returned by
+        The entries to combine, e.g.  as returned by
         :func:`~nickel_focus.starlist.parse_data_line`.
     frame
-        The frame to transform every position into: a frame name
-        recognized by :attr:`astropy.coordinates.frame_transform_graph` (e.g.
-        ``'icrs'``, ``'fk5'``, ``'fk4'``), or an already-constructed frame
-        instance/class accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
+        The frame to transform every position into: a frame name recognized by
+        :attr:`astropy.coordinates.frame_transform_graph` (e.g.  ``'icrs'``,
+        ``'fk5'``, ``'fk4'``), or an already-constructed frame instance/class
+        accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
     **frame_attrs
-        Frame attributes used to construct the target frame when ``frame``
-        is given as a name, e.g. ``equinox='J2000.0'``. Ignored if
-        ``frame`` is passed as an instance, or if the named frame does not
-        accept a given attribute (as is the case for ``equinox`` with the
-        default ``'icrs'``, which has no free equinox parameter).
+        Frame attributes used to construct the target frame when ``frame`` is
+        given as a name, e.g.  ``equinox='J2000.0'``. Ignored if ``frame`` is
+        passed as an instance, or if the named frame does not accept a given
+        attribute (as is the case for ``equinox`` with the default ``'icrs'``,
+        which has no free equinox parameter).
 
     Returns
     -------
     astropy.table.Table
-        One row per entry, with ``name``, ``ra``/``dec`` (deg, in
-        ``frame``), ``pm_ra``, ``pm_dec``, ``pm_epoch``, ``priority``,
-        ``comment``, ``mag``, and ``extra`` columns, plus ``src_equinox``/
-        ``src_frame`` recording each entry's original equinox/frame before
-        transformation. The frame actually used is recorded in
-        ``Table.meta['frame']``.
+        One row per entry, with ``name``, ``ra``/``dec`` (deg, in ``frame``),
+        ``pm_ra``, ``pm_dec``, ``pm_epoch``, ``priority``, ``comment``, ``mag``,
+        and ``extra`` columns, plus ``src_equinox``/ ``src_frame`` recording
+        each entry's original equinox/frame before transformation.  The frame
+        actually used is recorded in ``Table.meta['frame']``.
 
     Raises
     ------
     ValueError
-        Raised if ``frame`` is a string not recognized as a coordinate
-        frame name.
+        Raised if ``frame`` is a string not recognized as a coordinate frame
+        name.
     """
     if isinstance(frame, str):
         frame_cls = frame_transform_graph.lookup_name(frame)
@@ -713,25 +703,24 @@ def parse_starlist(
     source: str | Path | list, frame: str | object = 'icrs', **frame_attrs
 ) -> Table:
     """
-    Parse a Lick Observatory starlist file into a single-frame table of
-    targets.
+    Parse a Lick Observatory starlist file into a single-frame table of targets.
 
     Parameters
     ----------
     source
-        Path to the starlist file, or an iterable of lines (e.g., an open
-        file handle or list of strings).
+        Path to the starlist file, or an iterable of lines (e.g., an open file
+        handle or list of strings).
     frame
         The frame to transform every position into, forwarded to
-        :func:`~nickel_focus.starlist.entries_to_table`: a frame name recognized by
-        :attr:`astropy.coordinates.frame_transform_graph` (e.g. ``'icrs'``,
-        ``'fk5'``, ``'fk4'``), or an already-constructed frame
-        instance/class accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
+        :func:`~nickel_focus.starlist.entries_to_table`: a frame name recognized
+        by :attr:`astropy.coordinates.frame_transform_graph` (e.g.  ``'icrs'``,
+        ``'fk5'``, ``'fk4'``), or an already-constructed frame instance/class
+        accepted by :meth:`astropy.coordinates.SkyCoord.transform_to`.
     **frame_attrs
         Frame attributes forwarded to
-        :func:`~nickel_focus.starlist.entries_to_table`, used to
-        construct the target frame when ``frame`` is given as a name,
-        e.g. ``equinox='J2000.0'``.
+        :func:`~nickel_focus.starlist.entries_to_table`, used to construct the
+        target frame when ``frame`` is given as a name, e.g.
+        ``equinox='J2000.0'``.
 
     Returns
     -------

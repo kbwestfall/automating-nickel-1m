@@ -221,16 +221,16 @@ class FocusPlot:
     """
     Live view of a focus sequence in progress.
 
-    Shows the most recent exposure (with the measured source boxed, and
-    flagged if its centroid looks like an outlier relative to the rest of
-    the sequence collected so far), a grid of the per-exposure source
-    stamps, and an evolving plot of FWHM versus focus value.
+    Shows the most recent exposure (with the measured source boxed, and flagged
+    if its centroid looks like an outlier relative to the rest of the sequence
+    collected so far), a grid of the per-exposure source stamps, and an evolving
+    plot of FWHM versus focus value.
 
     Parameters
     ----------
     nstamps : :obj:`int`
-        Number of stamps to reserve space for (an upper bound on the number
-        of exposures expected in the sequence).
+        Number of stamps to reserve space for (an upper bound on the number of
+        exposures expected in the sequence).
     ncols : :obj:`int`, optional
         Number of columns in the stamp grid.
     """
@@ -299,8 +299,8 @@ class FocusPlot:
 
     def update_curve(self, focus_values, fwhm_values):
         """
-        Redraw the focus-vs-FWHM curve, including the best-fit quadratic
-        once there are enough points to fit one.
+        Redraw the focus-vs-FWHM curve, including the best-fit quadratic once
+        there are enough points to fit one.
         """
         self._reset_curve_axis()
         self.curve_ax.scatter(focus_values, fwhm_values, color='tab:blue')
@@ -324,8 +324,8 @@ class FocusPlot:
     @staticmethod
     def is_outlier(centroids, threshold=2.0):
         """
-        Check whether the most recently added centroid in ``centroids`` is
-        an outlier relative to the full set collected so far, using the same
+        Check whether the most recently added centroid in ``centroids`` is an
+        outlier relative to the full set collected so far, using the same
         median-distance statistic as the original focus-finding code.
         """
         _centroids = np.atleast_2d(centroids).astype(float)
@@ -359,8 +359,8 @@ class StepResult:
     centroid : :obj:`tuple`
         The (x,y) centroid of the selected source.
     is_outlier : :obj:`bool`
-        Whether this step's centroid is an outlier relative to the rest of
-        the sequence collected so far; see
+        Whether this step's centroid is an outlier relative to the rest of the
+        sequence collected so far; see
         :meth:`~nickel_focus.focus.FocusPlot.is_outlier`.
     """
     index: int
@@ -409,16 +409,17 @@ class FocusSequence:
         """
         Advance the focus sequence one exposure at a time.
 
-        This is the engine shared by :meth:`~nickel_focus.focus.FocusSequence.execute`
-        (used by the CLI script) and any other driver of the sequence (e.g., a GUI
-        worker thread): each iteration sets the focus, takes or retrieves an
-        exposure, measures its image quality, and yields the result. It
-        does not decide when the sequence should stop (see
-        :meth:`~nickel_focus.focus.FocusSequence.continue_sequence`) or what to do
-        once it has; callers are responsible for calling
-        :meth:`~nickel_focus.focus.FocusSequence.reset` beforehand and for reacting
-        to each :class:`~nickel_focus.focus.StepResult` as it's yielded (e.g., to
-        update a plot).
+        This is the engine shared by
+        :meth:`~nickel_focus.focus.FocusSequence.execute` (used by the CLI
+        script) and any other driver of the sequence (e.g., a GUI worker
+        thread): each iteration sets the focus, takes or retrieves an exposure,
+        measures its image quality, and yields the result.  It does not decide
+        when the sequence should stop (see
+        :meth:`~nickel_focus.focus.FocusSequence.continue_sequence`) or what to
+        do once it has; callers are responsible for calling
+        :meth:`~nickel_focus.focus.FocusSequence.reset` beforehand and for
+        reacting to each :class:`~nickel_focus.focus.StepResult` as it's yielded
+        (e.g., to update a plot).
 
         Parameters
         ----------
@@ -456,19 +457,17 @@ class FocusSequence:
 
     def reanalyze(self, method='brightest'):
         """
-        Re-run photometry on every exposure this sequence has already
-        collected, using a new ``method``, without taking any new
-        exposures.
+        Re-run photometry on every exposure this sequence has already collected,
+        using a new ``method``, without taking any new exposures.
 
         This replaces the stored ``img_quality``/``source_stamps``/
-        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and
-        thus which exposures exist and what focus values they were taken
-        at) are left untouched. It's meant for interactively changing
-        which source is used for the FWHM measurement (e.g., after a user
-        clicks a different star in the displayed image) and seeing the
-        effect on every exposure already taken, live or archived, without
-        re-observing. If nothing has been collected yet (``exposures`` is
-        empty), this yields nothing.
+        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and thus
+        which exposures exist and what focus values they were taken at) are left
+        untouched.  It's meant for interactively changing which source is used
+        for the FWHM measurement (e.g., after a user clicks a different star in
+        the displayed image) and seeing the effect on every exposure already
+        taken, live or archived, without re-observing.  If nothing has been
+        collected yet (``exposures`` is empty), this yields nothing.
 
         Parameters
         ----------
@@ -479,8 +478,8 @@ class FocusSequence:
         Yields
         ------
         StepResult
-            The updated result for each already-collected exposure, in
-            the order they were originally taken.
+            The updated result for each already-collected exposure, in the order
+            they were originally taken.
         """
         self.method = method
         focus_values = list(self.observed_focus)
@@ -511,14 +510,15 @@ class FocusSequence:
     def take_single_exposure(self, focus_value, method='brightest', **exp_kwargs):
         """
         Move to ``focus_value``, take one exposure, and measure its image
-        quality -- one iteration of :meth:`~nickel_focus.focus.FocusSequence.step`'s
-        body, without any sequence bookkeeping (``step_iter``, ``observed_focus``,
-        ``img_quality``, etc. are left untouched).
+        quality -- one iteration of
+        :meth:`~nickel_focus.focus.FocusSequence.step`'s body, without any
+        sequence bookkeeping (``step_iter``, ``observed_focus``,
+        ``img_quality``, etc.  are left untouched).
 
-        This is the shared primitive behind both "move to best focus"
-        (moving to a fitted focus value and confirming it with one
-        exposure *is* taking a single exposure at that value) and the
-        standalone single-exposure workflow (GUI_DESIGN.md §5.5).
+        This is the shared primitive behind both "move to best focus" (moving to
+        a fitted focus value and confirming it with one exposure *is* taking a
+        single exposure at that value) and the standalone single-exposure
+        workflow (GUI_DESIGN.md §5.5).
 
         Parameters
         ----------
@@ -528,14 +528,14 @@ class FocusSequence:
             The photometry method passed to
             :func:`~nickel_focus.photometry.image_quality`.
         **exp_kwargs
-            Passed to :meth:`~nickel_focus.focus.ExposureConfig.configure` before
-            exposing (``record``, ``speed``, ``binning``, ``exptime``).
+            Passed to :meth:`~nickel_focus.focus.ExposureConfig.configure`
+            before exposing (``record``, ``speed``, ``binning``, ``exptime``).
 
         Returns
         -------
         StepResult
-            The measurement from the single exposure. Its ``index`` is
-            always 0, since it's not part of any larger sequence.
+            The measurement from the single exposure.  Its ``index`` is always
+            0, since it's not part of any larger sequence.
         """
         if self._focus is None or self._exposure is None:
             raise ValueError(

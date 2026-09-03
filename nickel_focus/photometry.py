@@ -28,12 +28,12 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
     """
     Find sources in an image.
 
-    Iteratively uses :func:`photutils.segmentation.detect_threshold` to determine the
-    image detection threshold and :func:`photutils.segmentation.detect_sources` to
-    identify pixels with sources.  Source pixels masks are grown and the
-    non-source pixels are used to measure and subtract the background.
-    Iterations stop when subsequent measurements of the threshold are within the
-    provided relative tolerance.
+    Iteratively uses :func:`photutils.segmentation.detect_threshold` to
+    determine the image detection threshold and
+    :func:`photutils.segmentation.detect_sources` to identify pixels with
+    sources.  Source pixels masks are grown and the non-source pixels are used
+    to measure and subtract the background.  Iterations stop when subsequent
+    measurements of the threshold are within the provided relative tolerance.
 
     Parameters
     ----------
@@ -160,8 +160,7 @@ def moment2d(x, y, z):
     z : array-like
         Value of the data at each provide x and y coordinate.
 
-    Returns:
-    tot : :obj:`float`
+    Returns: tot : :obj:`float`
         Sum of ``z``
     cx : :obj:`float`
         Weighted mean of ``x``

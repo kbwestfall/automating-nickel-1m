@@ -1,8 +1,8 @@
 """
 Package initialization.
 
-The current main purpose of this is to provide package-level globals
-that can be imported by submodules.
+The current main purpose of this is to provide package-level globals that can be
+imported by submodules.
 """
 
 # Set version

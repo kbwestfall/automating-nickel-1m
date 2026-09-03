@@ -137,12 +137,11 @@ class FileFormatter(logging.Formatter):
 
 class GuiFormatter(logging.Formatter):
     """
-    Custom :class:`logging.Formatter` for handlers feeding a GUI
-    widget: plain (no ANSI color codes, which would render as literal
-    escape junk in a text widget) and terser than
-    :class:`~nickel_focus.pkg.logger.FileFormatter` (no
-    timestamp or calling-frame location), since it's meant for a narrow
-    panel that scrolls live.
+    Custom :class:`logging.Formatter` for handlers feeding a GUI widget: plain
+    (no ANSI color codes, which would render as literal escape junk in a text
+    widget) and terser than :class:`~nickel_focus.pkg.logger.FileFormatter` (no
+    timestamp or calling-frame location), since it's meant for a narrow panel
+    that scrolls live.
     """
 
     base_fmt = "%(levelname)8s | %(message)s"
@@ -313,7 +312,8 @@ class NickelFocusLogger(logging.Logger):
             sinfo=None
     ):
         """
-        Override the default makeRecord function to rework the message for exceptions.
+        Override the default makeRecord function to rework the message for
+        exceptions.
         """
 
         # If the warning was issued by "warnings", try to recover the calling
@@ -376,8 +376,8 @@ class NickelFocusLogger(logging.Logger):
         ----------
         handler_type : type
             The :class:`logging.Handler` subclass to remove; every attached
-            handler for which ``isinstance(handler, handler_type)`` is
-            true is removed.
+            handler for which ``isinstance(handler, handler_type)`` is true is
+            removed.
         """
         for h in [h for h in self.handlers if isinstance(h, handler_type)]:
             self.removeHandler(h)
@@ -401,12 +401,11 @@ def get_logger(
     stream
         Stream for logging messages, which defaults to sys.stderr.
     log_file
-        Name for a log file.  If None, logging is only recorded to the
-        console.  If the file provided already exists, it will be
-        ovewritten!
+        Name for a log file.  If None, logging is only recorded to the console.
+        If the file provided already exists, it will be ovewritten!
     log_file_level
-        The logging level specific to the log file.  If None, adopt the
-        console logging level.
+        The logging level specific to the log file.  If None, adopt the console
+        logging level.
 
     Returns
     -------

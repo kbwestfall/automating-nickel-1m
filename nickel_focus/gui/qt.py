@@ -1,13 +1,13 @@
 """
 Single point of contact with the Qt binding used by this GUI.
 
-Every other :mod:`~nickel_focus.gui` module should get its Qt classes from here (e.g.
-``from gui.qt import QtWidgets``) rather than importing PySide6 directly,
-so there's exactly one place that fails, with one clear message, if Qt
-isn't installed. ``scripts/`` (the CLI) never imports this module and must
-never need to -- installing the base package alone is enough to run the
-CLI with no Qt involved at all; the ``gui`` extra in ``pyproject.toml``
-holds the additional dependency this module needs.
+Every other :mod:`~nickel_focus.gui` module should get its Qt classes from here
+(e.g.  ``from gui.qt import QtWidgets``) rather than importing PySide6 directly,
+so there's exactly one place that fails, with one clear message, if Qt isn't
+installed.  ``scripts/`` (the CLI) never imports this module and must never need
+to -- installing the base package alone is enough to run the CLI with no Qt
+involved at all; the ``gui`` extra in ``pyproject.toml`` holds the additional
+dependency this module needs.
 """
 import os
 

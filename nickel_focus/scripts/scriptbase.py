@@ -75,11 +75,11 @@ class ScriptBase:
 
         .. warning::
 
-            *Any* argument that defaults to the
-            string ``'current working directory'`` will be replaced by the
-            result of ``Path.cwd()`` when the script is executed.  This means
-            help dialogs will include this replacement, and parsing of the
-            command line will use ``Path.cwd()`` as the default.
+            *Any* argument that defaults to the string ``'current working
+            directory'`` will be replaced by the result of ``Path.cwd()`` when
+            the script is executed.  This means help dialogs will include this
+            replacement, and parsing of the command line will use ``Path.cwd()``
+            as the default.
 
         Parameters
         ----------

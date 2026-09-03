@@ -24,8 +24,9 @@ class NickelFocusGUI(scriptbase.ScriptBase):
     @classmethod
     def main(cls, args):
         """
-        Build the window and its :class:`~nickel_focus.gui.controller.Controller`,
-        show the window, and run the Qt event loop until the user quits.
+        Build the window and its
+        :class:`~nickel_focus.gui.controller.Controller`, show the window, and
+        run the Qt event loop until the user quits.
         """
 
         from nickel_focus.gui import launcher

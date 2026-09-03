@@ -101,27 +101,34 @@ the existing `ScriptBase.entry_point()` machinery (no logic duplicated):
 - **`BINSUB = nickel`** is a placeholder pending naming-convention
   confirmation (Brad's APF example used `master` for its `Main` script).
   Easy to rename later.
-- **`nickel_focus/pkg/version.py` regeneration without `pip`.** Answering
-  the "does such a tool exist" question: yes — `setuptools_scm` (already a
-  `[build-system] requires` dependency) exposes this independent of any
-  `pip install`/build step. Since `pyproject.toml` already configures
-  `[tool.setuptools_scm] version_file = "nickel_focus/pkg/version.py"`,
-  running `python -m setuptools_scm` from the repo root (with
-  `setuptools_scm` installed in whatever *dev* Python runs the sync step —
-  not `kpython`) recomputes the version from the current git tag and
-  rewrites that file, with no other build/install action attached. Given
-  every CVS-synced version will be a tagged commit, the plan is to run
-  this as a step in the (not-yet-written) CVS sync script, right before
-  mirroring `nickel_focus/` into CVS, so the exported `version.py` always
-  reflects the tag rather than a stale/dev version string.
-- **`point_focus.txt` lookup still uses `importlib.resources`**
-  (`nickel_focus/slew.py:141`, `resources.files('nickel_focus') / 'data' /
-  'point_focus.txt'`). You noted this will likely need to change to a
-  `__file__`-relative lookup instead, since the kroot/CVS deployment is a
-  plain files-on-`PYTHONPATH` layout rather than a proper installed
-  distribution with package metadata that `importlib.resources` depends on.
-  Not changed yet — flagged as a follow-up once you've finished assessing
-  which files move where.
+- **`nickel_focus/pkg/version.py` regeneration without `pip` — done.**
+  `tools/write_version.py` answers the "does such a tool exist" question:
+  yes — `setuptools_scm` (already a `[build-system] requires` dependency,
+  now also added to the `dev` extra in `pyproject.toml`) exposes this
+  independent of any `pip install`/build step, via its `get_version()` API
+  rather than its bare CLI (verified: `python -m setuptools_scm` alone only
+  *prints* the version, it does **not** write `version_file` — that only
+  happens through the API, called with the file's configured
+  `version_file` explicitly). The script reads
+  `[tool.setuptools_scm] version_file` straight out of `pyproject.toml`
+  (via stdlib `tomllib`) so the path can't drift out of sync, and warns
+  (without failing) if the computed version isn't a clean tag, since every
+  CVS-synced version is expected to be one. Verified end-to-end against
+  this repo. Note `nickel_focus/pkg/version.py` is `.gitignore`d (never
+  tracked by git in the first place — it's a pure build artifact), so
+  regenerating it is always safe to do freely. This becomes a step the
+  (not-yet-written) CVS sync script runs right before mirroring
+  `nickel_focus/` into CVS.
+- **`point_focus.txt` lookup — done.** `nickel_focus/slew.py`'s
+  `find_nearest_target` now locates it via
+  `Path(__file__).resolve().parent / 'data' / 'point_focus.txt'` instead of
+  `importlib.resources.files('nickel_focus') / ...`, since the kroot/CVS
+  deployment is a plain files-on-`PYTHONPATH` layout rather than a proper
+  installed distribution with package metadata that `importlib.resources`
+  depends on. Verified against the full non-GUI test suite (89 passed).
+  `test_starlist.py`'s own unrelated `resources.files(...)` call (used just
+  to locate a file for a `parse_starlist` test) was left alone — it only
+  ever runs in a normal pip/pytest context.
 - **CVS sync script** itself: still blocked on the CVS-side specifics
   ("details to come later" per your note) — mechanism will be written from
   scratch once those are available. It will need to run the `version.py`

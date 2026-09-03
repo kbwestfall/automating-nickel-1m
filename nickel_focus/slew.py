@@ -3,7 +3,6 @@ Interface to the Nickel telescope's pointing/tracking hardware via KTL,
 plus a helper to locate the nearest known target in a starlist.
 """
 
-from importlib import resources
 from pathlib import Path
 
 from astropy.coordinates import Angle, SkyCoord
@@ -138,7 +137,7 @@ def find_nearest_target(telescope_coo, obj_search_str=None, file=None):
         ``file`` contains it.
     """
     _file = (
-        resources.files('nickel_focus') / 'data' / 'point_focus.txt'
+        Path(__file__).resolve().parent / 'data' / 'point_focus.txt'
         if file is None else Path(file).absolute()
     )
     tbl = starlist.parse_starlist(_file)

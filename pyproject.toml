@@ -60,6 +60,7 @@ gui_test = [
 #]
 dev = [
     "nickel_focus[test,gui,gui_test]",
+    "setuptools_scm",
 ]
 
 [project.urls]

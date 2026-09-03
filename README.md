@@ -216,5 +216,5 @@ The maintenance workflow is as follows:
      `tools/write_version.py`.
     - Sync the updated `nickel_focus/` tree into the CVS working copy.
     - Run `make install` from the CVS working copy to install the package into
-      $(LROOT).
+      `$(LROOT)`.
 

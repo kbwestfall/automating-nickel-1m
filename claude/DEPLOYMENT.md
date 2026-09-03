@@ -8,12 +8,14 @@ Makefile tree.
 
 ## Decisions so far
 
-- **Only the `nickel_focus/` directory tree is mirrored to CVS.** The repo
-  root's `dev/`, `claude/`, `.github/`, `pyproject.toml`, etc. are not part
-  of the CVS-deployed tree. The `/Makefile` currently at the repo root is
-  Brad's original APF reference example — it's left untouched and is not
-  itself part of the deployed tree; `nickel_focus/Makefile` (see below)
-  plays the "top" Makefile role instead, rooted one level down.
+- **The repo root now has its own top Makefile** (`DIRS = nickel_focus`),
+  matching Brad's original top-Makefile pattern directly — Brad's APF
+  reference example has been renamed to `Makefile.example` for reference
+  rather than being adapted in place. Only this `/Makefile` and the
+  `nickel_focus/` tree beneath it are meant for CVS; `dev/`, `claude/`,
+  `.github/`, `pyproject.toml`, `.gitignore`, `Makefile.example`, etc. are
+  not part of the deployed tree (see `MANIFEST.in`, below, which also keeps
+  most of these out of the pip sdist/wheel for the same reason).
 - **The Makefile tree mirrors the directory tree**, and this is done
   entirely by hand via explicit `DIRS =` directives at each level — there's
   no automatic recursive-copy behavior. `nickel_focus/Makefile` sets
@@ -43,28 +45,44 @@ Makefile tree.
   package for now.
 - **The GUI script is part of the deployment.** `nickel_focus_gui.sin` is
   installed the same way as the other two.
-- **`.sin` scripts live in `scripts/`**, alongside the existing
-  `focus.py`/`focus_gui.py`/`slew_to_nearest.py`/`scriptbase.py` modules
-  they wrap. Only the `@KPYTHON@` token is needed for now (no other `@VAR@`
-  tokens, no `@@VAR@@` data-path tokens).
+- **`.sin` scripts live in their own `nickel_focus/sin/` directory**, not
+  in `scripts/` — kept separate from the importable modules they wrap, so
+  `scripts/` stays a plain, `.sin`-free library directory. Only the
+  `@KPYTHON@` token is needed for now (no other `@VAR@` tokens, no
+  `@@VAR@@` data-path tokens).
+- **`sin/Makefile`'s `BINFILES = $(FILES)`** (derived from
+  `SINFILES = $(wildcard *.sin)` / `FILES = $(SINFILES:%.sin=%)`) is kept
+  as a deliberate choice, not an oversight — programmatically stripping
+  `.sin` from every file in the directory is preferred over hand-listing
+  the names again. If this turns out to not play well with the real
+  `Make.rules`, revisit then.
+- **Pip-packaging cleanliness is handled via a root `MANIFEST.in`**
+  (`global-exclude Makefile`, `global-exclude *.sin`, `prune .github/`,
+  `prune dev/`, `prune claude/`, `exclude .gitignore`,
+  `exclude Makefile.example`) rather than a `pyproject.toml`
+  `exclude-package-data` table. This keeps the kroot-only build artifacts
+  and non-package directories out of the sdist/wheel that `pip install .`
+  produces, without touching `pyproject.toml` itself.
 
 ## Makefile tree (as written)
 
 | Directory | Role | Installs |
 |---|---|---|
-| `nickel_focus/` | router + leaf | `LIBFILES = $(wildcard *.py)` → `LIBSUB = nickel_focus/`; `DIRS = config data gui pkg scripts tests` |
+| `/` (repo root) | router | `DIRS = nickel_focus` |
+| `nickel_focus/` | router + leaf | `LIBFILES = $(wildcard *.py)` → `LIBSUB = nickel_focus/`; `DIRS = config data gui pkg scripts sin tests` |
 | `nickel_focus/config/` | leaf | `LIBFILES = nickucam.toml nscicam.toml` → `nickel_focus/config/` |
 | `nickel_focus/data/` | leaf | `LIBFILES = point_focus.txt` → `nickel_focus/data/` |
 | `nickel_focus/gui/` | router + leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/gui/`; `DIRS = model views` |
 | `nickel_focus/gui/model/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/gui/model/` |
 | `nickel_focus/gui/views/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/gui/views/` |
 | `nickel_focus/pkg/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/pkg/` (includes `version.py`, see below) |
-| `nickel_focus/scripts/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/scripts/`; `SINFILES = $(wildcard *.sin)`, `FILES`/`BINFILES` derived from it → `BINSUB = nickel` |
+| `nickel_focus/scripts/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/scripts/` |
+| `nickel_focus/sin/` | leaf | `SINFILES = $(wildcard *.sin)`, `FILES`/`BINFILES` derived from it → `BINSUB = nickel` |
 | `nickel_focus/tests/` | router + leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/tests/`; `DIRS = gui` |
 | `nickel_focus/tests/gui/` | leaf | `LIBFILES = $(wildcard *.py)` → `nickel_focus/tests/gui/` |
 
-Three `.sin` files added in `scripts/`, each a thin wrapper reusing the
-existing `ScriptBase.entry_point()` machinery (no logic duplicated):
+Three `.sin` files live in `nickel_focus/sin/`, each a thin wrapper reusing
+the existing `ScriptBase.entry_point()` machinery (no logic duplicated):
 `nickel_focus.sin` → `NickelFocus`, `nickel_focus_gui.sin` →
 `NickelFocusGUI`, `nickel_slew_to_nearest.sin` → `NickelSlewToNearest`.
 
@@ -74,10 +92,12 @@ existing `ScriptBase.entry_point()` machinery (no logic duplicated):
   (used at `nickel_focus/`, `gui/`, and `tests/`, which all have both
   local files and subdirectories) is an assumption — Brad's one example
   Makefile only showed a pure-leaf directory, and the email's "top"
-  Makefile only showed pure `DIRS`-routing with no local files. Needs
-  confirming against the real `Make.rules`, or just trying a real build
-  against `$(LROOT)` and seeing whether both directives are honored
-  together.
+  Makefile only showed pure `DIRS`-routing with no local files. The
+  repo-root `/Makefile` is now a clean pure-`DIRS` router (`DIRS =
+  nickel_focus`, no local files), so it doesn't exercise this combination
+  either — only `nickel_focus/`, `gui/`, and `tests/` do. Needs confirming
+  against the real `Make.rules`, or just trying a real build against
+  `$(LROOT)` and seeing whether both directives are honored together.
 - **`BINSUB = nickel`** is a placeholder pending naming-convention
   confirmation (Brad's APF example used `master` for its `Main` script).
   Easy to rename later.

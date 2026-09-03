@@ -4,7 +4,6 @@ endif
 
 include $(LROOT)/etc/Make.defs
 
-LIBFILES = $(wildcard *.py)
-LIBSUB = nickel_focus/scripts/
+DIRS = nickel_focus
 
 include $(LROOT)/etc/Make.rules

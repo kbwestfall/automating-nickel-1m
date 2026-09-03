@@ -198,13 +198,17 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         control_defaults = self.control_panel.get_settings_state()
-        control_state = {key: settings.value(f'control_panel/{key}', default)
-                          for key, default in control_defaults.items()}
+        control_state = {
+            key: settings.value(f'control_panel/{key}', default)
+            for key, default in control_defaults.items()
+        }
         self.control_panel.set_settings_state(control_state)
 
         image_defaults = self.image_panel.get_settings_state()
-        image_state = {key: settings.value(f'image_panel/{key}', default)
-                        for key, default in image_defaults.items()}
+        image_state = {
+            key: settings.value(f'image_panel/{key}', default)
+            for key, default in image_defaults.items()
+        }
         self.image_panel.set_settings_state(image_state)
 
     def _size_to_screen(self, preferred_width, preferred_height):

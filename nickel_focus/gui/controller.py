@@ -169,17 +169,21 @@ class Controller(QtCore.QObject):
             if focus_sequence_type == 'archive':
                 focus_sequence = self._build_archive_focus_sequence(config)
             elif focus_sequence_type == 'grid':
-                focus_sequence = focus.GridFocusSequence(config['start'], config['step'],
-                                                          nstep=config['nstep'])
+                focus_sequence = focus.GridFocusSequence(
+                    config['start'], config['step'], nstep=config['nstep']
+                )
             else:
-                focus_sequence = focus.AutomatedFocusSequence(config['start'], config['step'],
-                                                               maxsteps=config['maxsteps'])
+                focus_sequence = focus.AutomatedFocusSequence(
+                    config['start'], config['step'], maxsteps=config['maxsteps']
+                )
         except Exception as e:
             self._fail(f'Could not start sequence: {e}')
             return
 
-        if focus_sequence_type != 'archive' and (
-                focus_sequence._focus is None or focus_sequence._exposure is None):
+        if (
+            focus_sequence_type != 'archive'
+            and (focus_sequence._focus is None or focus_sequence._exposure is None)
+        ):
             self._fail(
                 'Could not start sequence: no ktl connection is available for a live sequence.'
             )
@@ -191,8 +195,10 @@ class Controller(QtCore.QObject):
         self.window.curve_panel.reset()
         self.window.control_panel.reset()
 
-        exp_kwargs = (None if focus_sequence_type == 'archive'
-                      else self.window.control_panel.get_exposure_config())
+        exp_kwargs = (
+            None if focus_sequence_type == 'archive'
+            else self.window.control_panel.get_exposure_config()
+        )
         self._start_focus_worker(self.focus_sequence, mode='step', exp_kwargs=exp_kwargs)
 
     def _build_archive_focus_sequence(self, config):
@@ -210,10 +216,11 @@ class Controller(QtCore.QObject):
             for i in range(grid.nstep)
         ]
         missing = [f for f in expected_files if not f.is_file()]
-        if missing:
+        if len(missing) > 0:
             raise FileNotFoundError(
                 'Expected to find the following files, but they are not available: '
-                + ', '.join(str(f) for f in missing))
+                + ', '.join(str(f) for f in missing)
+            )
         return focus.ArchiveFocusSequence(list(grid.target_focus), expected_files)
 
     def reanalyze(self):
@@ -224,10 +231,14 @@ class Controller(QtCore.QObject):
         none is loaded -- a standalone Single-tab exposure (§5.6's "no sequence
         loaded yet" case).
         """
-        target = (self.focus_sequence if self.focus_sequence is not None
-                  else self._standalone_focus_sequence)
-        if (self.focus_worker is not None or self.slew_worker is not None or target is None
-                or not target.exposures):
+        target = (
+            self.focus_sequence if self.focus_sequence is not None
+            else self._standalone_focus_sequence
+        )
+        if (
+            self.focus_worker is not None or self.slew_worker is not None or target is None
+            or not target.exposures
+        ):
             return
         if target is self.focus_sequence:
             # Clear the curve immediately rather than letting old points
@@ -256,8 +267,9 @@ class Controller(QtCore.QObject):
             return
         self._standalone_focus_sequence = standalone
         exp_kwargs = self.window.control_panel.get_exposure_config()
-        self._start_focus_worker(standalone, mode='single', exp_kwargs=exp_kwargs,
-                                  focus_value=focus_value)
+        self._start_focus_worker(
+            standalone, mode='single', exp_kwargs=exp_kwargs, focus_value=focus_value
+        )
 
     def stop(self):
         """Request that the running sequence stop between steps (§4.3)."""
@@ -392,7 +404,8 @@ class Controller(QtCore.QObject):
             return
         try:
             name, ra, dec = slew.find_nearest_target(
-                self.telescope.current, obj_search_str=obj_search_str, file=file)
+                self.telescope.current, obj_search_str=obj_search_str, file=file
+            )
         except (ValueError, FileNotFoundError) as e:
             self._fail(f'Could not find nearest target: {e}')
             return
@@ -408,8 +421,10 @@ class Controller(QtCore.QObject):
         handlers, and start it running on its own background thread (see
         :meth:`~nickel_focus.gui.model.focus_worker.FocusWorker.run`).
         """
-        self.focus_worker = FocusWorker(focus_sequence, method=self.method, mode=mode,
-                                         exp_kwargs=exp_kwargs, focus_value=focus_value)
+        self.focus_worker = FocusWorker(
+            focus_sequence, method=self.method, mode=mode, exp_kwargs=exp_kwargs,
+            focus_value=focus_value
+        )
         self.focus_worker.stepComplete.connect(self._on_step_complete)
         self.focus_worker.focusSequenceFinished.connect(self._on_focus_sequence_finished)
         self.focus_worker.focusSequenceFailed.connect(self._fail)
@@ -448,8 +463,10 @@ class Controller(QtCore.QObject):
         step_text = f'Step {result.index + 1}'
         if total:
             step_text += f'/{total}'
-        step_text += (f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
-                      f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
+        step_text += (
+            f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
+            f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})'
+        )
         if result.is_outlier:
             step_text += '  [outlier]'
         log.info(step_text)
@@ -482,8 +499,10 @@ class Controller(QtCore.QObject):
         seq.source_stamps.append(result.stamp)
         seq.centroids.append(result.centroid)
         seq.step_iter = 1
-        log.info(f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
-                 f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
+        log.info(
+            f'Took exposure at focus {result.focus_value:.0f}: measured FWHM {result.fwhm:.2f}, '
+            f'source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})'
+        )
         self.window.control_panel.show_single_exposure_result(result)
 
     def _on_focus_worker_finished(self):
@@ -552,8 +571,9 @@ class Controller(QtCore.QObject):
             return
         current = self.telescope.current
         ra_text = current.ra.to_string(unit='hourangle', sep=':', pad=True, precision=2)
-        dec_text = current.dec.to_string(unit='deg', sep=':', pad=True, alwayssign=True,
-                                          precision=2)
+        dec_text = current.dec.to_string(
+            unit='deg', sep=':', pad=True, alwayssign=True, precision=2
+        )
         self.window.control_panel.set_current_position(ra_text, dec_text)
 
     def _set_running(self, running):

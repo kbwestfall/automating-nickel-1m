@@ -63,16 +63,21 @@ class ImagePanel(QtWidgets.QWidget):
     #: enough to push the window past a smaller screen's available width
     #: (see claude/GUI_IMPLEMENTATION.md's Phase 5 sub-phase 3 log).
     STRETCHES = {
-        'ZScale': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                               stretch=LinearStretch()),
-        'Min/Max': lambda data: ImageNormalize(data, interval=MinMaxInterval(),
-                                                stretch=LinearStretch()),
-        'Sqrt': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                             stretch=SqrtStretch()),
-        'Log': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                            stretch=LogStretch()),
-        'Asinh': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                              stretch=AsinhStretch()),
+        'ZScale': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=LinearStretch()
+        ),
+        'Min/Max': lambda data: ImageNormalize(
+            data, interval=MinMaxInterval(), stretch=LinearStretch()
+        ),
+        'Sqrt': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=SqrtStretch()
+        ),
+        'Log': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=LogStretch()
+        ),
+        'Asinh': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=AsinhStretch()
+        ),
     }
 
     def __init__(self, parent=None):
@@ -197,7 +202,8 @@ class ImagePanel(QtWidgets.QWidget):
         exposures already on display (§5.6).
         """
         existing_index = next(
-            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None)
+            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None
+        )
         if existing_index is None:
             self.add_result(result)
             return
@@ -403,11 +409,14 @@ class ImagePanel(QtWidgets.QWidget):
         color = 'yellow' if result.is_outlier else 'red'
         rect = patches.Rectangle(
             (result.centroid[0] - half, result.centroid[1] - half), stamp_size, stamp_size,
-            linewidth=2, edgecolor=color, facecolor='none')
+            linewidth=2, edgecolor=color, facecolor='none'
+        )
         self.ax.add_patch(rect)
         if result.is_outlier:
-            self.ax.text(result.centroid[0], result.centroid[1] + half + 5, 'Outlier centroid',
-                          color='yellow', fontsize=10, ha='center')
+            self.ax.text(
+                result.centroid[0], result.centroid[1] + half + 5, 'Outlier centroid',
+                color='yellow', fontsize=10, ha='center'
+            )
 
         if reset_view:
             self._data_shape = data.shape

@@ -132,17 +132,17 @@ class ScriptBase:
         Initialize the logger provided the command-line arguments.
         """
         level = log.convert_verbosity_to_logging_level(args.verbosity)
-        log_file_level = None if args.log_level is None else \
+        log_file_level = (
+            None if args.log_level is None else
             log.convert_verbosity_to_logging_level(args.log_level)
+        )
         if args.log_file == 'default':
             _log_file = cls.default_log_file()
         elif args.log_file in ['None', None]:
             _log_file = None
         else:
             _log_file = args.log_file
-        log.init(level=level,
-                 log_file=_log_file,
-                 log_file_level=log_file_level)
+        log.init(level=level, log_file=_log_file, log_file_level=log_file_level)
 
     @classmethod
     def default_log_file(cls):

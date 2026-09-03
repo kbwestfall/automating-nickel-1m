@@ -238,8 +238,9 @@ class FocusPlot:
         self.ncols = ncols
         self.nrows = int(np.ceil(nstamps / ncols))
 
-        self.fig = pyplot.figure(figsize=(6 + 3*self.ncols, max(3*self.nrows, 6)),
-                                  constrained_layout=True)
+        self.fig = pyplot.figure(
+            figsize=(6 + 3*self.ncols, max(3*self.nrows, 6)), constrained_layout=True
+        )
         subfigs = self.fig.subfigures(1, 3, width_ratios=[1.2, self.ncols, 1.2])
 
         self.frame_ax = subfigs[0].subplots(1, 1)
@@ -274,12 +275,16 @@ class FocusPlot:
 
         half = stamp_size / 2
         color = 'yellow' if is_outlier else 'red'
-        rect = patches.Rectangle((coords[0]-half, coords[1]-half), stamp_size, stamp_size,
-                                  linewidth=2, edgecolor=color, facecolor='none')
+        rect = patches.Rectangle(
+            (coords[0]-half, coords[1]-half), stamp_size, stamp_size, linewidth=2,
+            edgecolor=color, facecolor='none'
+        )
         self.frame_ax.add_patch(rect)
         if is_outlier:
-            self.frame_ax.text(coords[0], coords[1]+half+5, 'Outlier centroid', color='yellow',
-                                fontsize=10, ha='center')
+            self.frame_ax.text(
+                coords[0], coords[1]+half+5, 'Outlier centroid', color='yellow', fontsize=10,
+                ha='center'
+            )
         self._draw()
 
     def add_stamp(self, index, stamp, focus_value, fwhm, is_outlier=False):
@@ -311,8 +316,10 @@ class FocusPlot:
             x_smooth = np.linspace(min(focus_values), max(focus_values), 50)
             y_smooth = a*x_smooth**2 + b*x_smooth + c
             self.curve_ax.plot(x_smooth, y_smooth, 'r-')
-            self.curve_ax.scatter([x_vertex], [y_vertex], color='green', zorder=3,
-                                   label=f'Best focus: {x_vertex:.1f}')
+            self.curve_ax.scatter(
+                [x_vertex], [y_vertex], color='green', zorder=3,
+                label=f'Best focus: {x_vertex:.1f}'
+            )
             self.curve_ax.legend(loc='best')
 
         self._draw()
@@ -436,8 +443,9 @@ class FocusSequence:
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
-            data, bkg, src_data, img_quality, source_stamp, coords \
-                = image_quality(self.exposures[-1], method=method)
+            data, bkg, src_data, img_quality, source_stamp, coords = image_quality(
+                self.exposures[-1], method=method
+            )
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.centroids += [coords]
@@ -490,8 +498,9 @@ class FocusSequence:
         self.centroids = []
 
         for i, (focus_value, exposure) in enumerate(zip(focus_values, exposures)):
-            data, bkg, src_data, img_quality, source_stamp, coords \
-                = image_quality(exposure, method=method)
+            data, bkg, src_data, img_quality, source_stamp, coords = image_quality(
+                exposure, method=method
+            )
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.centroids += [coords]
@@ -568,11 +577,14 @@ class FocusSequence:
 
         for result in self.step(method=method):
             if self.plot is not None:
-                self.plot.update_frame(result.frame, result.centroid, int(result.fwhm*10),
-                                        result.exposure.stem, result.focus_value,
-                                        result.is_outlier)
-                self.plot.add_stamp(result.index, result.stamp, result.focus_value,
-                                     result.fwhm, is_outlier=result.is_outlier)
+                self.plot.update_frame(
+                    result.frame, result.centroid, int(result.fwhm*10), result.exposure.stem,
+                    result.focus_value, result.is_outlier
+                )
+                self.plot.add_stamp(
+                    result.index, result.stamp, result.focus_value, result.fwhm,
+                    is_outlier=result.is_outlier
+                )
                 self.plot.update_curve(self.observed_focus, self.img_quality)
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
@@ -658,9 +670,9 @@ class AutomatedFocusSequence(FocusSequence):
     def continue_sequence(self):
         return (
             self.step_iter < self.maxsteps
-            and (self.step_iter < 2
-                 or self.last is None
-                 or (self.last is not None and self.step_iter < self.last)
+            and (
+                self.step_iter < 2 or self.last is None
+                or (self.last is not None and self.step_iter < self.last)
             )
         )
 
@@ -675,12 +687,16 @@ class AutomatedFocusSequence(FocusSequence):
         elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
             self.direction = -1
             next_focus = self.observed_focus[0] - self.step_size
-        elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
+        elif (
+            self.last is None and self.step_iter > 2
+            and self.img_quality[-1] > self.img_quality[-2]
+        ):
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
                 log.warning(
                     f'Number of steps to fulfill sequence ({self.last}) is more than the '
-                    f'maximum number of steps requested ({self.maxsteps}).')
+                    f'maximum number of steps requested ({self.maxsteps}).'
+                )
             next_focus = self.observed_focus[-1] + self.direction * self.step_size
         else:
             next_focus = self.observed_focus[-1] + self.direction * self.step_size

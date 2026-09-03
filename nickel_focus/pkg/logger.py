@@ -338,7 +338,8 @@ class NickelFocusLogger(logging.Logger):
         # Do the same if (1) this is an error message, (2) the execution
         # information is provided, and (3) the error originates from the
         # exception hook.
-        elif (level == logging.ERROR
+        elif (
+            level == logging.ERROR
             and exc_info is not None
             and Path(pathname).name == 'logger.py'
             and func is not None

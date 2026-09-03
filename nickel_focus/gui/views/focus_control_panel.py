@@ -334,9 +334,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         # stays reachable while a sequence runs.
         self._config_widgets = [
             self.slew_target_ra_edit, self.slew_target_dec_edit, self.slew_file_edit,
-            self.slew_browse_button, self.slew_search_edit,
-            self.single_focus_spin, self.single_exptime_spin, self.single_speed_combo,
-            self.single_binning_combo,
+            self.slew_browse_button, self.slew_search_edit, self.single_focus_spin,
+            self.single_exptime_spin, self.single_speed_combo, self.single_binning_combo,
             self.grid_start_spin, self.grid_step_spin, self.grid_nstep_spin,
             self.grid_exptime_spin, self.grid_speed_combo, self.grid_binning_combo,
             self.auto_start_spin, self.auto_step_spin, self.auto_maxsteps_spin,
@@ -444,7 +443,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.slew_move_button = QtWidgets.QPushButton('Move to Target')
         self.slew_move_button.clicked.connect(
             lambda: self.moveToTargetRequested.emit(
-                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()))
+                self.slew_target_ra_edit.text(), self.slew_target_dec_edit.text()
+            )
+        )
 
         position_layout = QtWidgets.QVBoxLayout()
         _add_centered_label(position_layout, 'Current coordinates')
@@ -473,7 +474,9 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.slew_find_object_button = QtWidgets.QPushButton('Object')
         self.slew_find_object_button.clicked.connect(
             lambda: self.findNearestObjectRequested.emit(
-                self.slew_file_edit.text(), self.slew_search_edit.text()))
+                self.slew_file_edit.text(), self.slew_search_edit.text()
+            )
+        )
         self.slew_find_pointing_button = QtWidgets.QPushButton('Pointing *')
         self.slew_find_pointing_button.clicked.connect(self.findNearestPointingRequested.emit)
         self.slew_find_focus_button = QtWidgets.QPushButton('Focusing *')
@@ -481,7 +484,8 @@ class FocusControlPanel(QtWidgets.QWidget):
 
         find_row = _button_row(
             self.slew_find_object_button, self.slew_find_pointing_button,
-            self.slew_find_focus_button)
+            self.slew_find_focus_button
+        )
         # Tighter than the default gap between widgets in a layout --
         # frees up width for the Position panel next to it without
         # actually shrinking any button.
@@ -519,13 +523,16 @@ class FocusControlPanel(QtWidgets.QWidget):
         tab width rather than belonging to either one.
         """
         self.single_focus_spin = _int_spin(165, 500, 340)
-        exposure_rows, self.single_exptime_spin, self.single_speed_combo, \
-            self.single_binning_combo = _exposure_field_rows()
+        (
+            exposure_rows, self.single_exptime_spin, self.single_speed_combo,
+            self.single_binning_combo
+        ) = _exposure_field_rows()
         focus_rows = [('Focus value:', self.single_focus_spin)]
 
         self.single_acquire_button = QtWidgets.QPushButton('Acquire')
         self.single_acquire_button.clicked.connect(
-            lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value()))
+            lambda: self.takeSingleExposureRequested.emit(self.single_focus_spin.value())
+        )
 
         columns = QtWidgets.QHBoxLayout()
         columns.addWidget(_group_box(exposure_rows), 1)
@@ -546,15 +553,18 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.grid_start_spin = _int_spin(165, 500, 340)
         self.grid_step_spin = _int_spin(1, 100, 5)
         self.grid_nstep_spin = _int_spin(3, 100, 5)
-        exposure_rows, self.grid_exptime_spin, self.grid_speed_combo, \
-            self.grid_binning_combo = _exposure_field_rows()
+        (
+            exposure_rows, self.grid_exptime_spin, self.grid_speed_combo,
+            self.grid_binning_combo
+        ) = _exposure_field_rows()
         focus_rows = [
             ('Start focus:', self.grid_start_spin),
             ('Step size:', self.grid_step_spin),
             ('Number of steps:', self.grid_nstep_spin),
         ]
-        button_row, self.grid_acquire_button, self.grid_interrupt_button = \
-            self._build_acquire_interrupt_row()
+        (
+            button_row, self.grid_acquire_button, self.grid_interrupt_button
+        ) = self._build_acquire_interrupt_row()
 
         columns = QtWidgets.QHBoxLayout()
         columns.addWidget(_group_box(exposure_rows), 1)
@@ -575,15 +585,18 @@ class FocusControlPanel(QtWidgets.QWidget):
         self.auto_start_spin = _int_spin(165, 500, 340)
         self.auto_step_spin = _int_spin(1, 100, 5)
         self.auto_maxsteps_spin = _int_spin(2, 100, 12)
-        exposure_rows, self.auto_exptime_spin, self.auto_speed_combo, \
-            self.auto_binning_combo = _exposure_field_rows()
+        (
+            exposure_rows, self.auto_exptime_spin, self.auto_speed_combo,
+            self.auto_binning_combo
+        ) = _exposure_field_rows()
         focus_rows = [
             ('Start focus:', self.auto_start_spin),
             ('Step size:', self.auto_step_spin),
             ('Max steps:', self.auto_maxsteps_spin),
         ]
-        button_row, self.auto_acquire_button, self.auto_interrupt_button = \
-            self._build_acquire_interrupt_row()
+        (
+            button_row, self.auto_acquire_button, self.auto_interrupt_button
+        ) = self._build_acquire_interrupt_row()
 
         columns = QtWidgets.QHBoxLayout()
         columns.addWidget(_group_box(exposure_rows), 1)
@@ -684,7 +697,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         # Meant to grow as more app-wide (as opposed to per-sequence)
         # preferences become useful -- currently just the one checkbox.
         self.remember_settings_checkbox = QtWidgets.QCheckBox(
-            'Remember settings between sessions')
+            'Remember settings between sessions'
+        )
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.remember_settings_checkbox)
@@ -766,8 +780,10 @@ class FocusControlPanel(QtWidgets.QWidget):
             Preferred height, in pixels, that fits every tab page except Help
             without scrolling.
         """
-        other_tabs = [self.slew_tab, self.single_tab, self.grid_tab, self.auto_tab,
-                      self.replay_tab, self.log_tab, self.options_tab]
+        other_tabs = [
+            self.slew_tab, self.single_tab, self.grid_tab, self.auto_tab, self.replay_tab,
+            self.log_tab, self.options_tab
+        ]
         tallest_other = max(tab.widget().minimumSizeHint().height() for tab in other_tabs)
         tab_bar_height = self.tabs.tabBar().sizeHint().height()
         # `QTabWidget` reserves a couple more pixels around the page
@@ -837,18 +853,23 @@ class FocusControlPanel(QtWidgets.QWidget):
         """
         tab = self.tabs.currentWidget()
         if tab is self.single_tab:
-            exptime, speed, binning = (self.single_exptime_spin, self.single_speed_combo,
-                                        self.single_binning_combo)
+            exptime, speed, binning = (
+                self.single_exptime_spin, self.single_speed_combo, self.single_binning_combo
+            )
         elif tab is self.grid_tab:
-            exptime, speed, binning = (self.grid_exptime_spin, self.grid_speed_combo,
-                                        self.grid_binning_combo)
+            exptime, speed, binning = (
+                self.grid_exptime_spin, self.grid_speed_combo, self.grid_binning_combo
+            )
         elif tab is self.auto_tab:
-            exptime, speed, binning = (self.auto_exptime_spin, self.auto_speed_combo,
-                                        self.auto_binning_combo)
+            exptime, speed, binning = (
+                self.auto_exptime_spin, self.auto_speed_combo, self.auto_binning_combo
+            )
         else:
             return {}
-        return {'exptime': exptime.value(), 'speed': speed.currentText(),
-                'binning': binning.currentText()}
+        return {
+            'exptime': exptime.value(), 'speed': speed.currentText(),
+            'binning': binning.currentText()
+        }
 
     def get_settings_state(self):
         """
@@ -978,8 +999,10 @@ class FocusControlPanel(QtWidgets.QWidget):
         text = f'Step {result.index + 1}'
         if total_expected:
             text += f'/{total_expected}'
-        text += (f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
-                  f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
+        text += (
+            f' — Focus {result.focus_value:.0f}, FWHM {result.fwhm:.2f}, '
+            f'Source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})'
+        )
         if result.is_outlier:
             text += '  [outlier]'
         self.step_label.setText(text)
@@ -1034,14 +1057,16 @@ class FocusControlPanel(QtWidgets.QWidget):
         fractional one.
         """
         self.status_label.setText(
-            f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}')
+            f'Sequence finished: best focus {best_focus:.1f}, expected FWHM {best_fwhm:.2f}'
+        )
         self.single_focus_spin.setValue(round(best_focus))
 
     def show_single_exposure_result(self, result):
         """Report one exposure taken from the Single tab."""
         self.status_label.setText(
             f'Took exposure at focus {result.focus_value:.0f}: measured FWHM '
-            f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})')
+            f'{result.fwhm:.2f}, source ({result.centroid[0]:.1f}, {result.centroid[1]:.1f})'
+        )
 
     def show_failure(self, message):
         """
@@ -1071,7 +1096,8 @@ class FocusControlPanel(QtWidgets.QWidget):
         :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.replay_datadir_edit`.
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(
-            self, 'Select archive directory', self.replay_datadir_edit.text())
+            self, 'Select archive directory', self.replay_datadir_edit.text()
+        )
         if directory != '':
             self.replay_datadir_edit.setText(directory)
 
@@ -1085,6 +1111,7 @@ class FocusControlPanel(QtWidgets.QWidget):
         :attr:`~nickel_focus.gui.views.focus_control_panel.FocusControlPanel.slew_file_edit`.
         """
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, 'Select starlist file', self.slew_file_edit.text())
+            self, 'Select starlist file', self.slew_file_edit.text()
+        )
         if path != '':
             self.slew_file_edit.setText(path)

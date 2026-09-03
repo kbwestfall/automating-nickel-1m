@@ -81,11 +81,15 @@ class FocusCurvePanel(QtWidgets.QWidget):
         outliers = [r for r in self._results if r.is_outlier]
 
         if normal:
-            self.ax.scatter([r.focus_value for r in normal], [r.fwhm for r in normal],
-                             color='tab:blue', marker='o', label='Measured')
+            self.ax.scatter(
+                [r.focus_value for r in normal], [r.fwhm for r in normal], color='tab:blue',
+                marker='o', label='Measured'
+            )
         if outliers:
-            self.ax.scatter([r.focus_value for r in outliers], [r.fwhm for r in outliers],
-                             color='gold', marker='x', label='Outlier')
+            self.ax.scatter(
+                [r.focus_value for r in outliers], [r.fwhm for r in outliers], color='gold',
+                marker='x', label='Outlier'
+            )
 
         focus_values = [r.focus_value for r in self._results]
         fwhm_values = [r.fwhm for r in self._results]
@@ -99,8 +103,10 @@ class FocusCurvePanel(QtWidgets.QWidget):
                 x_smooth = np.linspace(min(focus_values), max(focus_values), 50)
                 y_smooth = a*x_smooth**2 + b*x_smooth + c
                 self.ax.plot(x_smooth, y_smooth, 'r-')
-                self.ax.scatter([x_vertex], [y_vertex], color='green', zorder=3,
-                                 label=f'Best focus: {x_vertex:.1f}')
+                self.ax.scatter(
+                    [x_vertex], [y_vertex], color='green', zorder=3,
+                    label=f'Best focus: {x_vertex:.1f}'
+                )
 
         self.ax.legend(loc='best')
         self.canvas.draw_idle()

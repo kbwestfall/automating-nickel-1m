@@ -8,21 +8,6 @@ from scipy.ndimage import binary_dilation
 
 from nickel_focus import log
 
-# detect threshold
-# use threshold to detect sources
-# grow sources with binary dilation
-# estimate background on source subtracted image
-# inject sources back into image
-# iterate while threshold converges
-
-# use moments to determine shape of source(s)
-# decide whether shape is reasonable
-    # ratio between x and y aren't too different and x and y aren't too big/small
-# return sources and their attributes
-
-# find source closest to provided coordinates else brightest source
-# return fwhm of that source
-
 
 def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
     """
@@ -80,8 +65,10 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
 
         # Calculate the median of the threshold image
         med_threshold = np.median(threshold)
-        if previous_threshold is None or \
-                not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol):
+        if (
+            previous_threshold is None or
+            not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol)
+        ):
             log.debug(f'Updated threshold: {med_threshold:.1f}')
             # This is the first iteration
             previous_threshold = med_threshold
@@ -236,9 +223,10 @@ def evaluate_sources(data, sources):
         indx = sources.data == source.label
         if np.sum(indx) == 0:
             log.warning(f'No data assocated with source {source.label}')
-        src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i], \
-            src_data['SIGX'][i], src_data['SIGY'][i] \
-                = moment2d(img_x[indx], img_y[indx], data[indx])
+        (
+            src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i],
+            src_data['SIGX'][i], src_data['SIGY'][i] 
+        ) = moment2d(img_x[indx], img_y[indx], data[indx])
 
     # Check if sources are real
     #   - Bad sigma measurements
@@ -309,21 +297,25 @@ def image_quality(fits_file, method='brightest'):
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
         stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif method == 'weighted':
-        img_quality = np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2) \
-                        / np.sum(src_data['CNTS'])
+        img_quality = (
+            np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2)
+            / np.sum(src_data['CNTS'])
+        )
         target_source = np.argmax(src_data['CNTS'])
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
         stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif not isinstance(method, tuple):
-        raise ValueError('image_quality method must be brightest, weighted, or a tuple of '
-                         'coordinates')
+        raise ValueError(
+            'image_quality method must be brightest, weighted, or a tuple of coordinates'
+        )
     else:
         try:
             dist = (src_data['CENX'] - method[0])**2 + (src_data['CENY'] - method[1])**2
         except Exception as e:
-            raise ValueError('Could not use tuple provided to method keyword to find nearest '
-                             'source to use for image quality measurement.  Original excception '
-                             f'message: {e}.')
+            raise ValueError(
+                'Could not use tuple provided to method keyword to find nearest source to use '
+                f'for image quality measurement.  Original excception message: {e}.'
+            )
         target_source = np.argmin(dist)
         img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])

@@ -89,8 +89,10 @@ class FocusWorker(QtCore.QThread):
     focusSequenceFailed = QtCore.Signal(str)
     singleExposureFinished = QtCore.Signal(object)
 
-    def __init__(self, focus_sequence, method='brightest', mode='step', exp_kwargs=None,
-                 focus_value=None, parent=None):
+    def __init__(
+        self, focus_sequence, method='brightest', mode='step', exp_kwargs=None, focus_value=None,
+        parent=None
+    ):
         super().__init__(parent)
         if mode not in ('step', 'reanalyze', 'single'):
             raise ValueError(f"mode must be 'step', 'reanalyze', or 'single', got {mode!r}")
@@ -130,7 +132,8 @@ class FocusWorker(QtCore.QThread):
         if self.mode == 'single':
             try:
                 result = self.focus_sequence.take_single_exposure(
-                    self.focus_value, method=self.method, **self.exp_kwargs)
+                    self.focus_value, method=self.method, **self.exp_kwargs
+                )
             except Exception as e:
                 self.focusSequenceFailed.emit(f'Could not move to best focus: {e}')
                 return
@@ -155,7 +158,8 @@ class FocusWorker(QtCore.QThread):
 
         try:
             best_focus, best_fwhm = self.focus_sequence.fit_best_focus(
-                self.focus_sequence.observed_focus, self.focus_sequence.img_quality)
+                self.focus_sequence.observed_focus, self.focus_sequence.img_quality
+            )
         except ValueError as e:
             self.focusSequenceFailed.emit(
                 f'Stopped early -- not enough points for a focus fit: {e}'

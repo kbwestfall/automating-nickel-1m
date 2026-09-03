@@ -24,8 +24,9 @@ class NickelFocusGUI(scriptbase.ScriptBase):
     @classmethod
     def main(cls, args):
         """
-        Build the window and its `Controller`, show the window, and run the
-        Qt event loop until the user quits.
+        Build the window and its
+        :class:`~nickel_focus.gui.controller.Controller`, show the window, and
+        run the Qt event loop until the user quits.
         """
 
         from nickel_focus.gui import launcher
@@ -43,7 +44,8 @@ class NickelFocusGUI(scriptbase.ScriptBase):
         # with every signal connection it made in `Controller.__init__` --
         # could be garbage-collected out from under the running window.
         controller = Controller(  # noqa: F841 (kept alive for the life of main())
-            window, force_enable_hardware_tabs=args.test)
+            window, force_enable_hardware_tabs=args.test
+        )
         window.show()
         # QApplication.exec() starts Qt's event loop: it blocks here,
         # dispatching mouse clicks, key presses, timers, and cross-thread

@@ -20,34 +20,36 @@ class ImagePanel(QtWidgets.QWidget):
     """
     Shows the exposures collected by a focus sequence, one at a time.
 
-    Baseline interactions (GUI_DESIGN.md §5.2): pan via scroll bars, wheel
-    zoom, a "Recenter" button that returns to a fit-to-view zoom, and a
-    stretch selector. The measured source is boxed on every frame -- red
-    normally, yellow (with an "Outlier centroid" label) if
-    :attr:`focus.StepResult.is_outlier` is set. A drop-down lists every
-    exposure added so far, always kept sorted by focus value, and tracks
-    the most recently *added* exposure until the user manually picks a
-    different one (§5.2's "auto-follow latest" decision) -- note that
-    "most recently added" is not the same as "highest focus value," since
-    an adaptive (`AutomatedFocusSequence`) run doesn't acquire focus
-    values in order.
+    Baseline interactions (GUI_DESIGN.md §5.2): pan via scroll bars, wheel zoom,
+    a "Recenter" button that returns to a fit-to-view zoom, and a stretch
+    selector.  The measured source is boxed on every frame -- red normally,
+    yellow (with an "Outlier centroid" label) if
+    :attr:`~nickel_focus.focus.StepResult.is_outlier` is set.  A drop-down lists
+    every exposure added so far, always kept sorted by focus value, and tracks
+    the most recently *added* exposure until the user manually picks a different
+    one (§5.2's "auto-follow latest" decision) -- note that "most recently
+    added" is not the same as "highest focus value," since an adaptive
+    (:class:`~nickel_focus.focus.AutomatedFocusSequence`) run doesn't acquire
+    focus values in order.
 
     Hovering over a displayed source and pressing 'm' (§5.6) emits
-    :attr:`sourceSelected` with the data coordinates under the cursor,
-    but only while :func:`set_selection_enabled` has been called with
-    ``True`` -- gating that on whether a sequence is currently running is
-    the Controller's job, not this panel's. A key press rather than a
-    plain click is deliberate: on macOS, clicking an unfocused window
-    both refocuses it *and* is delivered to whatever's under the cursor,
-    so a stray click meant only to bring the window forward was enough
-    to kick off a reanalysis.
+    :attr:`~nickel_focus.gui.views.image_panel.ImagePanel.sourceSelected` with
+    the data coordinates under the cursor, but only while
+    :meth:`~nickel_focus.gui.views.image_panel.ImagePanel.set_selection_enabled`
+    has been called with ``True`` -- gating that on whether a sequence is
+    currently running is the Controller's job, not this panel's.  A key press
+    rather than a plain click is deliberate: on macOS, clicking an unfocused
+    window both refocuses it *and* is delivered to whatever's under the cursor,
+    so a stray click meant only to bring the window forward was enough to kick
+    off a reanalysis.
 
-    Does not implement the design doc's optional "center on measured
-    source" recenter variant; "Recenter" always fits the whole frame.
+    Does not implement the design doc's optional "center on measured source"
+    recenter variant; "Recenter" always fits the whole frame.
     """
 
     #: Emitted with the clicked ``(x, y)`` data coordinates, only while
-    #: selection is enabled (see :func:`set_selection_enabled`).
+    #: selection is enabled (see
+    #: :meth:`~nickel_focus.gui.views.image_panel.ImagePanel.set_selection_enabled`).
     sourceSelected = QtCore.Signal(float, float)
 
     #: Available stretch options, by name, as callables returning an
@@ -61,16 +63,21 @@ class ImagePanel(QtWidgets.QWidget):
     #: enough to push the window past a smaller screen's available width
     #: (see claude/GUI_IMPLEMENTATION.md's Phase 5 sub-phase 3 log).
     STRETCHES = {
-        'ZScale': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                               stretch=LinearStretch()),
-        'Min/Max': lambda data: ImageNormalize(data, interval=MinMaxInterval(),
-                                                stretch=LinearStretch()),
-        'Sqrt': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                             stretch=SqrtStretch()),
-        'Log': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                            stretch=LogStretch()),
-        'Asinh': lambda data: ImageNormalize(data, interval=ZScaleInterval(),
-                                              stretch=AsinhStretch()),
+        'ZScale': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=LinearStretch()
+        ),
+        'Min/Max': lambda data: ImageNormalize(
+            data, interval=MinMaxInterval(), stretch=LinearStretch()
+        ),
+        'Sqrt': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=SqrtStretch()
+        ),
+        'Log': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=LogStretch()
+        ),
+        'Asinh': lambda data: ImageNormalize(
+            data, interval=ZScaleInterval(), stretch=AsinhStretch()
+        ),
     }
 
     def __init__(self, parent=None):
@@ -152,18 +159,18 @@ class ImagePanel(QtWidgets.QWidget):
 
     def set_selection_enabled(self, enabled):
         """
-        Enable or disable click-to-select-source (§5.6). The Controller
-        is responsible for calling this appropriately (enabled before a
-        sequence/single exposure starts or after one finishes, disabled
-        while one is running).
+        Enable or disable click-to-select-source (§5.6). The Controller is
+        responsible for calling this appropriately (enabled before a
+        sequence/single exposure starts or after one finishes, disabled while
+        one is running).
         """
         self._selection_enabled = bool(enabled)
 
     def add_result(self, result):
         """
-        Add a newly-collected :class:`focus.StepResult` to the exposure
-        drop-down, inserted to keep it sorted by focus value, and display
-        it if this panel is currently tracking the most recently added
+        Add a newly-collected :class:`~nickel_focus.focus.StepResult` to the
+        exposure drop-down, inserted to keep it sorted by focus value, and
+        display it if this panel is currently tracking the most recently added
         exposure (see the class docstring).
         """
         tracking_latest = self._current is None or self._current is self._latest_result
@@ -185,16 +192,18 @@ class ImagePanel(QtWidgets.QWidget):
 
     def update_result(self, result):
         """
-        Replace an existing entry -- matched by ``result.exposure`` -- with
-        an updated measurement, without changing its position in the
-        drop-down (its focus value, and thus sort position, doesn't
-        change during a reanalysis). Falls back to :func:`add_result` if
-        no entry for that exposure exists yet. Used when
-        :func:`focus.FocusSequence.reanalyze` re-measures exposures
-        already on display (§5.6).
+        Replace an existing entry -- matched by ``result.exposure`` -- with an
+        updated measurement, without changing its position in the drop-down (its
+        focus value, and thus sort position, doesn't change during a
+        reanalysis). Falls back to
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel.add_result` if no
+        entry for that exposure exists yet.  Used when
+        :meth:`~nickel_focus.focus.FocusSequence.reanalyze` re-measures
+        exposures already on display (§5.6).
         """
         existing_index = next(
-            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None)
+            (i for i, r in enumerate(self._results) if r.exposure == result.exposure), None
+        )
         if existing_index is None:
             self.add_result(result)
             return
@@ -222,10 +231,10 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _show_result_preserving_view(self, result):
         """
-        Display ``result`` keeping the current zoom and view center fixed
-        -- used when the user picks a different exposure from the
-        drop-down, so browsing between already-collected frames doesn't
-        keep resetting back to a fit-to-view zoom.
+        Display ``result`` keeping the current zoom and view center fixed --
+        used when the user picks a different exposure from the drop-down, so
+        browsing between already-collected frames doesn't keep resetting back to
+        a fit-to-view zoom.
         """
         if self._current is None or self._data_shape is None:
             self.show_result(result)
@@ -263,14 +272,15 @@ class ImagePanel(QtWidgets.QWidget):
 
     def get_settings_state(self):
         """
-        Return the persistable display preference (currently just the
-        stretch choice) as a flat :obj:`dict`, suitable for a settings
-        store like :class:`~PySide6.QtCore.QSettings`.
+        Return the persistable display preference (currently just the stretch
+        choice) as a flat :obj:`dict`, suitable for a settings store like
+        :class:`PySide6.QtCore.QSettings`.
         """
         return {'stretch': self._stretch_name}
 
     def set_settings_state(self, state):
-        """Apply a settings :obj:`dict` from :func:`get_settings_state`."""
+        """Apply a settings :obj:`dict` from
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel.get_settings_state`."""
         name = state.get('stretch')
         if name in self.STRETCHES:
             self.stretch_combo.setCurrentText(name)
@@ -286,12 +296,20 @@ class ImagePanel(QtWidgets.QWidget):
     # -- internals --------------------------------------------------------
 
     def _on_combo_changed(self, index):
-        """Slot for `exposure_combo`'s ``currentIndexChanged``: display the newly picked entry."""
+        """
+        Slot for the
+        :attr:`~nickel_focus.gui.views.image_panel.ImagePanel.exposure_combo`
+        ``currentIndexChanged`` signal: display the newly picked entry.
+        """
         if 0 <= index < len(self._results):
             self._show_result_preserving_view(self._results[index])
 
     def _on_stretch_changed(self, name):
-        """Slot for `stretch_combo`'s ``currentTextChanged``: re-render with the new stretch."""
+        """
+        Slot for the
+        :attr:`~nickel_focus.gui.views.image_panel.ImagePanel.stretch_combo`
+        ``currentTextChanged`` signal: re-render with the new stretch.
+        """
         self._stretch_name = name
         if self._current is not None:
             self._render(reset_view=False)
@@ -299,11 +317,12 @@ class ImagePanel(QtWidgets.QWidget):
     def _on_scroll(self, _value):
         """
         Slot for both scrollbars' ``valueChanged``. The new value itself
-        (``_value``) isn't needed -- :func:`_apply_view_limits` reads
-        both bars' current positions directly -- but a slot connected to
-        a signal that carries an argument must still accept it
-        positionally; the leading underscore is just this codebase's way
-        of flagging "intentionally unused."
+        (``_value``) isn't needed --
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel._apply_view_limits`
+        reads both bars' current positions directly -- but a slot connected to a
+        signal that carries an argument must still accept it positionally; the
+        leading underscore is just this codebase's way of flagging
+        "intentionally unused."
         """
         if self._current is not None:
             self._apply_view_limits()
@@ -311,9 +330,9 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _on_wheel_zoom(self, event):
         """
-        matplotlib ``scroll_event`` callback (mouse wheel or trackpad
-        scroll over the canvas): zoom in/out, anchored on the cursor
-        (see :func:`_zoom_at`).
+        matplotlib ``scroll_event`` callback (mouse wheel or trackpad scroll
+        over the canvas): zoom in/out, anchored on the cursor (see
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel._zoom_at`).
         """
         if event.inaxes != self.ax or self._current is None:
             return
@@ -327,10 +346,11 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _zoom_at(self, xdata, ydata, new_zoom):
         """
-        Like :func:`set_zoom`, but keeps the data point ``(xdata, ydata)``
-        fixed under the cursor rather than anchored at the view's
-        top-left corner -- otherwise every scroll/trackpad zoom event
-        visibly drifts the image out from under the cursor.
+        Like :meth:`~nickel_focus.gui.views.image_panel.ImagePanel.set_zoom`,
+        but keeps the data point ``(xdata, ydata)`` fixed under the cursor
+        rather than anchored at the view's top-left corner -- otherwise every
+        scroll/trackpad zoom event visibly drifts the image out from under the
+        cursor.
         """
         new_zoom = max(1.0, float(new_zoom))
         if new_zoom == self._zoom:
@@ -350,10 +370,11 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _on_key_press(self, event):
         """
-        matplotlib ``key_press_event`` callback: pressing 'm' over the
-        canvas, while selection is enabled, emits :attr:`sourceSelected`
-        with the data coordinates under the cursor (see the class
-        docstring for why a key press rather than a click).
+        matplotlib ``key_press_event`` callback: pressing 'm' over the canvas,
+        while selection is enabled, emits
+        :attr:`~nickel_focus.gui.views.image_panel.ImagePanel.sourceSelected`
+        with the data coordinates under the cursor (see the class docstring for
+        why a key press rather than a click).
         """
         if event.key != 'm' or not self._selection_enabled or event.inaxes != self.ax:
             return
@@ -363,12 +384,12 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _render(self, reset_view):
         """
-        Redraw the currently displayed result from scratch: image,
-        stretch, and the measured-source box (or nothing, if
-        `_current` is `None`). ``reset_view`` controls whether the
-        zoom/scroll state is recomputed for a new frame shape (a
-        genuinely new image) or left alone (e.g. just changing the
-        stretch on the same image).
+        Redraw the currently displayed result from scratch: image, stretch, and
+        the measured-source box (or nothing, if
+        :attr:`~nickel_focus.gui.views.image_panel.ImagePanel._current` is
+        ``None``). ``reset_view`` controls whether the zoom/scroll state is
+        recomputed for a new frame shape (a genuinely new image) or left alone
+        (e.g.  just changing the stretch on the same image).
         """
         result = self._current
         self.ax.clear()
@@ -388,11 +409,14 @@ class ImagePanel(QtWidgets.QWidget):
         color = 'yellow' if result.is_outlier else 'red'
         rect = patches.Rectangle(
             (result.centroid[0] - half, result.centroid[1] - half), stamp_size, stamp_size,
-            linewidth=2, edgecolor=color, facecolor='none')
+            linewidth=2, edgecolor=color, facecolor='none'
+        )
         self.ax.add_patch(rect)
         if result.is_outlier:
-            self.ax.text(result.centroid[0], result.centroid[1] + half + 5, 'Outlier centroid',
-                          color='yellow', fontsize=10, ha='center')
+            self.ax.text(
+                result.centroid[0], result.centroid[1] + half + 5, 'Outlier centroid',
+                color='yellow', fontsize=10, ha='center'
+            )
 
         if reset_view:
             self._data_shape = data.shape
@@ -407,14 +431,17 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _set_scroll_position(self, x0, y0):
         """
-        Set both scrollbars' values at once, clamped to their valid
-        range, without triggering :func:`_on_scroll` for either -- used
-        whenever this panel repositions the view itself (recentering on
-        a data point, panning by right-clicking, etc.) rather than in
-        response to the user actually dragging a scrollbar. Signals are
-        blocked because :func:`_on_scroll` would otherwise fire once per
-        bar and redraw twice for what's really one logical view change;
-        the caller is expected to refresh the display itself afterward.
+        Set both scrollbars' values at once, clamped to their valid range,
+        without triggering
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel._on_scroll` for
+        either -- used whenever this panel repositions the view itself
+        (recentering on a data point, panning by right-clicking, etc.) rather
+        than in response to the user actually dragging a scrollbar.  Signals are
+        blocked because
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel._on_scroll` would
+        otherwise fire once per bar and redraw twice for what's really one
+        logical view change; the caller is expected to refresh the display
+        itself afterward.
         """
         for bar, value in ((self.h_scroll, x0), (self.v_scroll, y0)):
             bar.blockSignals(True)
@@ -423,10 +450,10 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _update_scrollbar_ranges(self):
         """
-        Recompute each scrollbar's valid range/page size for the
-        current frame shape and zoom level (e.g. after loading a new
-        frame or changing zoom) -- signals are blocked for the same
-        reason as :func:`_set_scroll_position`.
+        Recompute each scrollbar's valid range/page size for the current frame
+        shape and zoom level (e.g.  after loading a new frame or changing zoom)
+        -- signals are blocked for the same reason as
+        :meth:`~nickel_focus.gui.views.image_panel.ImagePanel._set_scroll_position`.
         """
         ny, nx = self._data_shape
         view_w, view_h = self._view_extent()
@@ -439,11 +466,11 @@ class ImagePanel(QtWidgets.QWidget):
 
     def _apply_view_limits(self):
         """
-        Set the matplotlib axes' visible data range from the current
-        scrollbar positions and zoom level. Doesn't redraw the canvas
-        itself -- callers are responsible for that (`draw_idle`), since
-        this is often one of several changes made before a single
-        redraw.
+        Set the matplotlib axes' visible data range from the current scrollbar
+        positions and zoom level.  Doesn't redraw the canvas itself -- callers
+        are responsible for that
+        (:meth:`matplotlib.backend_bases.FigureCanvasBase.draw_idle`), since
+        this is often one of several changes made before a single redraw.
         """
         view_w, view_h = self._view_extent()
         x0 = self.h_scroll.value()

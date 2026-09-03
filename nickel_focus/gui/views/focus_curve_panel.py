@@ -13,12 +13,12 @@ from nickel_focus.gui.qt import QtWidgets
 
 class FocusCurvePanel(QtWidgets.QWidget):
     """
-    Scatter of FWHM versus focus value for a sequence's results so far,
-    with the best-fit quadratic and its vertex overlaid once there are
-    enough points to fit one (matching
-    :func:`focus.FocusSequence.fit_best_focus`'s own 3-point minimum).
-    Outlier points (`focus.StepResult.is_outlier`) are drawn as a
-    distinct color/marker from normal ones.
+    Scatter of FWHM versus focus value for a sequence's results so far, with the
+    best-fit quadratic and its vertex overlaid once there are enough points to
+    fit one (matching :meth:`~nickel_focus.focus.FocusSequence.fit_best_focus`'s
+    own 3-point minimum). Outlier points
+    (:attr:`~nickel_focus.focus.StepResult.is_outlier`) are drawn as a distinct
+    color/marker from normal ones.
     """
 
     def __init__(self, parent=None):
@@ -38,7 +38,7 @@ class FocusCurvePanel(QtWidgets.QWidget):
         layout.addWidget(self.canvas)
 
     def add_result(self, result):
-        """Add one more :class:`focus.StepResult` and redraw."""
+        """Add one more :class:`~nickel_focus.focus.StepResult` and redraw."""
         self._results.append(result)
         self._render()
 
@@ -50,10 +50,15 @@ class FocusCurvePanel(QtWidgets.QWidget):
 
     def _reset_axis(self):
         """
-        Clear the plot and redraw its static decorations (labels, title,
-        grid) -- everything :func:`_render` would otherwise have to
-        re-apply after every `Axes.clear`, factored out since both
-        :func:`_render` and :func:`reset` need exactly this.
+        Clear the plot and redraw its static decorations (labels, title, grid)
+        -- everything
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._render`
+        would otherwise have to re-apply after every
+        :meth:`matplotlib.axes.Axes.clear`, factored out since both
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._render`
+        and
+        :meth:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel.reset`
+        need exactly this.
         """
         self.ax.clear()
         self.ax.set_xlabel('Focus Value')
@@ -63,8 +68,9 @@ class FocusCurvePanel(QtWidgets.QWidget):
 
     def _render(self):
         """
-        Redraw the whole plot from `_results`: points, plus the fitted
-        curve/vertex if enough exist.
+        Redraw the whole plot from
+        :attr:`~nickel_focus.gui.views.focus_curve_panel.FocusCurvePanel._results`:
+        points, plus the fitted curve/vertex if enough exist.
         """
         self._reset_axis()
         if not self._results:
@@ -75,11 +81,15 @@ class FocusCurvePanel(QtWidgets.QWidget):
         outliers = [r for r in self._results if r.is_outlier]
 
         if normal:
-            self.ax.scatter([r.focus_value for r in normal], [r.fwhm for r in normal],
-                             color='tab:blue', marker='o', label='Measured')
+            self.ax.scatter(
+                [r.focus_value for r in normal], [r.fwhm for r in normal], color='tab:blue',
+                marker='o', label='Measured'
+            )
         if outliers:
-            self.ax.scatter([r.focus_value for r in outliers], [r.fwhm for r in outliers],
-                             color='gold', marker='x', label='Outlier')
+            self.ax.scatter(
+                [r.focus_value for r in outliers], [r.fwhm for r in outliers], color='gold',
+                marker='x', label='Outlier'
+            )
 
         focus_values = [r.focus_value for r in self._results]
         fwhm_values = [r.fwhm for r in self._results]
@@ -93,8 +103,10 @@ class FocusCurvePanel(QtWidgets.QWidget):
                 x_smooth = np.linspace(min(focus_values), max(focus_values), 50)
                 y_smooth = a*x_smooth**2 + b*x_smooth + c
                 self.ax.plot(x_smooth, y_smooth, 'r-')
-                self.ax.scatter([x_vertex], [y_vertex], color='green', zorder=3,
-                                 label=f'Best focus: {x_vertex:.1f}')
+                self.ax.scatter(
+                    [x_vertex], [y_vertex], color='green', zorder=3,
+                    label=f'Best focus: {x_vertex:.1f}'
+                )
 
         self.ax.legend(loc='best')
         self.canvas.draw_idle()

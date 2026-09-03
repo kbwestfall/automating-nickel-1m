@@ -75,23 +75,21 @@ class NickelFocus(scriptbase.ScriptBase):
             help='Exposure speed.  Must be Slow or Fast.  If None'
         )
         parser.add_argument(
-            '-o', '--ofile', default=None, type=str,help=(
-                'Output file for the measured focus data.  This can be used to exclude and refit '
-                'the best focus.'
-            )
+            '-o', '--ofile', default=None, type=str,
+            help='Output file for the measured focus data.'
         )
-        parser.add_argument(
-            '--refit', action='store_true',
-            help='Refit the focus curve.  The output file (see --ofile) must be provided.'
-        )
-        parser.add_argument(
-            '--omit', type=int, nargs='+', default=None,
-            help='List of observation numbers to omit from the curve fitting.'
-        )
-        parser.add_argument(
-            '--config', action='store_true',
-            help='Only print the current exposure configuration and focus'
-        )
+#        parser.add_argument(
+#            '--refit', action='store_true',
+#            help='Refit the focus curve.  The output file (see --ofile) must be provided.'
+#        )
+#        parser.add_argument(
+#            '--omit', type=int, nargs='+', default=None,
+#            help='List of observation numbers to omit from the curve fitting.'
+#        )
+#        parser.add_argument(
+#            '--config', action='store_true',
+#            help='Only print the current exposure configuration and focus'
+#        )
         parser.add_argument(
             '--no-plot', action='store_true',
             help='Disable the live focus-sequence plot.'
@@ -124,22 +122,22 @@ class NickelFocus(scriptbase.ScriptBase):
 #        elif _speed == 'Fast':
 #            _speed = '1.0MHz'
 
-        if args.refit:
-            raise NotImplementedError('Not ready to refit.')
-            if args.ofile is None:
-                raise ValueError(
-                    'To refit, must provide output file name from a previous focus sequence.'
-                )
-            _ofile = Path(args.ofile).absolute()
-            if not _ofile.is_file():
-                raise FileNotFoundError(f'{_ofile.name} not found!  Correct the output file name.')
-            tbl = Table.read(_ofile, format='ecsv')
-            if args.omit is not None:
-                # Find the entries in the table and remove them
-                pass
-            best_focus, best_img_quality = FocusSequence.fit_best_focus(tbl['FOCUS'], tbl['SIGMA'])
-            # And then finish this out
-            return
+#        if args.refit:
+#            raise NotImplementedError('Not ready to refit.')
+#            if args.ofile is None:
+#                raise ValueError(
+#                    'To refit, must provide output file name from a previous focus sequence.'
+#                )
+#            _ofile = Path(args.ofile).absolute()
+#            if not _ofile.is_file():
+#                raise FileNotFoundError(f'{_ofile.name} not found!  Correct the output file name.')
+#            tbl = Table.read(_ofile, format='ecsv')
+#            if args.omit is not None:
+#                # Find the entries in the table and remove them
+#                pass
+#            best_focus, best_img_quality = FocusSequence.fit_best_focus(tbl['FOCUS'], tbl['SIGMA'])
+#            # And then finish this out
+#            return
     
         # Check if output file exists
 

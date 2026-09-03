@@ -8,32 +8,17 @@ from scipy.ndimage import binary_dilation
 
 from nickel_focus import log
 
-# detect threshold
-# use threshold to detect sources
-# grow sources with binary dilation
-# estimate background on source subtracted image
-# inject sources back into image
-# iterate while threshold converges
-
-# use moments to determine shape of source(s)
-# decide whether shape is reasonable
-    # ratio between x and y aren't too different and x and y aren't too big/small
-# return sources and their attributes
-
-# find source closest to provided coordinates else brightest source
-# return fwhm of that source
-
 
 def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
     """
     Find sources in an image.
 
-    Iteratively uses `photutils.segmentation.detect_threshold` to determine the
-    image detection threshold and `photutils.segmentation.detect_sources` to
-    identify pixels with sources.  Source pixels masks are grown and the
-    non-source pixels are used to measure and subtract the background.
-    Iterations stop when subsequent measurements of the threshold are within the
-    provided relative tolerance.
+    Iteratively uses :func:`photutils.segmentation.detect_threshold` to
+    determine the image detection threshold and
+    :func:`photutils.segmentation.detect_sources` to identify pixels with
+    sources.  Source pixels masks are grown and the non-source pixels are used
+    to measure and subtract the background.  Iterations stop when subsequent
+    measurements of the threshold are within the provided relative tolerance.
 
     Parameters
     ----------
@@ -45,16 +30,16 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
         Number of pixels to grow the source mask.
     atol : :obj:`float`, optional
         Absolute tolerance used to test for convergence of the detection
-        threshold.  See `numpy.isclose`.
+        threshold.  See :func:`numpy.isclose`.
     rtol : :obj:`float`, optional
         Relative tolerance used to test for convergence of the detection
-        threshold.  See `numpy.isclose`.
+        threshold.  See :func:`numpy.isclose`.
 
     Returns
     -------
     background : :obj:`float`
         The estimated background in the image
-    source_mask : `photutils.segmentation.core.SegmentationImage`
+    source_mask : :class:`photutils.segmentation.core.SegmentationImage`
         Segmentation image.
     """
     previous_threshold = None               # Previous threshold value
@@ -80,8 +65,10 @@ def find_sources(data, max_iterations=5, grow=7, atol=0.1, rtol=0.01):
 
         # Calculate the median of the threshold image
         med_threshold = np.median(threshold)
-        if previous_threshold is None or \
-                not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol):
+        if (
+            previous_threshold is None or
+            not np.isclose(med_threshold, previous_threshold, atol=atol, rtol=rtol)
+        ):
             log.debug(f'Updated threshold: {med_threshold:.1f}')
             # This is the first iteration
             previous_threshold = med_threshold
@@ -160,8 +147,7 @@ def moment2d(x, y, z):
     z : array-like
         Value of the data at each provide x and y coordinate.
 
-    Returns:
-    tot : :obj:`float`
+    Returns: tot : :obj:`float`
         Sum of ``z``
     cx : :obj:`float`
         Weighted mean of ``x``
@@ -207,14 +193,14 @@ def evaluate_sources(data, sources):
 
     Parameters
     ----------
-    data : `numpy.ndarray`
+    data : :class:`numpy.ndarray`
         Background subtracted, raw image data
-    sources : `photutils.segmentation.core.SegmentationImage`
+    sources : :class:`photutils.segmentation.core.SegmentationImage`
         Source segmentation image.
 
     Returns
     -------
-    `astropy.table.Table`
+    :class:`astropy.table.Table`
         Table with the source measurements.  Columns are:
             - ID: Source ID number
             - CENX : center along X (column)
@@ -237,9 +223,10 @@ def evaluate_sources(data, sources):
         indx = sources.data == source.label
         if np.sum(indx) == 0:
             log.warning(f'No data assocated with source {source.label}')
-        src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i], \
-            src_data['SIGX'][i], src_data['SIGY'][i] \
-                = moment2d(img_x[indx], img_y[indx], data[indx])
+        (
+            src_data['CNTS'][i], src_data['CENX'][i], src_data['CENY'][i],
+            src_data['SIGX'][i], src_data['SIGY'][i] 
+        ) = moment2d(img_x[indx], img_y[indx], data[indx])
 
     # Check if sources are real
     #   - Bad sigma measurements
@@ -269,7 +256,7 @@ def image_quality(fits_file, method='brightest'):
 
     Parameters
     ----------
-    fits_file : :obj:`str`, `Path`
+    fits_file : :obj:`str`, :class:`pathlib.Path`
         File with raw image data
     method : :obj:`str`, :obj:`tuple`, optional
         Method used to measure the image quality.  Must be:
@@ -285,15 +272,16 @@ def image_quality(fits_file, method='brightest'):
 
     Returns
     -------
-    data : `numpy.ndarray`
+    data : :class:`numpy.ndarray`
         Raw image data.
     bkg : :obj:`float`
         Estimated background.
-    src_data : `astropy.table.Table`
-        Table with the source measurements; see :func:`evaluate_sources`.
+    src_data : :class:`astropy.table.Table`
+        Table with the source measurements; see
+        :func:`~nickel_focus.photometry.evaluate_sources`.
     img_quality : :obj:`float`
         The image-quality measurement (mean of the source's x and y sigma).
-    stamp : `numpy.ndarray`
+    stamp : :class:`numpy.ndarray`
         Cutout of the background-subtracted data around the selected source.
     coords : :obj:`tuple`
         The (x,y) centroid of the selected source.
@@ -309,21 +297,25 @@ def image_quality(fits_file, method='brightest'):
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
         stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif method == 'weighted':
-        img_quality = np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2) \
-                        / np.sum(src_data['CNTS'])
+        img_quality = (
+            np.sum(src_data['CNTS'] * (src_data['SIGX'] + src_data['SIGY'])/2)
+            / np.sum(src_data['CNTS'])
+        )
         target_source = np.argmax(src_data['CNTS'])
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])
         stamp = extract_stamp(data-bkg, coords, int(img_quality*10))
     elif not isinstance(method, tuple):
-        raise ValueError('image_quality method must be brightest, weighted, or a tuple of '
-                         'coordinates')
+        raise ValueError(
+            'image_quality method must be brightest, weighted, or a tuple of coordinates'
+        )
     else:
         try:
             dist = (src_data['CENX'] - method[0])**2 + (src_data['CENY'] - method[1])**2
         except Exception as e:
-            raise ValueError('Could not use tuple provided to method keyword to find nearest '
-                             'source to use for image quality measurement.  Original excception '
-                             f'message: {e}.')
+            raise ValueError(
+                'Could not use tuple provided to method keyword to find nearest source to use '
+                f'for image quality measurement.  Original excception message: {e}.'
+            )
         target_source = np.argmin(dist)
         img_quality = (src_data['SIGX'][target_source] + src_data['SIGY'][target_source])/2
         coords = (src_data['CENX'][target_source], src_data['CENY'][target_source])

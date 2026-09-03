@@ -221,16 +221,16 @@ class FocusPlot:
     """
     Live view of a focus sequence in progress.
 
-    Shows the most recent exposure (with the measured source boxed, and
-    flagged if its centroid looks like an outlier relative to the rest of
-    the sequence collected so far), a grid of the per-exposure source
-    stamps, and an evolving plot of FWHM versus focus value.
+    Shows the most recent exposure (with the measured source boxed, and flagged
+    if its centroid looks like an outlier relative to the rest of the sequence
+    collected so far), a grid of the per-exposure source stamps, and an evolving
+    plot of FWHM versus focus value.
 
     Parameters
     ----------
     nstamps : :obj:`int`
-        Number of stamps to reserve space for (an upper bound on the number
-        of exposures expected in the sequence).
+        Number of stamps to reserve space for (an upper bound on the number of
+        exposures expected in the sequence).
     ncols : :obj:`int`, optional
         Number of columns in the stamp grid.
     """
@@ -238,8 +238,9 @@ class FocusPlot:
         self.ncols = ncols
         self.nrows = int(np.ceil(nstamps / ncols))
 
-        self.fig = pyplot.figure(figsize=(6 + 3*self.ncols, max(3*self.nrows, 6)),
-                                  constrained_layout=True)
+        self.fig = pyplot.figure(
+            figsize=(6 + 3*self.ncols, max(3*self.nrows, 6)), constrained_layout=True
+        )
         subfigs = self.fig.subfigures(1, 3, width_ratios=[1.2, self.ncols, 1.2])
 
         self.frame_ax = subfigs[0].subplots(1, 1)
@@ -274,12 +275,16 @@ class FocusPlot:
 
         half = stamp_size / 2
         color = 'yellow' if is_outlier else 'red'
-        rect = patches.Rectangle((coords[0]-half, coords[1]-half), stamp_size, stamp_size,
-                                  linewidth=2, edgecolor=color, facecolor='none')
+        rect = patches.Rectangle(
+            (coords[0]-half, coords[1]-half), stamp_size, stamp_size, linewidth=2,
+            edgecolor=color, facecolor='none'
+        )
         self.frame_ax.add_patch(rect)
         if is_outlier:
-            self.frame_ax.text(coords[0], coords[1]+half+5, 'Outlier centroid', color='yellow',
-                                fontsize=10, ha='center')
+            self.frame_ax.text(
+                coords[0], coords[1]+half+5, 'Outlier centroid', color='yellow', fontsize=10,
+                ha='center'
+            )
         self._draw()
 
     def add_stamp(self, index, stamp, focus_value, fwhm, is_outlier=False):
@@ -299,8 +304,8 @@ class FocusPlot:
 
     def update_curve(self, focus_values, fwhm_values):
         """
-        Redraw the focus-vs-FWHM curve, including the best-fit quadratic
-        once there are enough points to fit one.
+        Redraw the focus-vs-FWHM curve, including the best-fit quadratic once
+        there are enough points to fit one.
         """
         self._reset_curve_axis()
         self.curve_ax.scatter(focus_values, fwhm_values, color='tab:blue')
@@ -311,8 +316,10 @@ class FocusPlot:
             x_smooth = np.linspace(min(focus_values), max(focus_values), 50)
             y_smooth = a*x_smooth**2 + b*x_smooth + c
             self.curve_ax.plot(x_smooth, y_smooth, 'r-')
-            self.curve_ax.scatter([x_vertex], [y_vertex], color='green', zorder=3,
-                                   label=f'Best focus: {x_vertex:.1f}')
+            self.curve_ax.scatter(
+                [x_vertex], [y_vertex], color='green', zorder=3,
+                label=f'Best focus: {x_vertex:.1f}'
+            )
             self.curve_ax.legend(loc='best')
 
         self._draw()
@@ -324,8 +331,8 @@ class FocusPlot:
     @staticmethod
     def is_outlier(centroids, threshold=2.0):
         """
-        Check whether the most recently added centroid in ``centroids`` is
-        an outlier relative to the full set collected so far, using the same
+        Check whether the most recently added centroid in ``centroids`` is an
+        outlier relative to the full set collected so far, using the same
         median-distance statistic as the original focus-finding code.
         """
         _centroids = np.atleast_2d(centroids).astype(float)
@@ -359,8 +366,9 @@ class StepResult:
     centroid : :obj:`tuple`
         The (x,y) centroid of the selected source.
     is_outlier : :obj:`bool`
-        Whether this step's centroid is an outlier relative to the rest of
-        the sequence collected so far; see :func:`FocusPlot.is_outlier`.
+        Whether this step's centroid is an outlier relative to the rest of the
+        sequence collected so far; see
+        :meth:`~nickel_focus.focus.FocusPlot.is_outlier`.
     """
     index: int
     focus_value: float
@@ -408,21 +416,23 @@ class FocusSequence:
         """
         Advance the focus sequence one exposure at a time.
 
-        This is the engine shared by :func:`execute` (used by the CLI
+        This is the engine shared by
+        :meth:`~nickel_focus.focus.FocusSequence.execute` (used by the CLI
         script) and any other driver of the sequence (e.g., a GUI worker
-        thread): each iteration sets the focus, takes or retrieves an
-        exposure, measures its image quality, and yields the result. It
-        does not decide when the sequence should stop (see
-        :func:`continue_sequence`) or what to do once it has; callers are
-        responsible for calling :func:`reset` beforehand and for reacting
-        to each :class:`StepResult` as it's yielded (e.g., to update a
-        plot).
+        thread): each iteration sets the focus, takes or retrieves an exposure,
+        measures its image quality, and yields the result.  It does not decide
+        when the sequence should stop (see
+        :meth:`~nickel_focus.focus.FocusSequence.continue_sequence`) or what to
+        do once it has; callers are responsible for calling
+        :meth:`~nickel_focus.focus.FocusSequence.reset` beforehand and for
+        reacting to each :class:`~nickel_focus.focus.StepResult` as it's yielded
+        (e.g., to update a plot).
 
         Parameters
         ----------
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
 
         Yields
         ------
@@ -433,8 +443,9 @@ class FocusSequence:
         while self.continue_sequence():
             self.observed_focus += [self.step_focus()]
             self.exposures += [self.take_exposure()]
-            data, bkg, src_data, img_quality, source_stamp, coords \
-                = image_quality(self.exposures[-1], method=method)
+            data, bkg, src_data, img_quality, source_stamp, coords = image_quality(
+                self.exposures[-1], method=method
+            )
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.centroids += [coords]
@@ -454,31 +465,29 @@ class FocusSequence:
 
     def reanalyze(self, method='brightest'):
         """
-        Re-run photometry on every exposure this sequence has already
-        collected, using a new ``method``, without taking any new
-        exposures.
+        Re-run photometry on every exposure this sequence has already collected,
+        using a new ``method``, without taking any new exposures.
 
         This replaces the stored ``img_quality``/``source_stamps``/
-        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and
-        thus which exposures exist and what focus values they were taken
-        at) are left untouched. It's meant for interactively changing
-        which source is used for the FWHM measurement (e.g., after a user
-        clicks a different star in the displayed image) and seeing the
-        effect on every exposure already taken, live or archived, without
-        re-observing. If nothing has been collected yet (``exposures`` is
-        empty), this yields nothing.
+        ``centroids`` in place; ``observed_focus`` and ``exposures`` (and thus
+        which exposures exist and what focus values they were taken at) are left
+        untouched.  It's meant for interactively changing which source is used
+        for the FWHM measurement (e.g., after a user clicks a different star in
+        the displayed image) and seeing the effect on every exposure already
+        taken, live or archived, without re-observing.  If nothing has been
+        collected yet (``exposures`` is empty), this yields nothing.
 
         Parameters
         ----------
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
 
         Yields
         ------
         StepResult
-            The updated result for each already-collected exposure, in
-            the order they were originally taken.
+            The updated result for each already-collected exposure, in the order
+            they were originally taken.
         """
         self.method = method
         focus_values = list(self.observed_focus)
@@ -489,8 +498,9 @@ class FocusSequence:
         self.centroids = []
 
         for i, (focus_value, exposure) in enumerate(zip(focus_values, exposures)):
-            data, bkg, src_data, img_quality, source_stamp, coords \
-                = image_quality(exposure, method=method)
+            data, bkg, src_data, img_quality, source_stamp, coords = image_quality(
+                exposure, method=method
+            )
             self.source_stamps += [source_stamp]
             self.img_quality += [img_quality]
             self.centroids += [coords]
@@ -509,14 +519,15 @@ class FocusSequence:
     def take_single_exposure(self, focus_value, method='brightest', **exp_kwargs):
         """
         Move to ``focus_value``, take one exposure, and measure its image
-        quality -- one iteration of :func:`step`'s body, without any
+        quality -- one iteration of
+        :meth:`~nickel_focus.focus.FocusSequence.step`'s body, without any
         sequence bookkeeping (``step_iter``, ``observed_focus``,
-        ``img_quality``, etc. are left untouched).
+        ``img_quality``, etc.  are left untouched).
 
-        This is the shared primitive behind both "move to best focus"
-        (moving to a fitted focus value and confirming it with one
-        exposure *is* taking a single exposure at that value) and the
-        standalone single-exposure workflow (GUI_DESIGN.md §5.5).
+        This is the shared primitive behind both "move to best focus" (moving to
+        a fitted focus value and confirming it with one exposure *is* taking a
+        single exposure at that value) and the standalone single-exposure
+        workflow (GUI_DESIGN.md §5.5).
 
         Parameters
         ----------
@@ -524,16 +535,16 @@ class FocusSequence:
             The focus value to move to before exposing.
         method : :obj:`str`, :obj:`tuple`, optional
             The photometry method passed to
-            :func:`photometry.image_quality`.
+            :func:`~nickel_focus.photometry.image_quality`.
         **exp_kwargs
-            Passed to :func:`ExposureConfig.configure` before exposing
-            (``record``, ``speed``, ``binning``, ``exptime``).
+            Passed to :meth:`~nickel_focus.focus.ExposureConfig.configure`
+            before exposing (``record``, ``speed``, ``binning``, ``exptime``).
 
         Returns
         -------
         StepResult
-            The measurement from the single exposure. Its ``index`` is
-            always 0, since it's not part of any larger sequence.
+            The measurement from the single exposure.  Its ``index`` is always
+            0, since it's not part of any larger sequence.
         """
         if self._focus is None or self._exposure is None:
             raise ValueError(
@@ -566,11 +577,14 @@ class FocusSequence:
 
         for result in self.step(method=method):
             if self.plot is not None:
-                self.plot.update_frame(result.frame, result.centroid, int(result.fwhm*10),
-                                        result.exposure.stem, result.focus_value,
-                                        result.is_outlier)
-                self.plot.add_stamp(result.index, result.stamp, result.focus_value,
-                                     result.fwhm, is_outlier=result.is_outlier)
+                self.plot.update_frame(
+                    result.frame, result.centroid, int(result.fwhm*10), result.exposure.stem,
+                    result.focus_value, result.is_outlier
+                )
+                self.plot.add_stamp(
+                    result.index, result.stamp, result.focus_value, result.fwhm,
+                    is_outlier=result.is_outlier
+                )
                 self.plot.update_curve(self.observed_focus, self.img_quality)
 
         best_focus, best_img_quality = self.fit_best_focus(self.observed_focus, self.img_quality)
@@ -656,9 +670,9 @@ class AutomatedFocusSequence(FocusSequence):
     def continue_sequence(self):
         return (
             self.step_iter < self.maxsteps
-            and (self.step_iter < 2
-                 or self.last is None
-                 or (self.last is not None and self.step_iter < self.last)
+            and (
+                self.step_iter < 2 or self.last is None
+                or (self.last is not None and self.step_iter < self.last)
             )
         )
 
@@ -673,12 +687,16 @@ class AutomatedFocusSequence(FocusSequence):
         elif self.step_iter == 2 and self.img_quality[0] < self.img_quality[1]:
             self.direction = -1
             next_focus = self.observed_focus[0] - self.step_size
-        elif self.last is None and self.step_iter > 2 and self.img_quality[-1] > self.img_quality[-2]:
+        elif (
+            self.last is None and self.step_iter > 2
+            and self.img_quality[-1] > self.img_quality[-2]
+        ):
             self.last = self.step_iter + 2
             if self.last > self.maxsteps:
                 log.warning(
                     f'Number of steps to fulfill sequence ({self.last}) is more than the '
-                    f'maximum number of steps requested ({self.maxsteps}).')
+                    f'maximum number of steps requested ({self.maxsteps}).'
+                )
             next_focus = self.observed_focus[-1] + self.direction * self.step_size
         else:
             next_focus = self.observed_focus[-1] + self.direction * self.step_size

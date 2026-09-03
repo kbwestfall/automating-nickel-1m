@@ -75,11 +75,11 @@ class ScriptBase:
 
         .. warning::
 
-            *Any* argument that defaults to the
-            string ``'current working directory'`` will be replaced by the
-            result of ``Path.cwd()`` when the script is executed.  This means
-            help dialogs will include this replacement, and parsing of the
-            command line will use ``Path.cwd()`` as the default.
+            *Any* argument that defaults to the string ``'current working
+            directory'`` will be replaced by the result of ``Path.cwd()`` when
+            the script is executed.  This means help dialogs will include this
+            replacement, and parsing of the command line will use ``Path.cwd()``
+            as the default.
 
         Parameters
         ----------
@@ -89,7 +89,7 @@ class ScriptBase:
             Restrict the width of the formatted help output to be no longer than
             this number of characters, if possible given the help formatter.  If
             None, the width is the same as the terminal width.
-        formatter : `argparse.HelpFormatter`_
+        formatter : :class:`argparse.HelpFormatter`
             Class used to format the help output.
         include_log_options : :obj:`bool`, optional
             Include options that define the logging level(s) and log file.
@@ -99,7 +99,7 @@ class ScriptBase:
 
         Returns
         -------
-        `argparse.ArgumentParser`_
+        :class:`argparse.ArgumentParser`
             Command-line interpreter.
         """
         parser = argparse.ArgumentParser(
@@ -132,17 +132,17 @@ class ScriptBase:
         Initialize the logger provided the command-line arguments.
         """
         level = log.convert_verbosity_to_logging_level(args.verbosity)
-        log_file_level = None if args.log_level is None else \
+        log_file_level = (
+            None if args.log_level is None else
             log.convert_verbosity_to_logging_level(args.log_level)
+        )
         if args.log_file == 'default':
             _log_file = cls.default_log_file()
         elif args.log_file in ['None', None]:
             _log_file = None
         else:
             _log_file = args.log_file
-        log.init(level=level,
-                 log_file=_log_file,
-                 log_file_level=log_file_level)
+        log.init(level=level, log_file=_log_file, log_file_level=log_file_level)
 
     @classmethod
     def default_log_file(cls):

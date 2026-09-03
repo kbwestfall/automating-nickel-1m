@@ -129,14 +129,53 @@ the existing `ScriptBase.entry_point()` machinery (no logic duplicated):
   `test_starlist.py`'s own unrelated `resources.files(...)` call (used just
   to locate a file for a `parse_starlist` test) was left alone — it only
   ever runs in a normal pip/pytest context.
-- **CVS sync script** itself: still blocked on the CVS-side specifics
-  ("details to come later" per your note) — mechanism will be written from
-  scratch once those are available. It will need to run the `version.py`
-  regeneration step above before mirroring `nickel_focus/`.
+- **`tools/deploy.sh` drafted** (see its own section below) — the CVS-sync
+  step inside it (step 3) is still nominal placeholder commands, pending
+  the CVS-side specifics ("details to come later" per your note).
 - You mentioned reassessing which files currently in `nickel_focus/` should
   move to better isolate what is/isn't synced — the table above reflects
   the directory layout *as it exists today*; expect it to need updating
   once that assessment is done.
+
+## `tools/deploy.sh`
+
+A draft end-to-end deployment script, per your requested workflow: (1)
+update the deployment-side git checkout to the latest `main`, (2)
+regenerate `version.py` (via `tools/write_version.py`), (3) sync
+`nickel_focus/` into the CVS working copy, (4) `make install` from there.
+**Not tested end-to-end** — can't be, on this machine — treat it as a
+starting point to finish with Brad/Will, not a ready-to-run tool.
+
+Design choices made, flagged here in case they need revisiting:
+
+- **`GIT_CHECKOUT`/`CVS_CHECKOUT`** are placeholder paths (env-var
+  overridable, default to obvious `/TBD/...` strings) — real values depend
+  on how the deployment machine is actually laid out.
+- **Step 1 uses `git fetch` + `git reset --hard origin/main`** (forcibly
+  discarding any local changes on that checkout) rather than a plain
+  `git pull`, per your choice — safer/more reproducible for a checkout
+  nobody should be editing directly, at the cost of being destructive if
+  that assumption is ever wrong. It prints a warning (via `git status
+  --short`) before doing so, so the discarded changes are at least visible
+  in the log.
+- **Tag enforcement is a warning, not a hard failure.** The script checks
+  `git describe --tags --exact-match HEAD` and warns (but continues) if
+  HEAD isn't exactly a tagged commit, matching the same
+  warn-don't-block choice already made in `tools/write_version.py`. If you
+  and Brad/Will decide CVS syncs must never happen from an untagged
+  commit, this should become a hard `exit 1` instead.
+- **Step 3's commands are nominal, not final** — mirror `nickel_focus/` +
+  the top `Makefile` into `$CVS_CHECKOUT` via `rsync --delete`, restore the
+  executable bit on `*.sin` files (CVS doesn't track POSIX permissions the
+  way git does), then use the standard `cvs -qn update` dry-run idiom
+  (`?` = untracked-by-CVS file on disk → `cvs add`; `!` = CVS-tracked file
+  missing from disk → `cvs remove`) before a single `cvs commit`. This is a
+  reasonable, standard-idiom starting point, not a verified-correct
+  mechanism — expected to be directly edited once the real CVS conventions
+  are confirmed.
+- **`set -euxo pipefail`** (note the `-x`) — every command is echoed as
+  it runs, at your request, since this can't be tested here and will need
+  to be debugged live by whoever runs it first.
 
 ## Verification (once buildable against a real `$(LROOT)`)
 

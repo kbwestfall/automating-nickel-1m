@@ -1,5 +1,9 @@
 # nickel_focus
 
+> **NOTE**: This repo has been moved to
+> https://github.com/UCObservatories/nickel_focus .  This fork of the
+> original version of the code is now archived.
+
 Acquisition and focusing tools for the Nickel 1-m Telescope at Lick
 Observatory.
 
